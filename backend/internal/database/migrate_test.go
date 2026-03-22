@@ -56,8 +56,14 @@ func TestMigrateAppliesSchemaAndIsIdempotent(t *testing.T) {
 
 	assertRelationExists(t, db, "users")
 	assertRelationExists(t, db, "documents")
+	assertRelationExists(t, db, "document_submissions")
 	assertRelationExists(t, db, "goose_db_version")
 	assertRelationExists(t, db, "idx_documents_title_trgm")
+	assertRelationExists(t, db, "idx_document_submissions_user_created")
+	assertRelationExists(t, db, "idx_document_submissions_status_created")
+	assertColumnExists(t, db, "document_submissions", "source")
+	assertRelationMissing(t, db, "favorite_aliases")
+	assertRelationMissing(t, db, "idx_favorite_aliases_user_alias_trgm")
 }
 
 func withDatabaseName(t *testing.T, dsn, dbName string) string {
@@ -81,5 +87,35 @@ func assertRelationExists(t *testing.T, db *sql.DB, relation string) {
 	}
 	if !actual.Valid || actual.String == "" {
 		t.Fatalf("expected relation %q to exist", relation)
+	}
+}
+
+func assertRelationMissing(t *testing.T, db *sql.DB, relation string) {
+	t.Helper()
+
+	var actual sql.NullString
+	if err := db.QueryRow(`SELECT to_regclass($1)`, "public."+relation).Scan(&actual); err != nil {
+		t.Fatalf("QueryRow() error = %v", err)
+	}
+	if actual.Valid && actual.String != "" {
+		t.Fatalf("expected relation %q to be missing", relation)
+	}
+}
+
+func assertColumnExists(t *testing.T, db *sql.DB, table, column string) {
+	t.Helper()
+
+	var exists bool
+	if err := db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM information_schema.columns
+			WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2
+		)
+	`, table, column).Scan(&exists); err != nil {
+		t.Fatalf("QueryRow() error = %v", err)
+	}
+	if !exists {
+		t.Fatalf("expected column %q.%q to exist", table, column)
 	}
 }

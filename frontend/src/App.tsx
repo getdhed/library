@@ -8,6 +8,7 @@ import BookPage from "./pages/BookPage";
 import BrowsePage from "./pages/BrowsePage";
 import FavoritesPage from "./pages/FavoritesPage";
 import SettingsPage from "./pages/SettingsPage";
+import SubmitPage from "./pages/SubmitPage";
 import AdminDocumentsPage from "./pages/admin/AdminDocumentsPage";
 import AdminStatsPage from "./pages/admin/AdminStatsPage";
 import LoginPage from "./pages/LoginPage";
@@ -33,6 +34,7 @@ const App: React.FC = () => {
         <Route path="/catalog" element={<BrowsePage />} />
         <Route path="/favorites" element={<FavoritesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/submit" element={<SubmitPage />} />
         <Route path="/documents/:id" element={<BookPage />} />
         <Route
           path="/admin/documents"

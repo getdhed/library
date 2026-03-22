@@ -13,12 +13,15 @@ func TestLoadUsesDefaults(t *testing.T) {
 	t.Setenv("JWT_SECRET", "")
 	t.Setenv("STORAGE_PATH", "")
 	t.Setenv("IMPORT_PATH", "")
+	t.Setenv("IMPORT_SCAN_INTERVAL_SECONDS", "")
 	t.Setenv("MAX_UPLOAD_SIZE_MB", "")
 	t.Setenv("TOKEN_TTL_HOURS", "")
 	t.Setenv("CORS_ORIGINS", "")
 	t.Setenv("SEED_ADMIN_EMAIL", "")
 	t.Setenv("SEED_ADMIN_NAME", "")
 	t.Setenv("SEED_ADMIN_PASSWORD", "")
+	t.Setenv("SYSTEM_IMPORT_EMAIL", "")
+	t.Setenv("SYSTEM_IMPORT_NAME", "")
 	t.Setenv("LOG_LEVEL", "")
 	t.Setenv("LOG_FORMAT", "")
 
@@ -39,6 +42,12 @@ func TestLoadUsesDefaults(t *testing.T) {
 	if cfg.MaxUploadSizeBytes() != 100*1024*1024 {
 		t.Fatalf("unexpected max upload bytes: %d", cfg.MaxUploadSizeBytes())
 	}
+	if cfg.ImportScanIntervalSeconds != 10 {
+		t.Fatalf("expected default import scan interval, got %d", cfg.ImportScanIntervalSeconds)
+	}
+	if cfg.SystemImportEmail != "system-import@library.local" {
+		t.Fatalf("unexpected default system import email: %q", cfg.SystemImportEmail)
+	}
 }
 
 func TestLoadParsesCustomValues(t *testing.T) {
@@ -47,12 +56,15 @@ func TestLoadParsesCustomValues(t *testing.T) {
 	t.Setenv("JWT_SECRET", "top-secret")
 	t.Setenv("STORAGE_PATH", "/tmp/storage")
 	t.Setenv("IMPORT_PATH", "/tmp/import")
+	t.Setenv("IMPORT_SCAN_INTERVAL_SECONDS", "30")
 	t.Setenv("MAX_UPLOAD_SIZE_MB", "12")
 	t.Setenv("TOKEN_TTL_HOURS", "24")
 	t.Setenv("CORS_ORIGINS", "http://one.local, http://two.local")
 	t.Setenv("SEED_ADMIN_EMAIL", "admin@example.com")
 	t.Setenv("SEED_ADMIN_NAME", "Admin")
 	t.Setenv("SEED_ADMIN_PASSWORD", "pass")
+	t.Setenv("SYSTEM_IMPORT_EMAIL", "system@example.com")
+	t.Setenv("SYSTEM_IMPORT_NAME", "System Import")
 	t.Setenv("LOG_LEVEL", "WARN")
 	t.Setenv("LOG_FORMAT", "JSON")
 
@@ -70,8 +82,14 @@ func TestLoadParsesCustomValues(t *testing.T) {
 	if cfg.MaxUploadSizeMB != 12 {
 		t.Fatalf("unexpected max upload size mb: %d", cfg.MaxUploadSizeMB)
 	}
+	if cfg.ImportScanIntervalSeconds != 30 {
+		t.Fatalf("unexpected import scan interval: %d", cfg.ImportScanIntervalSeconds)
+	}
 	if cfg.TokenTTL != 24*time.Hour {
 		t.Fatalf("unexpected token ttl: %v", cfg.TokenTTL)
+	}
+	if cfg.SystemImportEmail != "system@example.com" || cfg.SystemImportName != "System Import" {
+		t.Fatalf("unexpected system import config: %#v", cfg)
 	}
 	expectedOrigins := []string{"http://one.local", "http://two.local"}
 	if !reflect.DeepEqual(cfg.CORSOrigins, expectedOrigins) {

@@ -15,6 +15,10 @@ type Repository struct {
 	db *sql.DB
 }
 
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
 func New(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
@@ -88,6 +92,23 @@ func (r *Repository) EnsureSeedData(ctx context.Context, adminEmail, adminName, 
 	}
 
 	return nil
+}
+
+func (r *Repository) EnsureSystemUser(ctx context.Context, email, fullName, passwordHash string) (domain.User, error) {
+	var user domain.User
+	err := r.db.QueryRowContext(ctx, `
+		INSERT INTO users(email, password_hash, full_name, role)
+		VALUES ($1, $2, $3, 'admin')
+		ON CONFLICT (email) DO UPDATE
+		SET full_name = EXCLUDED.full_name,
+			role = 'admin'
+		RETURNING id, email, full_name, role, avatar_url, created_at
+	`, strings.ToLower(strings.TrimSpace(email)), passwordHash, strings.TrimSpace(fullName)).
+		Scan(&user.ID, &user.Email, &user.FullName, &user.Role, &user.AvatarURL, &user.CreatedAt)
+	if err != nil {
+		return domain.User{}, err
+	}
+	return user, nil
 }
 
 func (r *Repository) CreateUser(ctx context.Context, input domain.RegisterInput, passwordHash string) (domain.User, error) {
@@ -182,6 +203,218 @@ func (r *Repository) ListDepartments(ctx context.Context, facultyID int64) ([]do
 	return items, rows.Err()
 }
 
+func (r *Repository) CreateSubmission(ctx context.Context, userID int64, input domain.CreateSubmissionInput) (domain.DocumentSubmission, error) {
+	var id int64
+	err := r.db.QueryRowContext(ctx, `
+		INSERT INTO document_submissions(
+			user_id,
+			title,
+			author,
+			department_id,
+			comment,
+			file_path,
+			file_name,
+			file_size_bytes,
+			mime_type,
+			cover_path,
+			status,
+			source
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11)
+		RETURNING id
+	`,
+		userID,
+		input.Title,
+		input.Author,
+		nullableInt64(input.DepartmentID),
+		input.Comment,
+		input.FilePath,
+		input.FileName,
+		input.FileSize,
+		input.MimeType,
+		input.CoverPath,
+		input.Source,
+	).Scan(&id)
+	if err != nil {
+		return domain.DocumentSubmission{}, err
+	}
+
+	return r.GetSubmissionByID(ctx, id)
+}
+
+func (r *Repository) GetSubmissionByID(ctx context.Context, id int64) (domain.DocumentSubmission, error) {
+	item, err := scanSubmission(r.db.QueryRowContext(ctx, `
+		SELECT
+			s.id,
+			s.user_id,
+			s.title,
+			s.author,
+			COALESCE(dep.id, 0),
+			COALESCE(dep.name, ''),
+			COALESCE(f.id, 0),
+			COALESCE(f.name, ''),
+			s.comment,
+			s.file_path,
+			s.file_name,
+			s.file_size_bytes,
+			s.mime_type,
+			s.cover_path,
+			s.status,
+			s.source,
+			s.moderation_note,
+			COALESCE(s.approved_document_id, 0),
+			COALESCE(s.reviewed_by, 0),
+			s.reviewed_at,
+			s.created_at,
+			s.updated_at,
+			u.full_name,
+			u.email
+		FROM document_submissions s
+		JOIN users u ON u.id = s.user_id
+		LEFT JOIN departments dep ON dep.id = s.department_id
+		LEFT JOIN faculties f ON f.id = dep.faculty_id
+		WHERE s.id = $1
+	`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.DocumentSubmission{}, apperror.ErrNotFound
+	}
+	if err != nil {
+		return domain.DocumentSubmission{}, err
+	}
+	return item, nil
+}
+
+func (r *Repository) ListSubmissionsByUser(ctx context.Context, userID int64) ([]domain.DocumentSubmission, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			s.id,
+			s.user_id,
+			s.title,
+			s.author,
+			COALESCE(dep.id, 0),
+			COALESCE(dep.name, ''),
+			COALESCE(f.id, 0),
+			COALESCE(f.name, ''),
+			s.comment,
+			s.file_path,
+			s.file_name,
+			s.file_size_bytes,
+			s.mime_type,
+			s.cover_path,
+			s.status,
+			s.source,
+			s.moderation_note,
+			COALESCE(s.approved_document_id, 0),
+			COALESCE(s.reviewed_by, 0),
+			s.reviewed_at,
+			s.created_at,
+			s.updated_at,
+			u.full_name,
+			u.email
+		FROM document_submissions s
+		JOIN users u ON u.id = s.user_id
+		LEFT JOIN departments dep ON dep.id = s.department_id
+		LEFT JOIN faculties f ON f.id = dep.faculty_id
+		WHERE s.user_id = $1
+		ORDER BY s.created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []domain.DocumentSubmission{}
+	for rows.Next() {
+		item, err := scanSubmission(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) ListSubmissions(ctx context.Context, status domain.SubmissionStatus) ([]domain.DocumentSubmission, error) {
+	query := `
+		SELECT
+			s.id,
+			s.user_id,
+			s.title,
+			s.author,
+			COALESCE(dep.id, 0),
+			COALESCE(dep.name, ''),
+			COALESCE(f.id, 0),
+			COALESCE(f.name, ''),
+			s.comment,
+			s.file_path,
+			s.file_name,
+			s.file_size_bytes,
+			s.mime_type,
+			s.cover_path,
+			s.status,
+			s.source,
+			s.moderation_note,
+			COALESCE(s.approved_document_id, 0),
+			COALESCE(s.reviewed_by, 0),
+			s.reviewed_at,
+			s.created_at,
+			s.updated_at,
+			u.full_name,
+			u.email
+		FROM document_submissions s
+		JOIN users u ON u.id = s.user_id
+		LEFT JOIN departments dep ON dep.id = s.department_id
+		LEFT JOIN faculties f ON f.id = dep.faculty_id
+	`
+
+	args := []any{}
+	if status != "" {
+		query += ` WHERE s.status = $1`
+		args = append(args, status)
+	}
+	query += ` ORDER BY s.created_at DESC`
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []domain.DocumentSubmission{}
+	for rows.Next() {
+		item, err := scanSubmission(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) HasPendingSubmissionByFileName(ctx context.Context, fileName string) (bool, error) {
+	var exists bool
+	err := r.db.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM document_submissions
+			WHERE status = 'pending' AND LOWER(file_name) = LOWER($1)
+		)
+	`, strings.TrimSpace(fileName)).Scan(&exists)
+	return exists, err
+}
+
+func (r *Repository) HasDocumentByFileName(ctx context.Context, fileName string) (bool, error) {
+	var exists bool
+	err := r.db.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM documents
+			WHERE LOWER(file_name) = LOWER($1)
+		)
+	`, strings.TrimSpace(fileName)).Scan(&exists)
+	return exists, err
+}
+
 func (r *Repository) SaveSearchHistory(ctx context.Context, userID int64, query string) error {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -253,6 +486,54 @@ func parseTextArray(value string) []string {
 	return items
 }
 
+func nullableInt64(value int64) any {
+	if value <= 0 {
+		return nil
+	}
+	return value
+}
+
+func scanSubmission(row rowScanner) (domain.DocumentSubmission, error) {
+	var item domain.DocumentSubmission
+	var reviewedAt sql.NullTime
+
+	err := row.Scan(
+		&item.ID,
+		&item.UserID,
+		&item.Title,
+		&item.Author,
+		&item.DepartmentID,
+		&item.Department,
+		&item.FacultyID,
+		&item.Faculty,
+		&item.Comment,
+		&item.FilePath,
+		&item.FileName,
+		&item.FileSizeBytes,
+		&item.MimeType,
+		&item.CoverPath,
+		&item.Status,
+		&item.Source,
+		&item.ModerationNote,
+		&item.ApprovedDocumentID,
+		&item.ReviewedBy,
+		&reviewedAt,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+		&item.UploaderName,
+		&item.UploaderEmail,
+	)
+	if err != nil {
+		return domain.DocumentSubmission{}, err
+	}
+
+	if reviewedAt.Valid {
+		item.ReviewedAt = &reviewedAt.Time
+	}
+
+	return item, nil
+}
+
 func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters domain.DocumentFilters, adminMode bool) (domain.PagedDocuments, error) {
 	page := filters.Page
 	if page <= 0 {
@@ -264,53 +545,125 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 	}
 
 	requestedQuery := strings.TrimSpace(filters.Query)
+	likeQuery := "%" + requestedQuery + "%"
 
-	filterArgs := []any{userID}
-	conditions := []string{"1=1"}
-	argIndex := 2
+	queryArgs := []any{userID}
+	queryConditions := []string{"1=1"}
+	queryArgIndex := 2
+
+	countArgs := []any{}
+	countConditions := []string{"1=1"}
+	countArgIndex := 1
 
 	if !adminMode {
-		conditions = append(conditions, "d.is_visible = TRUE")
+		queryConditions = append(queryConditions, "d.is_visible = TRUE")
+		countConditions = append(countConditions, "d.is_visible = TRUE")
 	}
 	if requestedQuery != "" {
-		conditions = append(
-			conditions,
+		queryConditions = append(
+			queryConditions,
 			fmt.Sprintf(
-				"(d.title %% $%d OR d.title ILIKE $%d OR ($1 > 0 AND COALESCE(fa.alias, '') ILIKE $%d))",
-				argIndex,
-				argIndex+1,
-				argIndex+1,
+				`(
+					d.title %% $%d OR d.title ILIKE $%d OR
+					d.author %% $%d OR d.author ILIKE $%d OR
+					dep.name %% $%d OR dep.name ILIKE $%d OR
+					f.name %% $%d OR f.name ILIKE $%d
+				)`,
+				queryArgIndex,
+				queryArgIndex+1,
+				queryArgIndex+2,
+				queryArgIndex+3,
+				queryArgIndex+4,
+				queryArgIndex+5,
+				queryArgIndex+6,
+				queryArgIndex+7,
 			),
 		)
-		filterArgs = append(filterArgs, requestedQuery, "%"+requestedQuery+"%")
-		argIndex += 2
+		queryArgs = append(
+			queryArgs,
+			requestedQuery,
+			likeQuery,
+			requestedQuery,
+			likeQuery,
+			requestedQuery,
+			likeQuery,
+			requestedQuery,
+			likeQuery,
+		)
+		queryArgIndex += 8
+
+		countConditions = append(
+			countConditions,
+			fmt.Sprintf(
+				`(
+					d.title %% $%d OR d.title ILIKE $%d OR
+					d.author %% $%d OR d.author ILIKE $%d OR
+					dep.name %% $%d OR dep.name ILIKE $%d OR
+					f.name %% $%d OR f.name ILIKE $%d
+				)`,
+				countArgIndex,
+				countArgIndex+1,
+				countArgIndex+2,
+				countArgIndex+3,
+				countArgIndex+4,
+				countArgIndex+5,
+				countArgIndex+6,
+				countArgIndex+7,
+			),
+		)
+		countArgs = append(
+			countArgs,
+			requestedQuery,
+			likeQuery,
+			requestedQuery,
+			likeQuery,
+			requestedQuery,
+			likeQuery,
+			requestedQuery,
+			likeQuery,
+		)
+		countArgIndex += 8
 	}
 	if filters.FacultyID > 0 {
-		conditions = append(conditions, fmt.Sprintf("f.id = $%d", argIndex))
-		filterArgs = append(filterArgs, filters.FacultyID)
-		argIndex++
+		queryConditions = append(queryConditions, fmt.Sprintf("f.id = $%d", queryArgIndex))
+		queryArgs = append(queryArgs, filters.FacultyID)
+		queryArgIndex++
+
+		countConditions = append(countConditions, fmt.Sprintf("f.id = $%d", countArgIndex))
+		countArgs = append(countArgs, filters.FacultyID)
+		countArgIndex++
 	}
 	if filters.DepartmentID > 0 {
-		conditions = append(conditions, fmt.Sprintf("dep.id = $%d", argIndex))
-		filterArgs = append(filterArgs, filters.DepartmentID)
-		argIndex++
+		queryConditions = append(queryConditions, fmt.Sprintf("dep.id = $%d", queryArgIndex))
+		queryArgs = append(queryArgs, filters.DepartmentID)
+		queryArgIndex++
+
+		countConditions = append(countConditions, fmt.Sprintf("dep.id = $%d", countArgIndex))
+		countArgs = append(countArgs, filters.DepartmentID)
+		countArgIndex++
 	}
 	if strings.TrimSpace(filters.Type) != "" {
-		conditions = append(conditions, fmt.Sprintf("d.type = $%d", argIndex))
-		filterArgs = append(filterArgs, strings.TrimSpace(filters.Type))
-		argIndex++
+		queryConditions = append(queryConditions, fmt.Sprintf("d.type = $%d", queryArgIndex))
+		queryArgs = append(queryArgs, strings.TrimSpace(filters.Type))
+		queryArgIndex++
+
+		countConditions = append(countConditions, fmt.Sprintf("d.type = $%d", countArgIndex))
+		countArgs = append(countArgs, strings.TrimSpace(filters.Type))
+		countArgIndex++
 	}
 	if adminMode {
 		switch filters.Visibility {
 		case "visible":
-			conditions = append(conditions, "d.is_visible = TRUE")
+			queryConditions = append(queryConditions, "d.is_visible = TRUE")
+			countConditions = append(countConditions, "d.is_visible = TRUE")
 		case "hidden":
-			conditions = append(conditions, "d.is_visible = FALSE")
+			queryConditions = append(queryConditions, "d.is_visible = FALSE")
+			countConditions = append(countConditions, "d.is_visible = FALSE")
 		}
 	}
 
-	queryArg := argIndex
-	args := append(append([]any{}, filterArgs...), requestedQuery)
+	similarityArg := queryArgIndex
+	queryArgs = append(queryArgs, requestedQuery)
 
 	query := `
 		SELECT
@@ -336,23 +689,23 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			CASE WHEN $1 > 0 THEN EXISTS (
 				SELECT 1 FROM favorites fav WHERE fav.user_id = $1 AND fav.document_id = d.id
 			) ELSE FALSE END AS is_favorite,
-			COALESCE(fa.alias, '') AS favorite_alias,
-			CASE WHEN $` + fmt.Sprintf("%d", queryArg) + ` <> '' THEN GREATEST(
-				similarity(d.title, $` + fmt.Sprintf("%d", queryArg) + `),
-				CASE WHEN $1 > 0 THEN similarity(COALESCE(fa.alias, ''), $` + fmt.Sprintf("%d", queryArg) + `) ELSE 0 END
+			CASE WHEN $` + fmt.Sprintf("%d", similarityArg) + ` <> '' THEN GREATEST(
+				similarity(d.title, $` + fmt.Sprintf("%d", similarityArg) + `),
+				similarity(d.author, $` + fmt.Sprintf("%d", similarityArg) + `),
+				similarity(dep.name, $` + fmt.Sprintf("%d", similarityArg) + `),
+				similarity(f.name, $` + fmt.Sprintf("%d", similarityArg) + `)
 			) ELSE 0 END AS similarity
 		FROM documents d
 		JOIN departments dep ON dep.id = d.department_id
 		JOIN faculties f ON f.id = dep.faculty_id
-		LEFT JOIN favorite_aliases fa ON fa.user_id = $1 AND fa.document_id = d.id
 		LEFT JOIN document_tags dt ON dt.document_id = d.id
 		LEFT JOIN tags t ON t.id = dt.tag_id
-		WHERE ` + strings.Join(conditions, " AND ") + `
-		GROUP BY d.id, dep.id, f.id, fa.alias
+		WHERE ` + strings.Join(queryConditions, " AND ") + `
+		GROUP BY d.id, dep.id, f.id
 		` + buildOrder(filters.Sort) + `
 		LIMIT ` + fmt.Sprintf("%d", pageSize) + ` OFFSET ` + fmt.Sprintf("%d", (page-1)*pageSize)
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return domain.PagedDocuments{}, err
 	}
@@ -383,7 +736,6 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			&item.Faculty,
 			&tags,
 			&item.IsFavorite,
-			&item.FavoriteAlias,
 			&item.Similarity,
 		); err != nil {
 			return domain.PagedDocuments{}, err
@@ -400,10 +752,9 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 		FROM documents d
 		JOIN departments dep ON dep.id = d.department_id
 		JOIN faculties f ON f.id = dep.faculty_id
-		LEFT JOIN favorite_aliases fa ON fa.user_id = $1 AND fa.document_id = d.id
-		WHERE ` + strings.Join(conditions, " AND ")
+		WHERE ` + strings.Join(countConditions, " AND ")
 	var total int
-	if err := r.db.QueryRowContext(ctx, countQuery, filterArgs...).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		return domain.PagedDocuments{}, err
 	}
 
@@ -442,12 +793,10 @@ func (r *Repository) GetDocumentByID(ctx context.Context, userID, id int64, admi
 			CASE WHEN $1 > 0 THEN EXISTS (
 				SELECT 1 FROM favorites fav WHERE fav.user_id = $1 AND fav.document_id = d.id
 			) ELSE FALSE END AS is_favorite,
-			COALESCE(fa.alias, '') AS favorite_alias,
 			0 AS similarity
 		FROM documents d
 		JOIN departments dep ON dep.id = d.department_id
 		JOIN faculties f ON f.id = dep.faculty_id
-		LEFT JOIN favorite_aliases fa ON fa.user_id = $1 AND fa.document_id = d.id
 		LEFT JOIN document_tags dt ON dt.document_id = d.id
 		LEFT JOIN tags t ON t.id = dt.tag_id
 		WHERE d.id = $2
@@ -455,7 +804,7 @@ func (r *Repository) GetDocumentByID(ctx context.Context, userID, id int64, admi
 	if !adminMode {
 		query += ` AND d.is_visible = TRUE`
 	}
-	query += ` GROUP BY d.id, dep.id, f.id, fa.alias`
+	query += ` GROUP BY d.id, dep.id, f.id`
 
 	var document domain.Document
 	var tags string
@@ -480,7 +829,6 @@ func (r *Repository) GetDocumentByID(ctx context.Context, userID, id int64, admi
 		&document.Faculty,
 		&tags,
 		&document.IsFavorite,
-		&document.FavoriteAlias,
 		&document.Similarity,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -510,12 +858,6 @@ func (r *Repository) UpsertFavorite(ctx context.Context, userID, documentID int6
 
 	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM favorites
-		WHERE user_id = $1 AND document_id = $2
-	`, userID, documentID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM favorite_aliases
 		WHERE user_id = $1 AND document_id = $2
 	`, userID, documentID); err != nil {
 		return err
@@ -580,17 +922,15 @@ func (r *Repository) listDocumentsByRelation(ctx context.Context, relationTable,
 			f.name,
 			COALESCE(array_to_string(array_agg(DISTINCT t.name), ','), '') AS tags,
 			TRUE AS is_favorite,
-			COALESCE(fa.alias, '') AS favorite_alias,
 			0 AS similarity
 		FROM `+relationTable+` rel
 		JOIN documents d ON d.id = rel.document_id
 		JOIN departments dep ON dep.id = d.department_id
 		JOIN faculties f ON f.id = dep.faculty_id
-		LEFT JOIN favorite_aliases fa ON fa.user_id = rel.user_id AND fa.document_id = d.id
 		LEFT JOIN document_tags dt ON dt.document_id = d.id
 		LEFT JOIN tags t ON t.id = dt.tag_id
 		WHERE rel.user_id = $1 AND d.is_visible = TRUE
-		GROUP BY d.id, dep.id, f.id, fa.alias, rel.`+orderColumn+`
+		GROUP BY d.id, dep.id, f.id, rel.`+orderColumn+`
 		ORDER BY rel.`+orderColumn+` DESC
 		LIMIT $2
 	`, userID, limit)
@@ -607,7 +947,7 @@ func (r *Repository) listDocumentsByRelation(ctx context.Context, relationTable,
 			&item.ID, &item.Title, &item.Author, &item.Year, &item.Type, &item.Description,
 			&item.FilePath, &item.FileName, &item.FileSizeBytes, &item.MimeType, &item.CoverPath,
 			&item.IsVisible, &item.CreatedAt, &item.UpdatedAt, &item.DepartmentID, &item.Department,
-			&item.FacultyID, &item.Faculty, &tags, &item.IsFavorite, &item.FavoriteAlias, &item.Similarity,
+			&item.FacultyID, &item.Faculty, &tags, &item.IsFavorite, &item.Similarity,
 		); err != nil {
 			return nil, err
 		}
@@ -695,6 +1035,111 @@ func (r *Repository) UpdateDocument(ctx context.Context, id int64, input domain.
 	return r.GetDocumentByID(ctx, 0, id, true)
 }
 
+func (r *Repository) ApproveSubmission(ctx context.Context, submissionID, reviewerID int64, input domain.UpsertDocumentInput) (domain.Document, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.Document{}, err
+	}
+	defer tx.Rollback()
+
+	var status domain.SubmissionStatus
+	var filePath string
+	var fileName string
+	var fileSize int64
+	var mimeType string
+	var coverPath string
+
+	err = tx.QueryRowContext(ctx, `
+		SELECT status, file_path, file_name, file_size_bytes, mime_type, cover_path
+		FROM document_submissions
+		WHERE id = $1
+		FOR UPDATE
+	`, submissionID).Scan(&status, &filePath, &fileName, &fileSize, &mimeType, &coverPath)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Document{}, apperror.ErrNotFound
+	}
+	if err != nil {
+		return domain.Document{}, err
+	}
+	if status != domain.SubmissionStatusPending {
+		return domain.Document{}, apperror.ErrConflict
+	}
+
+	var documentID int64
+	if err := tx.QueryRowContext(ctx, `
+		INSERT INTO documents(title, author, year, type, department_id, description, file_path, file_name, file_size_bytes, mime_type, cover_path, is_visible)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING id
+	`, input.Title, input.Author, input.Year, input.Type, input.DepartmentID, input.Description, filePath, fileName, fileSize, mimeType, coverPath, input.IsVisible).Scan(&documentID); err != nil {
+		return domain.Document{}, err
+	}
+
+	if err := r.replaceTags(ctx, tx, documentID, input.Tags); err != nil {
+		return domain.Document{}, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE document_submissions
+		SET status = 'approved',
+			approved_document_id = $2,
+			reviewed_by = $3,
+			reviewed_at = NOW(),
+			updated_at = NOW()
+		WHERE id = $1
+	`, submissionID, documentID, reviewerID); err != nil {
+		return domain.Document{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return domain.Document{}, err
+	}
+
+	return r.GetDocumentByID(ctx, 0, documentID, true)
+}
+
+func (r *Repository) RejectSubmission(ctx context.Context, submissionID, reviewerID int64, moderationNote string) (domain.DocumentSubmission, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.DocumentSubmission{}, err
+	}
+	defer tx.Rollback()
+
+	var status domain.SubmissionStatus
+	err = tx.QueryRowContext(ctx, `
+		SELECT status
+		FROM document_submissions
+		WHERE id = $1
+		FOR UPDATE
+	`, submissionID).Scan(&status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.DocumentSubmission{}, apperror.ErrNotFound
+	}
+	if err != nil {
+		return domain.DocumentSubmission{}, err
+	}
+	if status != domain.SubmissionStatusPending {
+		return domain.DocumentSubmission{}, apperror.ErrConflict
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE document_submissions
+		SET status = 'rejected',
+			moderation_note = $2,
+			reviewed_by = $3,
+			reviewed_at = NOW(),
+			updated_at = NOW()
+		WHERE id = $1
+	`, submissionID, moderationNote, reviewerID); err != nil {
+		return domain.DocumentSubmission{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return domain.DocumentSubmission{}, err
+	}
+
+	return r.GetSubmissionByID(ctx, submissionID)
+}
+
 func (r *Repository) UpdateDocumentCoverPath(ctx context.Context, id int64, coverPath string) error {
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE documents
@@ -715,39 +1160,6 @@ func (r *Repository) UpdateDocumentCoverPath(ctx context.Context, id int64, cove
 	}
 
 	return nil
-}
-
-func (r *Repository) SetFavoriteAlias(ctx context.Context, userID, documentID int64, alias string) error {
-	alias = strings.TrimSpace(alias)
-
-	var exists bool
-	if err := r.db.QueryRowContext(ctx, `
-		SELECT EXISTS(
-			SELECT 1 FROM favorites
-			WHERE user_id = $1 AND document_id = $2
-		)
-	`, userID, documentID).Scan(&exists); err != nil {
-		return err
-	}
-	if !exists {
-		return apperror.ErrForbidden
-	}
-
-	if alias == "" {
-		_, err := r.db.ExecContext(ctx, `
-			DELETE FROM favorite_aliases
-			WHERE user_id = $1 AND document_id = $2
-		`, userID, documentID)
-		return err
-	}
-
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO favorite_aliases(user_id, document_id, alias)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (user_id, document_id)
-		DO UPDATE SET alias = EXCLUDED.alias, updated_at = NOW()
-	`, userID, documentID, alias)
-	return err
 }
 
 func (r *Repository) replaceTags(ctx context.Context, tx *sql.Tx, documentID int64, tags []string) error {

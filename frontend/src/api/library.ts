@@ -6,8 +6,10 @@ import type {
   DocumentItem,
   Faculty,
   HomePayload,
+  ImportFolderResult,
   PagedDocuments,
   SearchHistoryItem,
+  SubmissionItem,
   User,
 } from "../types";
 
@@ -107,24 +109,35 @@ export function getFavorites(token: string) {
   return request<{ items: DocumentItem[] }>("/profile/favorites", { token });
 }
 
-export function setFavoriteAlias(token: string, id: number, alias: string) {
-  return request<DocumentItem>(`/documents/${id}/favorite-alias`, {
-    method: "PUT",
-    body: JSON.stringify({ alias }),
-    token,
-  });
-}
-
 export function getSearchHistory(token: string) {
   return request<{ items: SearchHistoryItem[] }>("/profile/search-history", {
     token,
   });
 }
 
+export function createSubmission(token: string, formData: FormData) {
+  return request<SubmissionItem>("/submissions", {
+    method: "POST",
+    body: formData,
+    token,
+  });
+}
+
+export function getMySubmissions(token: string) {
+  return request<{ items: SubmissionItem[] }>("/profile/submissions", { token });
+}
+
 export function getAdminDocuments(token: string, query: DocumentQuery) {
   return request<PagedDocuments>(`/admin/documents${buildQuery(query)}`, {
     token,
   });
+}
+
+export function getAdminSubmissions(token: string, status?: string) {
+  return request<{ items: SubmissionItem[] }>(
+    `/admin/submissions${buildQuery({ status })}`,
+    { token }
+  );
 }
 
 export function createDocument(token: string, formData: FormData) {
@@ -150,21 +163,9 @@ export function deleteDocument(token: string, id: number) {
   });
 }
 
-export function importDocuments(token: string, input: {
-  departmentId: number;
-  author: string;
-  type: string;
-  description: string;
-}) {
-  const formData = new FormData();
-  formData.set("departmentId", String(input.departmentId));
-  formData.set("author", input.author);
-  formData.set("type", input.type);
-  formData.set("description", input.description);
-
-  return request<{ imported: number }>("/admin/documents/import", {
+export function queueImportFolderSubmissions(token: string) {
+  return request<ImportFolderResult>("/admin/submissions/import-folder", {
     method: "POST",
-    body: formData,
     token,
   });
 }
@@ -182,6 +183,26 @@ export function getAdminDepartments(token: string, facultyId?: number) {
 
 export function getAdminStats(token: string) {
   return request<AdminStats>("/admin/stats", { token });
+}
+
+export function approveSubmission(token: string, id: number, formData: FormData) {
+  return request<DocumentItem>(`/admin/submissions/${id}/approve`, {
+    method: "POST",
+    body: formData,
+    token,
+  });
+}
+
+export function rejectSubmission(
+  token: string,
+  id: number,
+  moderationNote: string
+) {
+  return request<SubmissionItem>(`/admin/submissions/${id}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ moderationNote }),
+    token,
+  });
 }
 
 export function documentFileUrl(
@@ -208,4 +229,21 @@ export function documentCoverUrl(id: number, token: string, version?: string) {
     params.set("v", version);
   }
   return `${import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8080"}/api/documents/${id}/cover?${params.toString()}`;
+}
+
+export function submissionFileUrl(
+  id: number,
+  token: string,
+  download = false,
+  version?: string
+) {
+  const params = new URLSearchParams();
+  if (download) {
+    params.set("download", "1");
+  }
+  params.set("token", token);
+  if (version) {
+    params.set("v", version);
+  }
+  return `${import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8080"}/api/submissions/${id}/file?${params.toString()}`;
 }

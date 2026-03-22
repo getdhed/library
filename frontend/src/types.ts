@@ -41,8 +41,44 @@ export interface DocumentItem {
   faculty: string;
   tags: string[];
   isFavorite: boolean;
-  favoriteAlias?: string;
   similarity?: number;
+}
+
+export type SubmissionStatus = "pending" | "approved" | "rejected";
+export type SubmissionSource = "user_upload" | "admin_import";
+
+export interface SubmissionItem {
+  id: number;
+  userId: number;
+  title: string;
+  author?: string;
+  departmentId?: number;
+  department?: string;
+  facultyId?: number;
+  faculty?: string;
+  comment?: string;
+  fileName: string;
+  fileSizeBytes: number;
+  mimeType: string;
+  coverPath?: string;
+  status: SubmissionStatus;
+  source: SubmissionSource;
+  moderationNote?: string;
+  approvedDocumentId?: number;
+  reviewedBy?: number;
+  reviewedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  uploaderName?: string;
+  uploaderEmail?: string;
+}
+
+export interface ImportFolderResult {
+  queued: number;
+  errors: Array<{
+    fileName: string;
+    error: string;
+  }>;
 }
 
 export interface SearchHistoryItem {

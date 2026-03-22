@@ -80,12 +80,7 @@ const BookPage: React.FC = () => {
                 <span className="result-meta-inline">{document.year}</span>
               </div>
               <h1>{document.title}</h1>
-              <p className="result-meta">
-                {document.author} • {document.faculty} • {document.department}
-              </p>
-              <p className="document-detail-description">
-                {document.description}
-              </p>
+              <p className="result-meta">{document.department}</p>
             </div>
 
             <div className="document-detail-action-block">

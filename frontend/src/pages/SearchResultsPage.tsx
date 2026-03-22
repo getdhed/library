@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   documentFileUrl,
   favoriteDocument,
@@ -37,6 +37,7 @@ const SearchResultsPage: React.FC = () => {
   const [searchInput, setSearchInput] = useState(params.get("q") ?? "");
   const [suggestions, setSuggestions] = useState<DocumentItem[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const blurTimeoutRef = useRef<number | null>(null);
 
   const query = params.get("q") ?? "";
   const sort = params.get("sort") ?? "relevance";
@@ -103,6 +104,14 @@ const SearchResultsPage: React.FC = () => {
 
     return () => window.clearTimeout(timeout);
   }, [searchInput, token]);
+
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current) {
+        window.clearTimeout(blurTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const documentTypes = useMemo(() => {
     const items = payload?.items ?? [];
@@ -229,7 +238,15 @@ const SearchResultsPage: React.FC = () => {
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
             onFocus={() => setShowSuggestions(true)}
-            onBlur={() => window.setTimeout(() => setShowSuggestions(false), 150)}
+            onBlur={() => {
+              if (blurTimeoutRef.current) {
+                window.clearTimeout(blurTimeoutRef.current);
+              }
+              blurTimeoutRef.current = window.setTimeout(
+                () => setShowSuggestions(false),
+                150
+              );
+            }}
             placeholder="Название, автор, кафедра"
           />
           <button
@@ -287,6 +304,19 @@ const SearchResultsPage: React.FC = () => {
               <option value="title_asc">По названию</option>
             </select>
           </div>
+        </div>
+
+        <div className="search-submit-callout">
+          <div>
+            <strong>Не нашли нужный PDF?</strong>
+            <p className="muted-text">
+              Отправьте файл на модерацию, и после проверки он появится в
+              каталоге.
+            </p>
+          </div>
+          <Link className="primary-button" to="/submit">
+            Предложить документ
+          </Link>
         </div>
 
         {filtersOpen && (

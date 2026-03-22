@@ -103,3 +103,69 @@ func TestSplitCSV(t *testing.T) {
 		t.Fatal("expected empty result for blank input")
 	}
 }
+
+func TestParseSubmissionInputValid(t *testing.T) {
+	svc := &Service{}
+
+	input, err := svc.ParseSubmissionInput(func(key string) string {
+		values := map[string]string{
+			"title":        " Distributed Systems ",
+			"author":       " Tanenbaum ",
+			"departmentId": "5",
+			"comment":      " Please review ",
+		}
+		return values[key]
+	})
+	if err != nil {
+		t.Fatalf("ParseSubmissionInput() error = %v", err)
+	}
+
+	if input.Title != "Distributed Systems" {
+		t.Fatalf("unexpected title: %#v", input)
+	}
+	if input.Author != "Tanenbaum" || input.Comment != "Please review" {
+		t.Fatalf("unexpected optional fields: %#v", input)
+	}
+	if input.DepartmentID != 5 {
+		t.Fatalf("unexpected department id: %#v", input)
+	}
+}
+
+func TestParseSubmissionInputAllowsEmptyDepartment(t *testing.T) {
+	svc := &Service{}
+
+	input, err := svc.ParseSubmissionInput(func(key string) string {
+		values := map[string]string{
+			"title": "Algorithms",
+		}
+		return values[key]
+	})
+	if err != nil {
+		t.Fatalf("ParseSubmissionInput() error = %v", err)
+	}
+	if input.DepartmentID != 0 {
+		t.Fatalf("expected empty department id, got %#v", input)
+	}
+}
+
+func TestParseSubmissionInputRejectsInvalidData(t *testing.T) {
+	svc := &Service{}
+
+	_, err := svc.ParseSubmissionInput(func(key string) string {
+		values := map[string]string{
+			"title":        "Algorithms",
+			"departmentId": "oops",
+		}
+		return values[key]
+	})
+	if err != apperror.ErrInvalidInput {
+		t.Fatalf("expected invalid input error, got %v", err)
+	}
+
+	_, err = svc.ParseSubmissionInput(func(key string) string {
+		return ""
+	})
+	if err != apperror.ErrInvalidInput {
+		t.Fatalf("expected invalid input error, got %v", err)
+	}
+}

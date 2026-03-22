@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"library-backend/internal/apperror"
 	"library-backend/internal/auth"
@@ -20,10 +21,11 @@ import (
 )
 
 type Service struct {
-	repo   *repository.Repository
-	tokens *auth.TokenManager
-	files  *storage.FileStorage
-	covers *preview.Renderer
+	repo     *repository.Repository
+	tokens   *auth.TokenManager
+	files    *storage.FileStorage
+	covers   *preview.Renderer
+	importMu sync.Mutex
 }
 
 func New(repo *repository.Repository, tokens *auth.TokenManager, files *storage.FileStorage, covers *preview.Renderer) *Service {
@@ -79,6 +81,10 @@ func (s *Service) Me(ctx context.Context, userID int64) (domain.User, error) {
 	return s.repo.GetUserByID(ctx, userID)
 }
 
+func (s *Service) GetUserByEmail(ctx context.Context, email string) (domain.User, error) {
+	return s.repo.GetUserByEmail(ctx, email)
+}
+
 func (s *Service) Home(ctx context.Context, userID int64) (domain.HomePayload, error) {
 	recent, err := s.repo.ListRecent(ctx, userID, 8)
 	if err != nil {
@@ -129,10 +135,6 @@ func (s *Service) SetFavorite(ctx context.Context, userID, documentID int64, val
 	return s.repo.UpsertFavorite(ctx, userID, documentID, value)
 }
 
-func (s *Service) SetFavoriteAlias(ctx context.Context, userID, documentID int64, alias string) error {
-	return s.repo.SetFavoriteAlias(ctx, userID, documentID, alias)
-}
-
 func (s *Service) TrackOpen(ctx context.Context, userID, documentID int64) error {
 	return s.repo.TrackOpen(ctx, userID, documentID)
 }
@@ -159,6 +161,28 @@ func (s *Service) Faculties(ctx context.Context) ([]domain.Faculty, error) {
 
 func (s *Service) Departments(ctx context.Context, facultyID int64) ([]domain.Department, error) {
 	return s.repo.ListDepartments(ctx, facultyID)
+}
+
+func (s *Service) ParseSubmissionInput(formValue func(string) string) (domain.CreateSubmissionInput, error) {
+	var departmentID int64
+	if value := strings.TrimSpace(formValue("departmentId")); value != "" {
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return domain.CreateSubmissionInput{}, apperror.ErrInvalidInput
+		}
+		departmentID = parsed
+	}
+
+	input := domain.CreateSubmissionInput{
+		Title:        strings.TrimSpace(formValue("title")),
+		Author:       strings.TrimSpace(formValue("author")),
+		Comment:      strings.TrimSpace(formValue("comment")),
+		DepartmentID: departmentID,
+	}
+	if input.Title == "" {
+		return domain.CreateSubmissionInput{}, apperror.ErrInvalidInput
+	}
+	return input, nil
 }
 
 func (s *Service) ParseDocumentInput(formValue func(string) string) (domain.UpsertDocumentInput, error) {
@@ -218,6 +242,28 @@ func (s *Service) CreateDocument(ctx context.Context, input domain.UpsertDocumen
 	return s.repo.CreateDocument(ctx, input)
 }
 
+func (s *Service) CreateSubmission(ctx context.Context, userID int64, input domain.CreateSubmissionInput) (domain.DocumentSubmission, error) {
+	if input.Source == "" {
+		input.Source = domain.SubmissionSourceUserUpload
+	}
+
+	coverPath, err := s.generateCover(ctx, input.FilePath)
+	if err != nil {
+		_ = s.files.Delete(input.FilePath)
+		return domain.DocumentSubmission{}, err
+	}
+	input.CoverPath = coverPath
+
+	submission, err := s.repo.CreateSubmission(ctx, userID, input)
+	if err != nil {
+		_ = s.files.Delete(input.FilePath)
+		_ = s.files.Delete(input.CoverPath)
+		return domain.DocumentSubmission{}, err
+	}
+
+	return submission, nil
+}
+
 func (s *Service) UpdateDocument(ctx context.Context, id int64, input domain.UpsertDocumentInput) (domain.Document, error) {
 	current, err := s.repo.GetDocumentByID(ctx, 0, id, true)
 	if err != nil {
@@ -249,6 +295,46 @@ func (s *Service) UpdateDocument(ctx context.Context, id int64, input domain.Ups
 	return updated, nil
 }
 
+func (s *Service) GetSubmission(ctx context.Context, requesterID int64, requesterRole domain.UserRole, submissionID int64) (domain.DocumentSubmission, error) {
+	submission, err := s.repo.GetSubmissionByID(ctx, submissionID)
+	if err != nil {
+		return domain.DocumentSubmission{}, err
+	}
+	if requesterRole != domain.RoleAdmin && submission.UserID != requesterID {
+		return domain.DocumentSubmission{}, apperror.ErrForbidden
+	}
+	return submission, nil
+}
+
+func (s *Service) UserSubmissions(ctx context.Context, userID int64) ([]domain.DocumentSubmission, error) {
+	return s.repo.ListSubmissionsByUser(ctx, userID)
+}
+
+func (s *Service) AdminSubmissions(ctx context.Context, status string) ([]domain.DocumentSubmission, error) {
+	normalizedStatus := domain.SubmissionStatus(strings.TrimSpace(status))
+	if normalizedStatus != "" &&
+		normalizedStatus != domain.SubmissionStatusPending &&
+		normalizedStatus != domain.SubmissionStatusApproved &&
+		normalizedStatus != domain.SubmissionStatusRejected {
+		return nil, apperror.ErrInvalidInput
+	}
+
+	return s.repo.ListSubmissions(ctx, normalizedStatus)
+}
+
+func (s *Service) ApproveSubmission(ctx context.Context, submissionID, reviewerID int64, input domain.UpsertDocumentInput) (domain.Document, error) {
+	return s.repo.ApproveSubmission(ctx, submissionID, reviewerID, input)
+}
+
+func (s *Service) RejectSubmission(ctx context.Context, submissionID, reviewerID int64, moderationNote string) (domain.DocumentSubmission, error) {
+	moderationNote = strings.TrimSpace(moderationNote)
+	if moderationNote == "" {
+		return domain.DocumentSubmission{}, apperror.ErrInvalidInput
+	}
+
+	return s.repo.RejectSubmission(ctx, submissionID, reviewerID, moderationNote)
+}
+
 func (s *Service) DeleteDocument(ctx context.Context, id int64) error {
 	document, err := s.repo.GetDocumentByID(ctx, 0, id, true)
 	if err != nil {
@@ -263,41 +349,105 @@ func (s *Service) DeleteDocument(ctx context.Context, id int64) error {
 	return s.files.Delete(document.CoverPath)
 }
 
-func (s *Service) ImportFolder(ctx context.Context, importPath string, departmentID int64, author, docType, description string) (int, error) {
+func (s *Service) ImportFolderSubmissions(ctx context.Context, userID int64, importPath string) (domain.ImportSubmissionsResult, error) {
+	s.importMu.Lock()
+	defer s.importMu.Unlock()
+
 	files, err := s.files.ListImportPDFs(importPath)
 	if err != nil {
-		return 0, err
+		return domain.ImportSubmissionsResult{}, err
 	}
 
-	imported := 0
+	result := domain.ImportSubmissionsResult{}
 	for _, sourcePath := range files {
-		info, err := os.Stat(sourcePath)
+		fileName := filepath.Base(sourcePath)
+		if exists, err := s.repo.HasPendingSubmissionByFileName(ctx, fileName); err != nil {
+			result.Errors = append(result.Errors, domain.ImportSubmissionError{
+				FileName: fileName,
+				Error:    err.Error(),
+			})
+			continue
+		} else if exists {
+			result.Errors = append(result.Errors, domain.ImportSubmissionError{
+				FileName: fileName,
+				Error:    "skipped duplicate pending file",
+			})
+			s.moveImportFileToSkipped(sourcePath, fileName, &result, "skipped duplicate pending file")
+			continue
+		}
+
+		if exists, err := s.repo.HasDocumentByFileName(ctx, fileName); err != nil {
+			result.Errors = append(result.Errors, domain.ImportSubmissionError{
+				FileName: fileName,
+				Error:    err.Error(),
+			})
+			continue
+		} else if exists {
+			result.Errors = append(result.Errors, domain.ImportSubmissionError{
+				FileName: fileName,
+				Error:    "skipped duplicate catalog file",
+			})
+			s.moveImportFileToSkipped(sourcePath, fileName, &result, "skipped duplicate catalog file")
+			continue
+		}
+
+		if err := s.validatePDFPath(sourcePath, sourcePath); err != nil {
+			result.Errors = append(result.Errors, domain.ImportSubmissionError{
+				FileName: fileName,
+				Error:    err.Error(),
+			})
+			s.moveImportFileToSkipped(sourcePath, fileName, &result, err.Error())
+			continue
+		}
+
+		targetRelative, size, mimeType, err := s.files.IngestPDF(sourcePath)
 		if err != nil {
-			return imported, err
+			result.Errors = append(result.Errors, domain.ImportSubmissionError{
+				FileName: fileName,
+				Error:    err.Error(),
+			})
+			s.moveImportFileToSkipped(sourcePath, fileName, &result, err.Error())
+			continue
 		}
 
-		targetRelative := filepath.ToSlash(filepath.Join("import", filepath.Base(sourcePath)))
-		targetAbsolute := s.files.Resolve(targetRelative)
-		if err := os.MkdirAll(filepath.Dir(targetAbsolute), 0o755); err != nil {
-			return imported, err
-		}
-		if err := copyFile(sourcePath, targetAbsolute); err != nil {
-			return imported, err
-		}
-
-		coverPath, err := s.generateCover(ctx, targetRelative)
+		_, err = s.CreateSubmission(ctx, userID, domain.CreateSubmissionInput{
+			Title:    strings.TrimSuffix(fileName, filepath.Ext(fileName)),
+			FileName: fileName,
+			FilePath: targetRelative,
+			FileSize: size,
+			MimeType: mimeType,
+			Source:   domain.SubmissionSourceAdminImport,
+		})
 		if err != nil {
-			return imported, err
+			result.Errors = append(result.Errors, domain.ImportSubmissionError{
+				FileName: fileName,
+				Error:    err.Error(),
+			})
+			_ = s.files.Delete(targetRelative)
+			s.moveImportFileToSkipped(sourcePath, fileName, &result, err.Error())
+			continue
 		}
 
-		title := strings.TrimSuffix(filepath.Base(sourcePath), filepath.Ext(sourcePath))
-		if err := s.repo.ImportDocument(ctx, title, author, docType, description, targetRelative, filepath.Base(sourcePath), info.Size(), departmentID, coverPath); err != nil {
-			return imported, err
+		if err := os.Remove(sourcePath); err != nil {
+			result.Errors = append(result.Errors, domain.ImportSubmissionError{
+				FileName: fileName,
+				Error:    fmt.Sprintf("queued, but failed to remove source file: %v", err),
+			})
 		}
-		imported++
+
+		result.Queued++
 	}
 
-	return imported, nil
+	return result, nil
+}
+
+func (s *Service) moveImportFileToSkipped(sourcePath, fileName string, result *domain.ImportSubmissionsResult, reason string) {
+	if _, err := s.files.MoveImportFileToSkipped(sourcePath); err != nil {
+		result.Errors = append(result.Errors, domain.ImportSubmissionError{
+			FileName: fileName,
+			Error:    fmt.Sprintf("%s; failed to move source file to skipped: %v", reason, err),
+		})
+	}
 }
 
 func (s *Service) Stats(ctx context.Context) (domain.Stats, error) {
@@ -314,33 +464,7 @@ func (s *Service) ValidateStoredPDF(relativePath string) error {
 	}
 
 	absolutePath := s.files.Resolve(relativePath)
-	file, err := os.Open(absolutePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return apperror.ErrNotFound
-		}
-		return err
-	}
-	defer file.Close()
-
-	info, err := file.Stat()
-	if err != nil {
-		return err
-	}
-	if info.Size() == 0 {
-		return fmt.Errorf("pdf file is empty: %s", relativePath)
-	}
-
-	header := make([]byte, 5)
-	readBytes, err := io.ReadFull(file, header)
-	if err != nil {
-		return fmt.Errorf("read pdf header: %w", err)
-	}
-	if readBytes < len(header) || string(header) != "%PDF-" {
-		return fmt.Errorf("invalid pdf header for %s", relativePath)
-	}
-
-	return nil
+	return s.validatePDFPath(absolutePath, relativePath)
 }
 
 func (s *Service) EnsureDocumentCover(ctx context.Context, document domain.Document) (string, error) {
@@ -426,4 +550,34 @@ func copyFile(src, dst string) error {
 
 	_, err = io.Copy(target, source)
 	return err
+}
+
+func (s *Service) validatePDFPath(path, label string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return apperror.ErrNotFound
+		}
+		return err
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	if info.Size() == 0 {
+		return fmt.Errorf("pdf file is empty: %s", label)
+	}
+
+	header := make([]byte, 5)
+	readBytes, err := io.ReadFull(file, header)
+	if err != nil {
+		return fmt.Errorf("read pdf header: %w", err)
+	}
+	if readBytes < len(header) || string(header) != "%PDF-" {
+		return fmt.Errorf("invalid pdf header for %s", label)
+	}
+
+	return nil
 }

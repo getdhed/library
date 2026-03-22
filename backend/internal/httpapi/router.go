@@ -57,12 +57,14 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 			authenticated.GET("/documents/:id/cover", handler.serveDocumentCover)
 			authenticated.POST("/documents/:id/open", handler.openDocument)
 			authenticated.GET("/documents/:id/file", handler.serveDocument)
+			authenticated.POST("/submissions", handler.createSubmission)
+			authenticated.GET("/submissions/:id/file", handler.serveSubmissionFile)
 			authenticated.POST("/documents/:id/favorite", handler.favoriteDocument)
 			authenticated.DELETE("/documents/:id/favorite", handler.unfavoriteDocument)
-			authenticated.PUT("/documents/:id/favorite-alias", handler.setFavoriteAlias)
 			authenticated.GET("/profile/recent", handler.profileRecent)
 			authenticated.GET("/profile/favorites", handler.profileFavorites)
 			authenticated.GET("/profile/search-history", handler.profileSearchHistory)
+			authenticated.GET("/profile/submissions", handler.profileSubmissions)
 		}
 
 		admin := api.Group("/admin")
@@ -72,7 +74,10 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 			admin.POST("/documents", handler.adminCreateDocument)
 			admin.PUT("/documents/:id", handler.adminUpdateDocument)
 			admin.DELETE("/documents/:id", handler.adminDeleteDocument)
-			admin.POST("/documents/import", handler.adminImportDocuments)
+			admin.GET("/submissions", handler.adminListSubmissions)
+			admin.POST("/submissions/import-folder", handler.adminImportSubmissionsFromFolder)
+			admin.POST("/submissions/:id/approve", handler.adminApproveSubmission)
+			admin.POST("/submissions/:id/reject", handler.adminRejectSubmission)
 			admin.GET("/faculties", handler.listFaculties)
 			admin.GET("/departments", handler.adminListDepartments)
 			admin.GET("/stats", handler.adminStats)
@@ -234,6 +239,39 @@ func (h *Handler) getDocument(c *gin.Context) {
 	c.JSON(http.StatusOK, document)
 }
 
+func (h *Handler) createSubmission(c *gin.Context) {
+	input, err := h.service.ParseSubmissionInput(c.PostForm)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	relative, size, mimeType, err := h.service.SaveMultipartFile(file, header)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+
+	input.FilePath = relative
+	input.FileName = header.Filename
+	input.FileSize = size
+	input.MimeType = mimeType
+
+	submission, err := h.service.CreateSubmission(c.Request.Context(), currentUserID(c), input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, submission)
+}
+
 func (h *Handler) openDocument(c *gin.Context) {
 	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -247,46 +285,19 @@ func (h *Handler) openDocument(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h *Handler) serveDocument(c *gin.Context) {
-	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		writeError(c, apperror.ErrInvalidInput)
-		return
-	}
-
-	document, err := h.service.GetDocument(c.Request.Context(), currentUserID(c), documentID, false)
-	if err != nil {
-		writeError(c, err)
-		return
-	}
-	if err := h.service.ValidateStoredPDF(document.FilePath); err != nil {
-		h.logger.Warn("document file failed validation", "document_id", documentID, "error", err)
-		c.JSON(http.StatusConflict, gin.H{"error": "document_file_invalid"})
-		return
-	}
-
-	path := h.service.StoragePath(document.FilePath)
+func (h *Handler) serveStoredFile(c *gin.Context, relativePath, fileName, contentType, dispositionType string) {
+	path := h.service.StoragePath(relativePath)
 	if _, err := os.Stat(path); err != nil {
 		writeError(c, apperror.ErrNotFound)
 		return
 	}
 
-	dispositionType := "inline"
-	if c.Query("download") == "1" {
-		dispositionType = "attachment"
-		userID := currentUserID(c)
-		if err := h.service.TrackDownload(c.Request.Context(), &userID, documentID); err != nil {
-			h.logger.Warn("failed to track document download", "document_id", documentID, "error", err)
-		}
-	}
-
-	contentType := strings.TrimSpace(document.MimeType)
-	if contentType == "" {
+	if strings.TrimSpace(contentType) == "" {
 		contentType = "application/pdf"
 	}
 
 	contentDisposition := mime.FormatMediaType(dispositionType, map[string]string{
-		"filename": document.FileName,
+		"filename": fileName,
 	})
 	if contentDisposition != "" {
 		c.Header("Content-Disposition", contentDisposition)
@@ -310,7 +321,68 @@ func (h *Handler) serveDocument(c *gin.Context) {
 		return
 	}
 	c.Header("Content-Length", strconv.FormatInt(info.Size(), 10))
-	http.ServeContent(c.Writer, c.Request, document.FileName, time.Time{}, file)
+	http.ServeContent(c.Writer, c.Request, fileName, time.Time{}, file)
+}
+
+func (h *Handler) serveDocument(c *gin.Context) {
+	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	document, err := h.service.GetDocument(c.Request.Context(), currentUserID(c), documentID, false)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	if err := h.service.ValidateStoredPDF(document.FilePath); err != nil {
+		h.logger.Warn("document file failed validation", "document_id", documentID, "error", err)
+		c.JSON(http.StatusConflict, gin.H{"error": "document_file_invalid"})
+		return
+	}
+
+	dispositionType := "inline"
+	if c.Query("download") == "1" {
+		dispositionType = "attachment"
+		userID := currentUserID(c)
+		if err := h.service.TrackDownload(c.Request.Context(), &userID, documentID); err != nil {
+			h.logger.Warn("failed to track document download", "document_id", documentID, "error", err)
+		}
+	}
+
+	h.serveStoredFile(c, document.FilePath, document.FileName, document.MimeType, dispositionType)
+}
+
+func (h *Handler) serveSubmissionFile(c *gin.Context) {
+	submissionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	submission, err := h.service.GetSubmission(
+		c.Request.Context(),
+		currentUserID(c),
+		currentUserRole(c),
+		submissionID,
+	)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	if err := h.service.ValidateStoredPDF(submission.FilePath); err != nil {
+		h.logger.Warn("submission file failed validation", "submission_id", submissionID, "error", err)
+		c.JSON(http.StatusConflict, gin.H{"error": "submission_file_invalid"})
+		return
+	}
+
+	dispositionType := "inline"
+	if c.Query("download") == "1" {
+		dispositionType = "attachment"
+	}
+
+	h.serveStoredFile(c, submission.FilePath, submission.FileName, submission.MimeType, dispositionType)
 }
 
 func (h *Handler) serveDocumentCover(c *gin.Context) {
@@ -374,35 +446,6 @@ func (h *Handler) unfavoriteDocument(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h *Handler) setFavoriteAlias(c *gin.Context) {
-	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		writeError(c, apperror.ErrInvalidInput)
-		return
-	}
-
-	var input struct {
-		Alias string `json:"alias"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		writeError(c, apperror.ErrInvalidInput)
-		return
-	}
-
-	if err := h.service.SetFavoriteAlias(c.Request.Context(), currentUserID(c), documentID, input.Alias); err != nil {
-		writeError(c, err)
-		return
-	}
-
-	document, err := h.service.GetDocument(c.Request.Context(), currentUserID(c), documentID, false)
-	if err != nil {
-		writeError(c, err)
-		return
-	}
-
-	c.JSON(http.StatusOK, document)
-}
-
 func (h *Handler) listFaculties(c *gin.Context) {
 	items, err := h.service.Faculties(c.Request.Context())
 	if err != nil {
@@ -446,6 +489,15 @@ func (h *Handler) profileFavorites(c *gin.Context) {
 
 func (h *Handler) profileSearchHistory(c *gin.Context) {
 	items, err := h.service.SearchHistory(c.Request.Context(), currentUserID(c))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) profileSubmissions(c *gin.Context) {
+	items, err := h.service.UserSubmissions(c.Request.Context(), currentUserID(c))
 	if err != nil {
 		writeError(c, err)
 		return
@@ -542,27 +594,79 @@ func (h *Handler) adminDeleteDocument(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h *Handler) adminImportDocuments(c *gin.Context) {
-	departmentID, err := strconv.ParseInt(strings.TrimSpace(c.PostForm("departmentId")), 10, 64)
+func (h *Handler) adminListSubmissions(c *gin.Context) {
+	items, err := h.service.AdminSubmissions(c.Request.Context(), c.Query("status"))
 	if err != nil {
-		writeError(c, apperror.ErrInvalidInput)
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) adminImportSubmissionsFromFolder(c *gin.Context) {
+	systemUser, err := h.service.GetUserByEmail(c.Request.Context(), h.config.SystemImportEmail)
+	if err != nil {
+		writeError(c, err)
 		return
 	}
 
-	imported, err := h.service.ImportFolder(
+	result, err := h.service.ImportFolderSubmissions(
 		c.Request.Context(),
+		systemUser.ID,
 		h.config.ImportPath,
-		departmentID,
-		strings.TrimSpace(c.PostForm("author")),
-		strings.TrimSpace(c.PostForm("type")),
-		strings.TrimSpace(c.PostForm("description")),
 	)
 	if err != nil {
 		writeError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"imported": imported})
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) adminApproveSubmission(c *gin.Context) {
+	submissionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	input, err := h.service.ParseDocumentInput(c.PostForm)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+
+	document, err := h.service.ApproveSubmission(c.Request.Context(), submissionID, currentUserID(c), input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, document)
+}
+
+func (h *Handler) adminRejectSubmission(c *gin.Context) {
+	submissionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	var input struct {
+		ModerationNote string `json:"moderationNote"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	submission, err := h.service.RejectSubmission(c.Request.Context(), submissionID, currentUserID(c), input.ModerationNote)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, submission)
 }
 
 func (h *Handler) adminListDepartments(c *gin.Context) {
@@ -615,6 +719,12 @@ func currentUserID(c *gin.Context) int64 {
 	value, _ := c.Get(contextUserIDKey)
 	id, _ := value.(int64)
 	return id
+}
+
+func currentUserRole(c *gin.Context) domain.UserRole {
+	value, _ := c.Get(contextUserRoleKey)
+	role, _ := value.(string)
+	return domain.UserRole(role)
 }
 
 func writeError(c *gin.Context, err error) {

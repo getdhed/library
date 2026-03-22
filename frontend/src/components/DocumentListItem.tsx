@@ -3,14 +3,6 @@ import { Link } from "react-router-dom";
 import DocumentCover from "./DocumentCover";
 import type { DocumentItem } from "../types";
 
-function truncate(text: string, maxLength: number) {
-  if (text.length <= maxLength) {
-    return text;
-  }
-
-  return `${text.slice(0, maxLength).trimEnd()}...`;
-}
-
 type Props = {
   item: DocumentItem;
   token?: string | null;
@@ -49,16 +41,7 @@ const DocumentListItem: React.FC<Props> = ({
             {item.title}
           </Link>
 
-          <p className="document-list-meta">
-            {item.faculty} • {item.department}
-          </p>
-          {item.favoriteAlias && (
-            <p className="document-list-alias">Alias: {item.favoriteAlias}</p>
-          )}
-          <p className="document-list-author">{item.author}</p>
-          <p className="document-list-description">
-            {truncate(item.description, 180)}
-          </p>
+          <p className="document-list-meta">{item.department}</p>
         </div>
 
         {actions && <div className="document-list-actions">{actions}</div>}

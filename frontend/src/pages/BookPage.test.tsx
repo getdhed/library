@@ -70,5 +70,9 @@ describe("BookPage", () => {
     expect(screen.getByText("Открыть PDF")).toBeInTheDocument();
     expect(screen.getByText("Скачать")).toBeInTheDocument();
     expect(screen.getByText("В избранном")).toBeInTheDocument();
+    expect(screen.getByText("Кафедра программной инженерии")).toBeInTheDocument();
+    expect(screen.queryByText("Demo Author")).not.toBeInTheDocument();
+    expect(screen.queryByText("Generated demo PDF set")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Alias:/i)).not.toBeInTheDocument();
   });
 });

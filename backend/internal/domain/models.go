@@ -3,10 +3,19 @@ package domain
 import "time"
 
 type UserRole string
+type SubmissionStatus string
+type SubmissionSource string
 
 const (
 	RoleUser  UserRole = "user"
 	RoleAdmin UserRole = "admin"
+
+	SubmissionStatusPending  SubmissionStatus = "pending"
+	SubmissionStatusApproved SubmissionStatus = "approved"
+	SubmissionStatusRejected SubmissionStatus = "rejected"
+
+	SubmissionSourceUserUpload  SubmissionSource = "user_upload"
+	SubmissionSourceAdminImport SubmissionSource = "admin_import"
 )
 
 type User struct {
@@ -54,8 +63,34 @@ type Document struct {
 	Faculty       string    `json:"faculty"`
 	Tags          []string  `json:"tags"`
 	IsFavorite    bool      `json:"isFavorite"`
-	FavoriteAlias string    `json:"favoriteAlias,omitempty"`
 	Similarity    float64   `json:"similarity,omitempty"`
+}
+
+type DocumentSubmission struct {
+	ID                 int64            `json:"id"`
+	UserID             int64            `json:"userId"`
+	Title              string           `json:"title"`
+	Author             string           `json:"author,omitempty"`
+	DepartmentID       int64            `json:"departmentId,omitempty"`
+	Department         string           `json:"department,omitempty"`
+	FacultyID          int64            `json:"facultyId,omitempty"`
+	Faculty            string           `json:"faculty,omitempty"`
+	Comment            string           `json:"comment,omitempty"`
+	FilePath           string           `json:"-"`
+	FileName           string           `json:"fileName"`
+	FileSizeBytes      int64            `json:"fileSizeBytes"`
+	MimeType           string           `json:"mimeType"`
+	CoverPath          string           `json:"coverPath,omitempty"`
+	Status             SubmissionStatus `json:"status"`
+	Source             SubmissionSource `json:"source"`
+	ModerationNote     string           `json:"moderationNote,omitempty"`
+	ApprovedDocumentID int64            `json:"approvedDocumentId,omitempty"`
+	ReviewedBy         int64            `json:"reviewedBy,omitempty"`
+	ReviewedAt         *time.Time       `json:"reviewedAt,omitempty"`
+	CreatedAt          time.Time        `json:"createdAt"`
+	UpdatedAt          time.Time        `json:"updatedAt"`
+	UploaderName       string           `json:"uploaderName,omitempty"`
+	UploaderEmail      string           `json:"uploaderEmail,omitempty"`
 }
 
 type SearchHistoryItem struct {
@@ -142,4 +177,28 @@ type UpsertDocumentInput struct {
 	FileSize     int64
 	MimeType     string
 	CoverPath    string
+	Source       SubmissionSource
+}
+
+type ImportSubmissionError struct {
+	FileName string `json:"fileName"`
+	Error    string `json:"error"`
+}
+
+type ImportSubmissionsResult struct {
+	Queued int                     `json:"queued"`
+	Errors []ImportSubmissionError `json:"errors"`
+}
+
+type CreateSubmissionInput struct {
+	Title        string
+	Author       string
+	Comment      string
+	DepartmentID int64
+	FileName     string
+	FilePath     string
+	FileSize     int64
+	MimeType     string
+	CoverPath    string
+	Source       SubmissionSource
 }

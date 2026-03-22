@@ -47,7 +47,7 @@ vi.mock("../api/library", () => ({
 }));
 
 describe("SearchResultsPage", () => {
-  it("renders rich document cards with preview, actions and top search bar", async () => {
+  it("renders document cards and the submission callout", async () => {
     render(
       <AuthContext.Provider
         value={{
@@ -77,5 +77,8 @@ describe("SearchResultsPage", () => {
     expect(screen.getByLabelText("Добавить в избранное")).toBeInTheDocument();
     expect(screen.getByText("Открыть")).toBeInTheDocument();
     expect(screen.getByText("В избранное")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Предложить документ" })
+    ).toBeInTheDocument();
   });
 });

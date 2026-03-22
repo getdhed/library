@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { getHome, getSuggestions, markOpened } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
 import DocumentListItem from "../components/DocumentListItem";
@@ -76,12 +76,7 @@ const HomePage: React.FC = () => {
         }`}
       >
         <div className="hero-copy">
-          <p className="eyebrow">Библиотека PDF</p>
-          <h1>Найдите нужный документ за пару секунд</h1>
-          <p className="hero-text">
-            Поиск по учебным материалам, кафедрам и внутренним PDF-документам в
-            одном месте.
-          </p>
+          <h1>Поиск по библиотеке</h1>
         </div>
 
         <form
@@ -132,26 +127,17 @@ const HomePage: React.FC = () => {
         <div className="section-heading section-heading-tight">
           <div>
             <h2>Недавние документы</h2>
-            <p className="muted-text">
-              Быстрый доступ к тому, что вы открывали последним.
-            </p>
           </div>
-          <Link to="/search" className="section-link">
-            Перейти к поиску
-          </Link>
         </div>
 
-        <div className="document-list">
+        <div className="document-list recent-document-list">
           {recentItems.map((item) => (
             <DocumentListItem key={item.id} item={item} token={token} />
           ))}
 
           {recentItems.length === 0 && (
             <div className="empty-inline-state">
-              <h3>Пока здесь пусто</h3>
-              <p className="muted-text">
-                Открывайте документы, и они будут появляться на главной.
-              </p>
+              <h3>Нет недавних документов</h3>
             </div>
           )}
         </div>

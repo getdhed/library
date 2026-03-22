@@ -31,7 +31,7 @@ const item = {
 };
 
 describe("DocumentListItem", () => {
-  it("shows a placeholder when the cover image fails to load", () => {
+  it("shows only type, year, title, and department when the cover image fails to load", () => {
     render(
       <MemoryRouter>
         <DocumentListItem item={item} token="token" />
@@ -42,5 +42,9 @@ describe("DocumentListItem", () => {
 
     expect(screen.getByText("PDF")).toBeInTheDocument();
     expect(screen.getAllByText("Учебник")).toHaveLength(2);
+    expect(screen.getByText("Кафедра программной инженерии")).toBeInTheDocument();
+    expect(screen.queryByText("Demo Author")).not.toBeInTheDocument();
+    expect(screen.queryByText("Generated demo PDF set")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Alias:/i)).not.toBeInTheDocument();
   });
 });
