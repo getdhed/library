@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: library
+      POSTGRES_USER: library
+      POSTGRES_PASSWORD: library
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      APP_PORT: 8080
+      DATABASE_URL: postgres://library:library@db:5432/library?sslmode=disable
+      JWT_SECRET: super-secret-local-key
+      STORAGE_PATH: /app/storage
+      IMPORT_PATH: /app/storage/import
+      CORS_ORIGINS: http://localhost:5173
+      SEED_ADMIN_EMAIL: admin@library.local
+      SEED_ADMIN_NAME: Администратор
+      SEED_ADMIN_PASSWORD: admin12345
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend/storage:/app/storage
+    depends_on:
+      - db
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_URL: http://localhost:8080/api
+      VITE_BACKEND_URL: http://localhost:8080
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

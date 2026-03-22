@@ -1,53 +1,126 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { getRecentDocuments, mockSearchHistory } from "../mockData";
+import React, { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { getHome, getSuggestions, markOpened } from "../api/library";
+import { useAuth } from "../auth/AuthContext";
+import DocumentListItem from "../components/DocumentListItem";
+import type { DocumentItem } from "../types";
 
 const HomePage: React.FC = () => {
-  const [query, setQuery] = useState("");
-  const [showHistory, setShowHistory] = useState(false);
+  const { token } = useAuth();
   const navigate = useNavigate();
+  const [query, setQuery] = useState("");
+  const [recentItems, setRecentItems] = useState<DocumentItem[]>([]);
+  const [historyItems, setHistoryItems] = useState<{ id: number; query: string }[]>(
+    []
+  );
+  const [suggestions, setSuggestions] = useState<DocumentItem[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
 
-  const recent = getRecentDocuments();
+  useEffect(() => {
+    if (!token) return;
+    getHome(token)
+      .then((payload) => {
+        setRecentItems(payload.recent);
+        setHistoryItems(payload.searchHistory);
+      })
+      .catch(console.error);
+  }, [token]);
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!query.trim()) return;
+  useEffect(() => {
+    if (!token || !query.trim()) {
+      setSuggestions([]);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      getSuggestions(token, query.trim())
+        .then((payload) => setSuggestions(payload.items))
+        .catch(console.error);
+    }, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [query, token]);
+
+  const dropdownItems = useMemo(() => {
+    if (query.trim()) {
+      return suggestions.map((item) => ({
+        key: `doc-${item.id}`,
+        label: item.title,
+        onClick: async () => {
+          if (!token) return;
+          await markOpened(token, item.id);
+          navigate(`/documents/${item.id}`);
+        },
+      }));
+    }
+
+    return historyItems.map((item) => ({
+      key: `history-${item.id}`,
+      label: item.query,
+      onClick: () => navigate(`/search?q=${encodeURIComponent(item.query)}`),
+    }));
+  }, [historyItems, navigate, query, suggestions, token]);
+
+  const showDropdown = showHistory && dropdownItems.length > 0;
+
+  function submitSearch(event: React.FormEvent) {
+    event.preventDefault();
     navigate(`/search?q=${encodeURIComponent(query.trim())}`);
   }
 
-  function handleSelectHistory(q: string) {
-    setQuery(q);
-    navigate(`/search?q=${encodeURIComponent(q)}`);
-  }
-
   return (
-    <div className="page">
-      <section className="search-section">
-        <h1>Найди нужный документ</h1>
-        <form className="search-form" onSubmit={handleSubmit}>
-          <div className="search-input-wrapper">
-            <input
-              type="text"
-              placeholder="Введите название книги, методички, конспекта..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onFocus={() => setShowHistory(true)}
-              onBlur={() => setTimeout(() => setShowHistory(false), 150)}
-            />
-            <button type="submit">Поиск</button>
-          </div>
+    <div className="page-shell page-shell-clean">
+      <section
+        className={`hero-panel hero-panel-clean ${
+          showDropdown ? "hero-panel-search-open" : ""
+        }`}
+      >
+        <div className="hero-copy">
+          <p className="eyebrow">Библиотека PDF</p>
+          <h1>Найдите нужный документ за пару секунд</h1>
+          <p className="hero-text">
+            Поиск по учебным материалам, кафедрам и внутренним PDF-документам в
+            одном месте.
+          </p>
+        </div>
 
-          {showHistory && mockSearchHistory.length > 0 && (
-            <div className="search-history-dropdown">
-              <div className="dropdown-title">Последние запросы</div>
-              {mockSearchHistory.map((item) => (
+        <form
+          className={`search-box search-box-hero ${
+            showDropdown ? "search-box-expanded" : ""
+          }`}
+          onSubmit={submitSearch}
+        >
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onFocus={() => setShowHistory(true)}
+            onBlur={() => window.setTimeout(() => setShowHistory(false), 150)}
+            placeholder="Название, автор, кафедра"
+          />
+          <button
+            className="primary-button search-submit-button"
+            type="submit"
+            aria-label="Поиск"
+            title="Поиск"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10.5 4a6.5 6.5 0 1 0 4.14 11.52l4.92 4.92 1.41-1.41-4.92-4.92A6.5 6.5 0 0 0 10.5 4m0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9" />
+            </svg>
+          </button>
+
+          {showDropdown && (
+            <div className="search-dropdown">
+              <div className="dropdown-caption">
+                {query.trim() ? "Подходящие документы" : "Последние запросы"}
+              </div>
+              {dropdownItems.map((item) => (
                 <button
-                  key={item.id}
+                  key={item.key}
                   type="button"
-                  className="dropdown-item"
-                  onClick={() => handleSelectHistory(item.query)}
+                  className="dropdown-row"
+                  onClick={item.onClick}
                 >
-                  {item.query}
+                  {item.label}
                 </button>
               ))}
             </div>
@@ -55,34 +128,32 @@ const HomePage: React.FC = () => {
         </form>
       </section>
 
-      <section className="recent-section">
-        <div className="section-header">
-          <h2>Недавние документы</h2>
+      <section className="content-card content-card-flat recent-section">
+        <div className="section-heading section-heading-tight">
+          <div>
+            <h2>Недавние документы</h2>
+            <p className="muted-text">
+              Быстрый доступ к тому, что вы открывали последним.
+            </p>
+          </div>
+          <Link to="/search" className="section-link">
+            Перейти к поиску
+          </Link>
         </div>
-        <div className="cards-row">
-          {recent.map((doc) => (
-            <div key={doc.id} className="doc-card">
-              <div className="doc-cover">{doc.type[0] || "D"}</div>
-              <div className="doc-info">
-                <div className="doc-title">{doc.title}</div>
-                <div className="doc-meta">
-                  <span>{doc.faculty}</span> · <span>{doc.year}</span>
-                </div>
-              </div>
-              <div className="doc-actions">
-                <a
-                  href={doc.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="primary-link"
-                >
-                  Открыть
-                </a>
-                <button className="ghost-btn-sm">В избранное</button>
-              </div>
-            </div>
+
+        <div className="document-list">
+          {recentItems.map((item) => (
+            <DocumentListItem key={item.id} item={item} token={token} />
           ))}
-          {recent.length === 0 && <p>Пока нет недавних документов.</p>}
+
+          {recentItems.length === 0 && (
+            <div className="empty-inline-state">
+              <h3>Пока здесь пусто</h3>
+              <p className="muted-text">
+                Открывайте документы, и они будут появляться на главной.
+              </p>
+            </div>
+          )}
         </div>
       </section>
     </div>
@@ -90,4 +161,3 @@ const HomePage: React.FC = () => {
 };
 
 export default HomePage;
-

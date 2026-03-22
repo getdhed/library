@@ -1,53 +1,72 @@
-import React from "react";
-import { mockDocuments } from "../../mockData";
+import React, { useEffect, useState } from "react";
+import { getAdminStats } from "../../api/library";
+import { useAuth } from "../../auth/AuthContext";
+import type { AdminStats } from "../../types";
 
 const AdminStatsPage: React.FC = () => {
-  const totalDocs = mockDocuments.length;
-  const byFaculty = mockDocuments.reduce<Record<string, number>>(
-    (acc, d) => {
-      acc[d.faculty] = (acc[d.faculty] || 0) + 1;
-      return acc;
-    },
-    {}
-  );
+  const { token } = useAuth();
+  const [stats, setStats] = useState<AdminStats | null>(null);
 
-  const fakeOnline = 7; // чисто для прототипа
-  const fakeVisitsToday = 123;
+  useEffect(() => {
+    if (!token) return;
+    getAdminStats(token).then(setStats).catch(console.error);
+  }, [token]);
+
+  if (!stats) {
+    return <div className="page-shell">Загрузка статистики...</div>;
+  }
 
   return (
-    <div className="page admin-page">
-      <header className="admin-header">
-        <h1>Статистика</h1>
-      </header>
+    <div className="page-shell">
+      <div className="stats-grid">
+        <div className="content-card stat-card">
+          <strong>{stats.documentsCount}</strong>
+          <span>Всего документов</span>
+        </div>
+        <div className="content-card stat-card">
+          <strong>{stats.viewsToday}</strong>
+          <span>Открытий сегодня</span>
+        </div>
+        <div className="content-card stat-card">
+          <strong>{stats.downloadsToday}</strong>
+          <span>Скачиваний сегодня</span>
+        </div>
+        <div className="content-card stat-card">
+          <strong>{stats.searchesToday}</strong>
+          <span>Поисков сегодня</span>
+        </div>
+      </div>
 
-      <section className="stats-cards">
-        <div className="stat-card">
-          <div className="stat-value">{fakeVisitsToday}</div>
-          <div className="stat-label">Посещений за сегодня</div>
+      <div className="content-grid">
+        <div className="content-card">
+          <h2>Популярные запросы</h2>
+          <div className="stack-list">
+            {stats.topQueries.map((item) => (
+              <div key={item.name} className="stat-line">{item.name} <span>{item.count}</span></div>
+            ))}
+          </div>
         </div>
-        <div className="stat-card">
-          <div className="stat-value">{fakeOnline}</div>
-          <div className="stat-label">Сейчас онлайн</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">{totalDocs}</div>
-          <div className="stat-label">Всего документов</div>
-        </div>
-      </section>
 
-      <section className="stats-by-faculty">
-        <h2>Документы по факультетам</h2>
-        <ul>
-          {Object.entries(byFaculty).map(([faculty, count]) => (
-            <li key={faculty}>
-              <strong>{faculty}</strong>: {count}
-            </li>
-          ))}
-        </ul>
-      </section>
+        <div className="content-card">
+          <h2>Популярные документы</h2>
+          <div className="stack-list">
+            {stats.topDocuments.map((item) => (
+              <div key={item.name} className="stat-line">{item.name} <span>{item.count}</span></div>
+            ))}
+          </div>
+        </div>
+
+        <div className="content-card">
+          <h2>Документы по факультетам</h2>
+          <div className="stack-list">
+            {stats.documentsByFaculty.map((item) => (
+              <div key={item.faculty} className="stat-line">{item.faculty} <span>{item.count}</span></div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
 
 export default AdminStatsPage;
-

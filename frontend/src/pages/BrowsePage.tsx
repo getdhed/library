@@ -1,159 +1,115 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
-import { mockDocuments } from "../mockData";
-import type { Document } from "../types";
-
-interface GroupedByFaculty {
-  [faculty: string]: {
-    [department: string]: Document[];
-  };
-}
-
-function groupByFacultyAndDept(docs: Document[]): GroupedByFaculty {
-  const result: GroupedByFaculty = {};
-  docs.forEach((doc) => {
-    if (!result[doc.faculty]) result[doc.faculty] = {};
-    if (!result[doc.faculty][doc.department]) {
-      result[doc.faculty][doc.department] = [];
-    }
-    result[doc.faculty][doc.department].push(doc);
-  });
-  return result;
-}
+import React, { useEffect, useState } from "react";
+import { getDepartments, getDocuments, getFaculties } from "../api/library";
+import { useAuth } from "../auth/AuthContext";
+import DocumentListItem from "../components/DocumentListItem";
+import type { Department, Faculty, PagedDocuments } from "../types";
 
 const BrowsePage: React.FC = () => {
-  const [selectedFaculty, setSelectedFaculty] = useState<string | null>(null);
-  const [selectedDept, setSelectedDept] = useState<string | null>(null);
-  const [localQuery, setLocalQuery] = useState("");
+  const { token } = useAuth();
+  const [faculties, setFaculties] = useState<Faculty[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [selectedFaculty, setSelectedFaculty] = useState<number>(0);
+  const [selectedDepartment, setSelectedDepartment] = useState<number>(0);
+  const [query, setQuery] = useState("");
+  const [payload, setPayload] = useState<PagedDocuments | null>(null);
 
-  const grouped = groupByFacultyAndDept(mockDocuments);
-  const faculties = Object.keys(grouped).sort();
+  useEffect(() => {
+    getFaculties().then((response) => setFaculties(response.items)).catch(console.error);
+  }, []);
 
-  const departments =
-    selectedFaculty && grouped[selectedFaculty]
-      ? Object.keys(grouped[selectedFaculty]).sort()
-      : [];
+  useEffect(() => {
+    if (!selectedFaculty) {
+      setDepartments([]);
+      setSelectedDepartment(0);
+      return;
+    }
+    getDepartments(selectedFaculty)
+      .then((response) => setDepartments(response.items))
+      .catch(console.error);
+  }, [selectedFaculty]);
 
-  let visibleDocs: Document[] = [];
-  if (selectedFaculty && selectedDept) {
-    visibleDocs = grouped[selectedFaculty][selectedDept] || [];
-  }
-
-  if (localQuery.trim()) {
-    const q = localQuery.trim().toLowerCase();
-    visibleDocs = visibleDocs.filter((d) =>
-      d.title.toLowerCase().includes(q)
-    );
-  }
+  useEffect(() => {
+    if (!token) return;
+    getDocuments(token, {
+      q: query,
+      facultyId: selectedFaculty,
+      departmentId: selectedDepartment,
+      sort: "title_asc",
+      pageSize: 24,
+    })
+      .then(setPayload)
+      .catch(console.error);
+  }, [query, selectedDepartment, selectedFaculty, token]);
 
   return (
-    <div className="page browse-page">
-      <section className="browse-layout">
-        <aside className="browse-sidebar">
+    <div className="page-shell page-shell-clean">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Каталог</p>
+          <h1>Документы по факультетам и кафедрам</h1>
+        </div>
+      </div>
+
+      <div className="browse-grid browse-grid-clean">
+        <div className="content-card content-card-flat">
           <h2>Факультеты</h2>
-          <ul className="sidebar-list">
-            {faculties.map((f) => (
-              <li key={f}>
-                <button
-                  className={
-                    "sidebar-item" + (selectedFaculty === f ? " active" : "")
-                  }
-                  onClick={() => {
-                    setSelectedFaculty(f);
-                    setSelectedDept(null);
-                  }}
-                >
-                  {f}
-                </button>
-              </li>
+          <div className="stack-list">
+            {faculties.map((faculty) => (
+              <button
+                key={faculty.id}
+                className={`sidebar-item ${selectedFaculty === faculty.id ? "active" : ""}`}
+                onClick={() => setSelectedFaculty(faculty.id)}
+              >
+                {faculty.name}
+              </button>
             ))}
-          </ul>
+          </div>
+        </div>
 
-          {selectedFaculty && (
-            <>
-              <h3>Кафедры</h3>
-              <ul className="sidebar-list">
-                {departments.map((d) => (
-                  <li key={d}>
-                    <button
-                      className={
-                        "sidebar-item" +
-                        (selectedDept === d ? " active" : "")
-                      }
-                      onClick={() => setSelectedDept(d)}
-                    >
-                      {d}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </aside>
+        <div className="content-card content-card-flat">
+          <h2>Кафедры</h2>
+          <div className="stack-list">
+            {departments.map((department) => (
+              <button
+                key={department.id}
+                className={`sidebar-item ${selectedDepartment === department.id ? "active" : ""}`}
+                onClick={() => setSelectedDepartment(department.id)}
+              >
+                {department.name}
+              </button>
+            ))}
+          </div>
+        </div>
 
-        <section className="browse-content">
-          <div className="browse-header">
-            <h1>Каталог документов</h1>
-            <div className="filter-group">
-              <label>Поиск внутри выбранной кафедры</label>
-              <input
-                type="text"
-                placeholder="Введите часть названия..."
-                value={localQuery}
-                onChange={(e) => setLocalQuery(e.target.value)}
-              />
+        <div className="content-card content-card-flat browse-results">
+          <div className="section-heading section-heading-tight">
+            <div>
+              <h2>Список документов</h2>
+              <p className="muted-text">Быстрый обзор материалов выбранного раздела.</p>
             </div>
+            <input
+              className="inline-input"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Поиск внутри раздела"
+            />
           </div>
 
-          {!selectedFaculty && (
-            <p>Выберите факультет слева, затем кафедру.</p>
-          )}
-          {selectedFaculty && !selectedDept && (
-            <p>Выберите кафедру, чтобы увидеть документы.</p>
-          )}
-
-          {selectedFaculty && selectedDept && (
-            <div className="results-list">
-              {visibleDocs.map((doc) => (
-                <div key={doc.id} className="doc-row">
-                  <div className="doc-main">
-                    <div className="doc-icon">PDF</div>
-                    <div>
-                      <Link
-                        to={`/book/${doc.id}`}
-                        className="doc-title-link"
-                      >
-                        {doc.title}
-                      </Link>
-                      <div className="doc-meta">
-                        <span>{doc.type}</span> ·{" "}
-                        <span>{doc.year}</span> ·{" "}
-                        <span>{doc.sizeMb.toFixed(1)} МБ</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="doc-row-actions">
-                    <a
-                      href={doc.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="primary-link"
-                    >
-                      Открыть
-                    </a>
-                  </div>
-                </div>
-              ))}
-              {visibleDocs.length === 0 && (
-                <p>В этой кафедре пока нет документов.</p>
-              )}
-            </div>
-          )}
-        </section>
-      </section>
+          <div className="document-list">
+            {(payload?.items ?? []).map((item) => (
+              <DocumentListItem key={item.id} item={item} token={token} />
+            ))}
+            {payload && payload.items.length === 0 && (
+              <div className="empty-inline-state">
+                <h3>Документы появятся здесь</h3>
+                <p className="muted-text">Выберите факультет или кафедру, чтобы увидеть список материалов.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
 
 export default BrowsePage;
-

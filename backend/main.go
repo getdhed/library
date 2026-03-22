@@ -303,4 +303,3 @@ func generateID() string {
 	// для прототипа достаточно времени в наносекундах
 	return strconv.FormatInt(time.Now().UnixNano(), 10)
 }
-
