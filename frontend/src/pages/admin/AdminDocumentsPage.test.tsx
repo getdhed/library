@@ -1,6 +1,6 @@
 import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthContext } from "../../auth/AuthContext";
 import AdminDocumentsPage from "./AdminDocumentsPage";
@@ -23,10 +23,31 @@ const getAdminDepartmentsMock = vi.fn(() =>
 );
 const getAdminDocumentsMock = vi.fn(() =>
   Promise.resolve({
-    items: [],
+    items: [
+      {
+        id: 5,
+        title: "Документ каталога",
+        author: "Иванов",
+        year: 2026,
+        type: "Методичка",
+        description: "Описание документа",
+        fileName: "catalog.pdf",
+        fileSizeBytes: 1024,
+        mimeType: "application/pdf",
+        isVisible: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        departmentId: 10,
+        department: "Кафедра информационных систем",
+        facultyId: 1,
+        faculty: "ФКТИ",
+        tags: ["tag"],
+        isFavorite: false,
+      },
+    ],
     page: 1,
     pageSize: 20,
-    total: 0,
+    total: 1,
   })
 );
 const getAdminFacultiesMock = vi.fn(() =>
@@ -67,8 +88,8 @@ const getAdminSubmissionsMock = vi.fn(() =>
         mimeType: "application/pdf",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        uploaderName: "Администратор",
-        uploaderEmail: "admin@example.com",
+        uploaderName: "Системный импорт",
+        uploaderEmail: "import@example.com",
       },
     ],
   })
@@ -83,7 +104,7 @@ const rejectSubmissionMock = vi.fn(() => Promise.resolve({}));
 const submissionFileUrlMock = vi.fn(
   (id: number) => `/api/submissions/${id}/file`
 );
-const updateDocumentMock = vi.fn(() => Promise.resolve({ id: 1 }));
+const updateDocumentMock = vi.fn(() => Promise.resolve({ id: 5 }));
 
 vi.mock("../../api/library", () => ({
   approveSubmission: (...args: unknown[]) => approveSubmissionMock(...args),
@@ -100,20 +121,41 @@ vi.mock("../../api/library", () => ({
   updateDocument: (...args: unknown[]) => updateDocumentMock(...args),
 }));
 
-function renderPage() {
+const LocationDisplay: React.FC = () => {
+  const location = useLocation();
+  return <div data-testid="location">{`${location.pathname}${location.search}`}</div>;
+};
+
+function renderPage(route = "/admin/documents") {
   return render(
     <AuthContext.Provider
       value={{
         token: "token",
-        user: { id: 1, fullName: "Admin", email: "admin@example.com", role: "admin", createdAt: new Date().toISOString() },
+        user: {
+          id: 1,
+          fullName: "Admin",
+          email: "admin@example.com",
+          role: "admin",
+          createdAt: new Date().toISOString(),
+        },
         ready: true,
         login: async () => undefined,
         register: async () => undefined,
         logout: () => undefined,
       }}
     >
-      <MemoryRouter>
-        <AdminDocumentsPage />
+      <MemoryRouter initialEntries={[route]}>
+        <Routes>
+          <Route
+            path="/admin/documents"
+            element={
+              <>
+                <AdminDocumentsPage />
+                <LocationDisplay />
+              </>
+            }
+          />
+        </Routes>
       </MemoryRouter>
     </AuthContext.Provider>
   );
@@ -128,50 +170,97 @@ describe("AdminDocumentsPage", () => {
     cleanup();
   });
 
-  it("does not submit approve without all required catalog fields", async () => {
+  it("opens moderation by default without drawer and syncs tab to query params", async () => {
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { name: "Очередь модерации", level: 2 })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("Заявка не выбрана")).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/admin/documents?tab=moderation"
+    );
+  });
+
+  it("switches tabs and closes an opened drawer", async () => {
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { name: "Очередь модерации", level: 2 })
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Оформить" })[0]);
+    expect(
+      await screen.findByRole("dialog", { name: "Одобрить заявку" })
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Каталог" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Документы каталога", level: 2 })
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/admin/documents?tab=catalog"
+    );
+  });
+
+  it("opens moderation drawer and does not submit approve without all required fields", async () => {
     renderPage();
 
     expect(await screen.findByText("Legacy Notes")).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Принять" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Оформить" })[0]);
+    expect(
+      await screen.findByRole("dialog", { name: "Одобрить заявку" })
+    ).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "Одобрить заявку" }));
 
     expect(
       await screen.findByText(/Заполните обязательные поля: описание\./)
     ).toBeInTheDocument();
     expect(approveSubmissionMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Отменить" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("shows import sources and queues pdfs from folder into moderation", async () => {
-    renderPage();
+  it("opens catalog drawer for edit and closes it after successful save", async () => {
+    renderPage("/admin/documents?tab=catalog");
 
-    expect(await screen.findByText("Inbox Draft")).toBeInTheDocument();
-
-    expect(screen.getAllByText("Import-папка").length).toBeGreaterThan(0);
     expect(
-      screen.queryByPlaceholderText("Автор по умолчанию")
-    ).not.toBeInTheDocument();
+      await screen.findByRole("heading", { name: "Документы каталога", level: 2 })
+    ).toBeInTheDocument();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Забрать PDF из папки в очередь" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Редактировать" }));
+
+    expect(
+      await screen.findByRole("dialog", { name: "Редактировать документ" })
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Описание *"), {
+      target: { value: "Обновленное описание" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
 
     await waitFor(() => {
-      expect(queueImportFolderSubmissionsMock).toHaveBeenCalledWith("token");
+      expect(updateDocumentMock).toHaveBeenCalledTimes(1);
     });
 
-    expect(
-      await screen.findByText("Добавлено в очередь: 2")
-    ).toBeInTheDocument();
-    expect(screen.getByText(/broken\.pdf: invalid pdf header/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
   });
 
-  it("keeps manual admin create as direct document creation and requires a file", async () => {
-    renderPage();
+  it("keeps manual admin create inside upload tab and requires a file", async () => {
+    renderPage("/admin/documents?tab=upload");
 
     expect(
-      await screen.findByRole("heading", { name: "Добавить документ", level: 2 })
+      await screen.findByRole("heading", { name: "Добавить документ вручную", level: 2 })
     ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Название *"), {
       target: { value: "Новая методичка" },
@@ -195,7 +284,7 @@ describe("AdminDocumentsPage", () => {
       target: { value: "Описание документа" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Добавить" }));
+    fireEvent.click(screen.getByRole("button", { name: "Создать документ" }));
 
     expect(
       await screen.findByText(/Заполните обязательные поля: PDF-файл\./)
@@ -209,10 +298,32 @@ describe("AdminDocumentsPage", () => {
       target: { files: [file] },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Добавить" }));
+    fireEvent.click(screen.getByRole("button", { name: "Создать документ" }));
 
     await waitFor(() => {
       expect(createDocumentMock).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("shows import queue controls only on upload tab", async () => {
+    renderPage("/admin/documents?tab=upload");
+
+    expect(
+      await screen.findByRole("heading", { name: "Папка автоматического импорта", level: 2 })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/backend\/storage\/import/)).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Проверить папку сейчас" })
+    );
+
+    await waitFor(() => {
+      expect(queueImportFolderSubmissionsMock).toHaveBeenCalledWith("token");
+    });
+
+    expect(
+      await screen.findByText("Добавлено в очередь: 2")
+    ).toBeInTheDocument();
+    expect(screen.getByText(/broken\.pdf: invalid pdf header/)).toBeInTheDocument();
   });
 });
