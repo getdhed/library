@@ -13,16 +13,30 @@ function setWindowWidth(width: number) {
   });
 }
 
-function renderLayout(logout = vi.fn()) {
+function renderLayout(
+  options: {
+    logout?: ReturnType<typeof vi.fn>;
+    role?: "user" | "admin";
+    fullName?: string;
+    email?: string;
+  } = {}
+) {
+  const {
+    logout = vi.fn(),
+    role = "admin",
+    fullName = "Admin User",
+    email = "admin@library.local",
+  } = options;
+
   render(
     <AuthContext.Provider
       value={{
         token: "token",
         user: {
           id: 1,
-          email: "admin@library.local",
-          fullName: "Admin User",
-          role: "admin",
+          email,
+          fullName,
+          role,
           createdAt: new Date().toISOString(),
         },
         ready: true,
@@ -70,6 +84,26 @@ describe("Layout", () => {
     expect(accountMenu).toBeInTheDocument();
     expect(within(accountMenu).getByText("Настройки")).toBeInTheDocument();
     expect(within(accountMenu).getByRole("button", { name: "Выйти" })).toBeInTheDocument();
+  });
+
+  it("shows My PDF link only inside the user account menu", () => {
+    setWindowWidth(1500);
+    renderLayout({
+      role: "user",
+      fullName: "Regular User",
+      email: "user@library.local",
+    });
+
+    const mainNavigation = screen.getByLabelText("Основная навигация");
+    expect(
+      within(mainNavigation).queryByRole("link", { name: "Мои PDF" })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Открыть меню аккаунта"));
+    const accountMenu = screen.getByLabelText("Меню аккаунта");
+    expect(
+      within(accountMenu).getByRole("link", { name: "Мои PDF" })
+    ).toHaveAttribute("href", "/account/pdfs");
   });
 
   it("renders icon topbar navigation on medium desktop widths", () => {

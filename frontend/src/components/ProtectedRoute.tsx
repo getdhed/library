@@ -1,6 +1,24 @@
-import React from "react";
+﻿import React from "react";
+import { Box, CircularProgress, Typography } from "@mui/material";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+
+function LoadingState() {
+  return (
+    <Box
+      component="main"
+      sx={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        gap: 1.5,
+      }}
+    >
+      <CircularProgress size={26} />
+      <Typography color="text.secondary">Loading...</Typography>
+    </Box>
+  );
+}
 
 export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -9,7 +27,7 @@ export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   const location = useLocation();
 
   if (!auth.ready) {
-    return <div className="page-shell">Loading...</div>;
+    return <LoadingState />;
   }
 
   if (!auth.token) {
@@ -25,7 +43,7 @@ export const AdminRoute: React.FC<{ children: React.ReactNode }> = ({
   const auth = useAuth();
 
   if (!auth.ready) {
-    return <div className="page-shell">Loading...</div>;
+    return <LoadingState />;
   }
 
   if (!auth.token) {
@@ -38,3 +56,4 @@ export const AdminRoute: React.FC<{ children: React.ReactNode }> = ({
 
   return <>{children}</>;
 };
+

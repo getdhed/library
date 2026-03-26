@@ -91,6 +91,16 @@ export function unfavoriteDocument(token: string, id: number) {
   });
 }
 
+export function toggleDocumentFavorite(
+  token: string,
+  id: number,
+  isFavorite: boolean
+) {
+  return isFavorite
+    ? unfavoriteDocument(token, id)
+    : favoriteDocument(token, id);
+}
+
 export function getFaculties() {
   return request<{ items: Faculty[] }>("/catalog/faculties");
 }

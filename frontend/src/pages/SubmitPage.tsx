@@ -1,19 +1,25 @@
-import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+﻿import React, { useEffect, useState } from "react";
+import {
+  Alert,
+  Box,
+  Button,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
+  Stack,
+  TextField,
+  Typography,
+} from "@mui/material";
+import { Link, useNavigate } from "react-router-dom";
 import {
   createSubmission,
   getDepartments,
   getFaculties,
-  getMySubmissions,
-  submissionFileUrl,
 } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
-import type {
-  Department,
-  Faculty,
-  SubmissionItem,
-  SubmissionStatus,
-} from "../types";
+import { ContentCard, PageHeader, PageShell } from "../components/mui-primitives";
+import type { Department, Faculty } from "../types";
 
 const emptyForm = {
   title: "",
@@ -24,52 +30,20 @@ const emptyForm = {
   file: null as File | null,
 };
 
-function submissionStatusLabel(status: SubmissionStatus) {
-  switch (status) {
-    case "approved":
-      return "Одобрено";
-    case "rejected":
-      return "Отклонено";
-    default:
-      return "На модерации";
-  }
-}
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
 const SubmitPage: React.FC = () => {
   const { token } = useAuth();
+  const navigate = useNavigate();
   const [faculties, setFaculties] = useState<Faculty[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [submissions, setSubmissions] = useState<SubmissionItem[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
-  async function loadSubmissions() {
-    if (!token) {
-      return;
-    }
-
-    const response = await getMySubmissions(token);
-    setSubmissions(response.items);
-  }
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     getFaculties()
       .then((response) => setFaculties(response.items))
       .catch(console.error);
   }, []);
-
-  useEffect(() => {
-    loadSubmissions().catch(console.error);
-  }, [token]);
 
   useEffect(() => {
     if (!form.facultyId) {
@@ -89,7 +63,6 @@ const SubmitPage: React.FC = () => {
     }
 
     setError("");
-    setSuccess("");
 
     if (!form.file) {
       setError("Выберите PDF-файл.");
@@ -109,92 +82,150 @@ const SubmitPage: React.FC = () => {
       formData.set("comment", form.comment.trim());
     }
 
-    await createSubmission(token, formData);
-    setForm(emptyForm);
-    setDepartments([]);
-    setSuccess("PDF отправлен на модерацию.");
-    await loadSubmissions();
+    setIsSubmitting(true);
+    try {
+      await createSubmission(token, formData);
+      setForm(emptyForm);
+      setDepartments([]);
+      navigate("/account/pdfs", {
+        state: { submissionCreated: true },
+      });
+    } catch (submitError) {
+      console.error(submitError);
+      setError("Не удалось отправить PDF. Попробуйте ещё раз.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
-    <div className="page-shell page-shell-clean submit-page-shell">
-      <div className="content-card">
-        <div className="page-header">
-          <div>
-            <p className="eyebrow">Предложить PDF</p>
-            <h1>Загрузка пользовательского документа</h1>
-          </div>
-        </div>
-        <p className="muted-text">
-          Отправьте PDF и минимальные данные, а админ проверит файл и оформит
-          его как обычный документ каталога.
-        </p>
+    <PageShell>
+      <ContentCard>
+        <PageHeader
+          eyebrow="Предложить PDF"
+          title="Загрузка пользовательского документа"
+          side={
+            <Button component={Link} to="/account/pdfs" variant="outlined">
+              Перейти в мои PDF
+            </Button>
+          }
+        />
 
-        <form className="form-grid" onSubmit={handleSubmit}>
-          <input
+        <Typography color="text.secondary" sx={{ mt: 2 }}>
+          Отправьте PDF и минимальные данные, а админ проверит файл и оформит
+          его как обычный документ каталога. Все статусы и решения модерации
+          появятся в разделе <Link to="/account/pdfs">Мои PDF</Link>.
+        </Typography>
+
+        <Stack component="form" spacing={1.75} sx={{ mt: 2.5 }} onSubmit={handleSubmit}>
+          <TextField
             value={form.title}
             onChange={(event) =>
               setForm((current) => ({ ...current, title: event.target.value }))
             }
             placeholder="Название"
+            disabled={isSubmitting}
             required
+            fullWidth
           />
-          <input
+
+          <TextField
             value={form.author}
             onChange={(event) =>
               setForm((current) => ({ ...current, author: event.target.value }))
             }
             placeholder="Автор (необязательно)"
+            disabled={isSubmitting}
+            fullWidth
           />
-          <select
-            value={form.facultyId}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                facultyId: event.target.value,
-                departmentId: "",
-              }))
-            }
-          >
-            <option value="">Факультет (необязательно)</option>
-            {faculties.map((faculty) => (
-              <option key={faculty.id} value={faculty.id}>
-                {faculty.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={form.departmentId}
-            disabled={!form.facultyId}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                departmentId: event.target.value,
-              }))
-            }
-          >
-            <option value="">Кафедра (необязательно)</option>
-            {departments.map((department) => (
-              <option key={department.id} value={department.id}>
-                {department.name}
-              </option>
-            ))}
-          </select>
-          <label className="file-label">
-            PDF-файл
-            <input
-              type="file"
-              accept=".pdf,application/pdf"
+
+          <FormControl fullWidth>
+            <InputLabel id="submit-faculty-label">Факультет (необязательно)</InputLabel>
+            <Select
+              labelId="submit-faculty-label"
+              value={form.facultyId}
+              disabled={isSubmitting}
+              label="Факультет (необязательно)"
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
-                  file: event.target.files?.[0] ?? null,
+                  facultyId: event.target.value,
+                  departmentId: "",
                 }))
               }
-              required
-            />
-          </label>
-          <textarea
+            >
+              <MenuItem value="">Факультет (необязательно)</MenuItem>
+              {faculties.map((faculty) => (
+                <MenuItem key={faculty.id} value={String(faculty.id)}>
+                  {faculty.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth>
+            <InputLabel id="submit-department-label">Кафедра (необязательно)</InputLabel>
+            <Select
+              labelId="submit-department-label"
+              value={form.departmentId}
+              disabled={!form.facultyId || isSubmitting}
+              label="Кафедра (необязательно)"
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  departmentId: event.target.value,
+                }))
+              }
+            >
+              <MenuItem value="">Кафедра (необязательно)</MenuItem>
+              {departments.map((department) => (
+                <MenuItem key={department.id} value={String(department.id)}>
+                  {department.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <Box sx={{ display: "grid", gap: 0.8 }}>
+            <Typography fontWeight={600}>
+              PDF-файл
+            </Typography>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "flex-start", sm: "center" }}>
+              <Button component="label" variant="outlined" type="button" disabled={isSubmitting}>
+                {form.file ? "Заменить PDF" : "Выбрать PDF"}
+                <Box
+                  component="input"
+                  type="file"
+                  aria-label="PDF-файл"
+                  accept=".pdf,application/pdf"
+                  disabled={isSubmitting}
+                  onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                    setForm((current) => ({
+                      ...current,
+                      file: event.target.files?.[0] ?? null,
+                    }))
+                  }
+                  required
+                  sx={{
+                    position: "absolute",
+                    width: 1,
+                    height: 1,
+                    p: 0,
+                    m: -1,
+                    overflow: "hidden",
+                    clip: "rect(0 0 0 0)",
+                    whiteSpace: "nowrap",
+                    border: 0,
+                  }}
+                />
+              </Button>
+              <Typography variant="body2" color="text.secondary">
+                {form.file ? form.file.name : "Файл не выбран"}
+              </Typography>
+            </Stack>
+          </Box>
+
+          <TextField
             value={form.comment}
             onChange={(event) =>
               setForm((current) => ({
@@ -203,86 +234,22 @@ const SubmitPage: React.FC = () => {
               }))
             }
             placeholder="Комментарий для модератора (необязательно)"
+            disabled={isSubmitting}
+            multiline
+            minRows={4}
+            fullWidth
           />
-          {error && <p className="error-text">{error}</p>}
-          {success && <p className="muted-text">{success}</p>}
-          <button className="primary-button" type="submit">
-            Отправить PDF
-          </button>
-        </form>
-      </div>
 
-      <div className="content-card">
-        <div className="page-header">
-          <div>
-            <p className="eyebrow">Мои заявки</p>
-            <h2>История модерации</h2>
-          </div>
-        </div>
+          {error && <Alert severity="error">{error}</Alert>}
 
-        {submissions.length === 0 ? (
-          <div className="empty-inline-state">
-            <strong>Пока нет отправленных PDF.</strong>
-            <p className="muted-text">
-              После отправки здесь появятся статус модерации и ссылка на
-              созданный документ.
-            </p>
-          </div>
-        ) : (
-          <div className="submission-list">
-            {submissions.map((item) => (
-              <article key={item.id} className="submission-card">
-                <div className="submission-card-header">
-                  <div>
-                    <h3>{item.title}</h3>
-                    <p className="submission-meta">
-                      {item.department || "Кафедра не указана"} •{" "}
-                      {formatDate(item.createdAt)}
-                    </p>
-                  </div>
-                  <span
-                    className={`submission-status-pill submission-status-${item.status}`}
-                  >
-                    {submissionStatusLabel(item.status)}
-                  </span>
-                </div>
-
-                <p className="submission-meta">
-                  Файл: {item.fileName}
-                  {item.author ? ` • Автор: ${item.author}` : ""}
-                </p>
-
-                {item.comment && <p className="submission-note">{item.comment}</p>}
-                {item.moderationNote && (
-                  <p className="submission-note submission-note-rejected">
-                    Причина отклонения: {item.moderationNote}
-                  </p>
-                )}
-
-                <div className="submission-card-actions">
-                  <a
-                    className="secondary-button"
-                    href={submissionFileUrl(item.id, token ?? "", false, item.updatedAt)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Открыть PDF
-                  </a>
-                  {item.approvedDocumentId && (
-                    <Link
-                      className="primary-button"
-                      to={`/documents/${item.approvedDocumentId}`}
-                    >
-                      Открыть документ
-                    </Link>
-                  )}
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+          <Box>
+            <Button variant="contained" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Отправляется..." : "Отправить PDF"}
+            </Button>
+          </Box>
+        </Stack>
+      </ContentCard>
+    </PageShell>
   );
 };
 

@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
+import { Box, Stack, Typography } from "@mui/material";
 import { getFavorites } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
+import { ContentCard, PageHeader, PageShell } from "../components/mui-primitives";
 import DocumentListItem from "../components/DocumentListItem";
 import type { DocumentItem } from "../types";
 
@@ -16,30 +18,27 @@ const FavoritesPage: React.FC = () => {
   }, [token]);
 
   return (
-    <div className="page-shell page-shell-clean">
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">Профиль</p>
-          <h1>Избранные документы</h1>
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader eyebrow="Профиль" title="Избранные документы" />
 
       {items.length === 0 ? (
-        <div className="content-card content-card-flat empty-state-card">
-          <h2>Пока ничего не добавлено</h2>
-          <p className="muted-text">
+        <ContentCard>
+          <Typography variant="h5">Пока ничего не добавлено</Typography>
+          <Typography color="text.secondary" sx={{ mt: 1 }}>
             Сохраняйте нужные документы в избранное, чтобы быстро к ним
             возвращаться.
-          </p>
-        </div>
+          </Typography>
+        </ContentCard>
       ) : (
-        <div className="document-list favorites-document-list">
+        <Stack spacing={1.5}>
           {items.map((item) => (
             <DocumentListItem key={item.id} item={item} token={token} />
           ))}
-        </div>
+        </Stack>
       )}
-    </div>
+
+      <Box sx={{ display: "none" }} />
+    </PageShell>
   );
 };
 

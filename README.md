@@ -39,3 +39,28 @@ go run ./cmd/generate-demo-pdfs
 - карточка документа с чтением и скачиванием
 - админка для CRUD и импорта
 - базовая статистика
+
+## E2E Tests (Playwright)
+
+```bash
+cd frontend
+npm run e2e:install
+```
+
+Start the stack in another terminal:
+
+```bash
+docker compose up --build
+```
+
+Run all e2e scenarios:
+
+```bash
+cd frontend
+npm run e2e
+```
+
+Useful commands:
+
+- headed run: `npm run e2e:headed`
+- UI mode: `npm run e2e:ui`

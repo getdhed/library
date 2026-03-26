@@ -1,51 +1,38 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthContext } from "../auth/AuthContext";
 import SubmitPage from "./SubmitPage";
 
 vi.mock("../api/library", () => ({
-  createSubmission: vi.fn(() => Promise.resolve({ id: 3 })),
-  getDepartments: vi.fn(() => Promise.resolve({ items: [] })),
-  getFaculties: vi.fn(() => Promise.resolve({ items: [] })),
-  getMySubmissions: vi.fn(() =>
-    Promise.resolve({
-      items: [
-        {
-          id: 1,
-          userId: 4,
-          title: "Networks Handbook",
-          author: "User Author",
-          department: "Кафедра информационных систем",
-          status: "approved",
-          approvedDocumentId: 42,
-          fileName: "networks.pdf",
-          fileSizeBytes: 2048,
-          mimeType: "application/pdf",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        {
-          id: 2,
-          userId: 4,
-          title: "Legacy Notes",
-          status: "rejected",
-          moderationNote: "Нужны полные метаданные",
-          fileName: "legacy.pdf",
-          fileSizeBytes: 1024,
-          mimeType: "application/pdf",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      ],
-    })
-  ),
-  submissionFileUrl: vi.fn((id: number) => `/api/submissions/${id}/file`),
+  createSubmission: vi.fn(),
+  getDepartments: vi.fn(),
+  getFaculties: vi.fn(),
 }));
 
+import {
+  createSubmission,
+  getDepartments,
+  getFaculties,
+} from "../api/library";
+
+afterEach(() => {
+  cleanup();
+});
+
 describe("SubmitPage", () => {
-  it("renders the upload form and moderation statuses", async () => {
+  beforeEach(() => {
+    vi.mocked(getFaculties).mockResolvedValue({ items: [] });
+    vi.mocked(getDepartments).mockResolvedValue({ items: [] });
+    vi.mocked(createSubmission).mockReset();
+  });
+
+  it("renders only the upload flow and no longer shows moderation history", async () => {
+    vi.mocked(createSubmission).mockResolvedValue({
+      id: 3,
+    } as never);
+
     render(
       <AuthContext.Provider
         value={{
@@ -66,18 +53,73 @@ describe("SubmitPage", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Networks Handbook")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Название")).toBeInTheDocument();
     });
 
-    expect(screen.getByPlaceholderText("Название")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Отправить PDF" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Одобрено")).toBeInTheDocument();
-    expect(screen.getByText("Отклонено")).toBeInTheDocument();
-    expect(screen.getByText(/Нужны полные метаданные/)).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Открыть документ" })
-    ).toHaveAttribute("href", "/documents/42");
+    expect(screen.getByText("Перейти в мои PDF")).toBeInTheDocument();
+    expect(screen.queryByText("История модерации")).not.toBeInTheDocument();
+    expect(screen.queryByText("Мои заявки")).not.toBeInTheDocument();
+  });
+
+  it("shows submitting state and redirects to my pdfs after success", async () => {
+    let resolveSubmission: (() => void) | undefined;
+
+    vi.mocked(createSubmission).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSubmission = () => resolve({ id: 3 } as never);
+        })
+    );
+
+    render(
+      <AuthContext.Provider
+        value={{
+          token: "token",
+          user: null,
+          ready: true,
+          login: async () => undefined,
+          register: async () => undefined,
+          logout: () => undefined,
+        }}
+      >
+        <MemoryRouter initialEntries={["/submit"]}>
+          <Routes>
+            <Route path="/submit" element={<SubmitPage />} />
+            <Route path="/account/pdfs" element={<div>Мои PDF page</div>} />
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Название")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Название"), {
+      target: { value: "Distributed Systems" },
+    });
+    fireEvent.change(screen.getByLabelText("PDF-файл"), {
+      target: {
+        files: [new File(["%PDF-1.4"], "distributed.pdf", { type: "application/pdf" })],
+      },
+    });
+
+    const submitButton = screen.getByRole("button", { name: "Отправить PDF" });
+    fireEvent.submit(submitButton.closest("form") as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Отправляется..." })
+      ).toBeDisabled();
+    });
+
+    resolveSubmission?.();
+
+    await waitFor(() => {
+      expect(screen.getByText("Мои PDF page")).toBeInTheDocument();
+    });
   });
 });

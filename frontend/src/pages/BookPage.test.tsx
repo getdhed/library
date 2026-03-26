@@ -34,6 +34,7 @@ vi.mock("../api/library", () => ({
     })
   ),
   markOpened: vi.fn(() => Promise.resolve()),
+  toggleDocumentFavorite: vi.fn(() => Promise.resolve()),
   unfavoriteDocument: vi.fn(),
   documentCoverUrl: vi.fn(() => "/api/documents/1/cover"),
 }));

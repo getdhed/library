@@ -1,17 +1,26 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  documentFileUrl,
-  favoriteDocument,
+  Badge,
+  Box,
+  Button,
+  Pagination,
+  Stack,
+  Typography,
+} from "@mui/material";
+import { useSearchParams } from "react-router-dom";
+import {
   getDepartments,
   getDocuments,
   getFaculties,
   markOpened,
-  unfavoriteDocument,
+  toggleDocumentFavorite,
 } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
+import CatalogFiltersDialog from "../components/CatalogFiltersDialog";
+import DocumentCardActions from "../components/DocumentCardActions";
 import DocumentListItem from "../components/DocumentListItem";
+import { ContentCard, PageHeader, PageShell } from "../components/mui-primitives";
 import type { Department, Faculty, PagedDocuments } from "../types";
-import { useSearchParams } from "react-router-dom";
 
 type FilterDraft = {
   facultyId: string;
@@ -76,21 +85,24 @@ const BrowsePage: React.FC = () => {
       .catch(console.error);
   }, [effectiveFacultyId]);
 
-  useEffect(() => {
+  const loadDocuments = useCallback(async () => {
     if (!token) {
       return;
     }
 
-    getDocuments(token, {
+    const response = await getDocuments(token, {
       sort,
       facultyId,
       departmentId,
       type,
       page,
-    })
-      .then(setPayload)
-      .catch(console.error);
+    });
+    setPayload(response);
   }, [departmentId, facultyId, page, sort, token, type]);
+
+  useEffect(() => {
+    loadDocuments().catch(console.error);
+  }, [loadDocuments]);
 
   const documentTypes = useMemo(() => {
     const items = payload?.items ?? [];
@@ -124,26 +136,12 @@ const BrowsePage: React.FC = () => {
     setParams(copy);
   }
 
-  function buildFreshFileUrl(item: PagedDocuments["items"][number]) {
-    return documentFileUrl(
-      item.id,
-      token ?? "",
-      false,
-      `${item.updatedAt}-${Date.now()}`
-    );
-  }
-
-  function handleQuickOpen(
-    event: React.MouseEvent<HTMLAnchorElement>,
-    item: PagedDocuments["items"][number]
-  ) {
-    event.preventDefault();
+  function handleQuickOpen(id: number) {
     if (!token) {
       return;
     }
 
-    void markOpened(token, item.id).catch(console.error);
-    window.open(buildFreshFileUrl(item), "_blank", "noopener,noreferrer");
+    void markOpened(token, id).catch(console.error);
   }
 
   async function toggleFavorite(id: number, isFavorite: boolean) {
@@ -151,23 +149,12 @@ const BrowsePage: React.FC = () => {
       return;
     }
 
-    if (isFavorite) {
-      await unfavoriteDocument(token, id);
-    } else {
-      await favoriteDocument(token, id);
-    }
-
-    const refreshed = await getDocuments(token, {
-      sort,
-      facultyId,
-      departmentId,
-      type,
-      page,
-    });
-    setPayload(refreshed);
+    await toggleDocumentFavorite(token, id, isFavorite);
+    await loadDocuments();
   }
 
   function applyFilters() {
+    setFiltersOpen(false);
     updateParam({
       facultyId: draftFilters.facultyId,
       departmentId: draftFilters.departmentId,
@@ -175,10 +162,10 @@ const BrowsePage: React.FC = () => {
       sort: draftFilters.sort,
       page: "1",
     });
-    setFiltersOpen(false);
   }
 
   function resetFilters() {
+    setFiltersOpen(false);
     setDraftFilters(emptyDraft);
     updateParam({
       facultyId: "",
@@ -187,243 +174,115 @@ const BrowsePage: React.FC = () => {
       sort: "date_desc",
       page: "1",
     });
-    setFiltersOpen(false);
   }
 
   return (
-    <div className="page-shell page-shell-clean">
-      <div className="page-header page-header-search">
-        <div>
-          <p className="eyebrow">Каталог</p>
-          <h1>Все документы</h1>
-          <p className="muted-text">Полный список материалов библиотеки.</p>
-        </div>
-        <div className="search-header-meta">
-          {payload?.total ?? 0} документов
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader
+        eyebrow="Каталог"
+        title="Все документы"
+        description="Полный список материалов библиотеки."
+        side={<Typography fontWeight={700}>{payload?.total ?? 0} документов</Typography>}
+      />
 
-      <div className="content-card content-card-flat search-results-shell">
-        <div className="search-toolbar search-toolbar-clean">
-          <button
+      <ContentCard>
+        <Box sx={{ mb: 1.8 }}>
+          <Button
             type="button"
-            className="secondary-button filter-trigger"
+            variant="outlined"
             onClick={() => setFiltersOpen(true)}
+            startIcon={
+              <Badge
+                color="primary"
+                badgeContent={activeFiltersCount > 0 ? activeFiltersCount : undefined}
+              >
+                <Box sx={{ width: 12 }} />
+              </Badge>
+            }
           >
-            <span>Фильтры</span>
-            {activeFiltersCount > 0 && (
-              <span className="pill">{activeFiltersCount}</span>
-            )}
-          </button>
-        </div>
+            Фильтры
+          </Button>
+        </Box>
 
-        {filtersOpen && (
-          <div className="filter-overlay" onClick={() => setFiltersOpen(false)}>
-            <aside
-              className="filter-panel"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="filter-panel-header">
-                <div>
-                  <p className="eyebrow">Каталог</p>
-                  <h2>Фильтры</h2>
-                </div>
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => setFiltersOpen(false)}
-                >
-                  Закрыть
-                </button>
-              </div>
-
-              <div className="filter-form">
-                <label className="filter-field">
-                  <span>Факультет</span>
-                  <select
-                    aria-label="Факультет"
-                    value={draftFilters.facultyId}
-                    onChange={(event) =>
-                      setDraftFilters((current) => ({
-                        ...current,
-                        facultyId: event.target.value,
-                        departmentId: "",
-                      }))
-                    }
-                  >
-                    <option value="">Все факультеты</option>
-                    {faculties.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="filter-field">
-                  <span>Кафедра</span>
-                  <select
-                    aria-label="Кафедра"
-                    value={draftFilters.departmentId}
-                    disabled={!draftFilters.facultyId}
-                    onChange={(event) =>
-                      setDraftFilters((current) => ({
-                        ...current,
-                        departmentId: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">Все кафедры</option>
-                    {departments.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="filter-field">
-                  <span>Тип документа</span>
-                  <select
-                    aria-label="Тип документа"
-                    value={draftFilters.type}
-                    onChange={(event) =>
-                      setDraftFilters((current) => ({
-                        ...current,
-                        type: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">Все типы</option>
-                    {documentTypes.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="filter-field">
-                  <span>Сортировка</span>
-                  <select
-                    aria-label="Сортировка"
-                    value={draftFilters.sort}
-                    onChange={(event) =>
-                      setDraftFilters((current) => ({
-                        ...current,
-                        sort: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="date_desc">Сначала новые</option>
-                    <option value="date_asc">Сначала старые</option>
-                    <option value="size_desc">Сначала крупные</option>
-                    <option value="size_asc">Сначала компактные</option>
-                    <option value="title_asc">По названию</option>
-                  </select>
-                </label>
-              </div>
-
-              <div className="filter-actions">
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={resetFilters}
-                >
-                  Сбросить
-                </button>
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={applyFilters}
-                >
-                  Применить
-                </button>
-              </div>
-            </aside>
-          </div>
-        )}
-
-        <div className="document-list catalog-document-list">
+        <Stack spacing={1.4}>
           {(payload?.items ?? []).map((item) => (
             <DocumentListItem
               key={item.id}
               item={item}
               token={token}
               actions={
-                <div className="document-card-action-set">
-                  <a
-                    className="document-action-button document-action-button-with-label"
-                    href={buildFreshFileUrl(item)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(event) => handleQuickOpen(event, item)}
-                    aria-label="Открыть документ"
-                    title="Открыть документ"
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zm0 1.5L17.5 8H14zM12 11a1 1 0 0 1 1 1v2.59l1.3-1.29a1 1 0 1 1 1.4 1.41l-3 3a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.41L11 14.59V12a1 1 0 0 1 1-1" />
-                    </svg>
-                    <span>Открыть</span>
-                  </a>
-                  <button
-                    type="button"
-                    className={`document-action-button document-action-button-with-label ${
-                      item.isFavorite ? "document-action-button-active" : ""
-                    }`}
-                    onClick={() => void toggleFavorite(item.id, item.isFavorite)}
-                    aria-label={
-                      item.isFavorite
-                        ? "Убрать из избранного"
-                        : "Добавить в избранное"
-                    }
-                    title={
-                      item.isFavorite
-                        ? "Убрать из избранного"
-                        : "Добавить в избранное"
-                    }
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="m12 20.4-1.45-1.32C5.4 14.36 2 11.28 2 7.5 2 4.42 4.42 2 7.5 2c1.74 0 3.41.81 4.5 2.09C13.09 2.81 14.76 2 16.5 2 19.58 2 22 4.42 22 7.5c0 3.78-3.4 6.86-8.55 11.58z" />
-                    </svg>
-                    <span>{item.isFavorite ? "В избранном" : "В избранное"}</span>
-                  </button>
-                </div>
+                <DocumentCardActions
+                  item={item}
+                  token={token}
+                  onOpen={handleQuickOpen}
+                  onToggleFavorite={toggleFavorite}
+                />
               }
             />
           ))}
 
           {payload && payload.items.length === 0 && (
-            <div className="empty-inline-state">
-              <h3>Документы не найдены</h3>
-              <p className="muted-text">
-                Попробуйте изменить фильтры или сбросить их.
-              </p>
-            </div>
+            <Typography color="text.secondary">Документы не найдены</Typography>
           )}
-        </div>
+        </Stack>
 
         {payload && payload.total > payload.pageSize && (
-          <div className="pagination-row pagination-row-clean">
-            <button
-              className="secondary-button"
-              disabled={page <= 1}
-              onClick={() => updateParam({ page: String(page - 1) })}
-            >
-              Назад
-            </button>
-            <span>Страница {page}</span>
-            <button
-              className="secondary-button"
-              disabled={page * payload.pageSize >= payload.total}
-              onClick={() => updateParam({ page: String(page + 1) })}
-            >
-              Вперёд
-            </button>
-          </div>
+          <Stack spacing={1} alignItems="center" sx={{ mt: 2.2 }}>
+            <Pagination
+              count={Math.max(1, Math.ceil(payload.total / payload.pageSize))}
+              page={page}
+              shape="rounded"
+              color="primary"
+              onChange={(_, nextPage) => updateParam({ page: String(nextPage) })}
+            />
+            <Typography variant="body2" color="text.secondary">
+              Страница {page} из {Math.max(1, Math.ceil(payload.total / payload.pageSize))}
+            </Typography>
+          </Stack>
         )}
-      </div>
-    </div>
+      </ContentCard>
+
+      <CatalogFiltersDialog
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onApply={applyFilters}
+        onReset={resetFilters}
+        idPrefix="browse"
+        faculties={faculties}
+        departments={departments}
+        documentTypes={documentTypes}
+        facultyValue={draftFilters.facultyId}
+        departmentValue={draftFilters.departmentId}
+        typeValue={draftFilters.type}
+        onFacultyChange={(value) =>
+          setDraftFilters((current) => ({
+            ...current,
+            facultyId: value,
+            departmentId: "",
+          }))
+        }
+        onDepartmentChange={(value) =>
+          setDraftFilters((current) => ({
+            ...current,
+            departmentId: value,
+          }))
+        }
+        onTypeChange={(value) =>
+          setDraftFilters((current) => ({
+            ...current,
+            type: value,
+          }))
+        }
+        includeSort
+        sortValue={draftFilters.sort}
+        onSortChange={(value) =>
+          setDraftFilters((current) => ({
+            ...current,
+            sort: value,
+          }))
+        }
+      />
+    </PageShell>
   );
 };
 

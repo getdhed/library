@@ -1,4 +1,5 @@
-import React from "react";
+﻿import React from "react";
+import { Chip, Paper, Stack, Typography } from "@mui/material";
 import { Link } from "react-router-dom";
 import DocumentCover from "./DocumentCover";
 import type { DocumentItem } from "../types";
@@ -7,47 +8,97 @@ type Props = {
   item: DocumentItem;
   token?: string | null;
   actions?: React.ReactNode;
-  className?: string;
+};
+
+const linkSx = {
+  color: "inherit",
+  textDecoration: "none",
+  display: "block",
 };
 
 const DocumentListItem: React.FC<Props> = ({
   item,
   token,
   actions,
-  className = "",
 }) => {
-  const cardClassName = ["document-list-card", className]
-    .filter(Boolean)
-    .join(" ");
-
   return (
-    <article className={cardClassName}>
+    <Paper
+      component="article"
+      sx={{
+        p: 2.25,
+        borderRadius: 3,
+        display: "grid",
+        gridTemplateColumns: { xs: "1fr", sm: "minmax(132px, 164px) minmax(0, 1fr)" },
+        gap: 2.25,
+        background: (theme) =>
+          theme.palette.mode === "light"
+            ? "linear-gradient(180deg, rgba(255,253,248,0.98), rgba(246,241,231,0.74))"
+            : "linear-gradient(180deg, rgba(23,33,43,0.96), rgba(29,39,50,0.88))",
+      }}
+    >
       <Link
         to={`/documents/${item.id}`}
-        className="document-preview-link"
+        style={linkSx}
         aria-label={`Открыть карточку ${item.title}`}
       >
         <DocumentCover item={item} token={token} />
       </Link>
 
-      <div className="document-list-content">
-        <div className="document-list-copy">
-          <div className="document-list-topline">
-            <span className="document-badge">{item.type}</span>
-            <span className="result-meta-inline">{item.year}</span>
-          </div>
+      <Stack
+        direction={{ xs: "column", md: actions ? "row" : "column" }}
+        justifyContent="space-between"
+        spacing={2}
+      >
+        <Stack spacing={0.75} minWidth={0}>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            <Chip size="small" label={item.type} />
+            <Typography variant="body2" color="text.secondary">
+              {item.year}
+            </Typography>
+          </Stack>
 
-          <Link to={`/documents/${item.id}`} className="document-list-title">
+          <Typography
+            component={Link}
+            to={`/documents/${item.id}`}
+            variant="h6"
+            fontWeight={700}
+            sx={{
+              ...linkSx,
+              lineHeight: 1.2,
+              "&:hover": {
+                color: "primary.main",
+              },
+            }}
+          >
             {item.title}
-          </Link>
+          </Typography>
 
-          <p className="document-list-meta">{item.department}</p>
-        </div>
+          {actions && item.author && (
+            <Typography fontWeight={600}>
+              {item.author}
+            </Typography>
+          )}
 
-        {actions && <div className="document-list-actions">{actions}</div>}
-      </div>
-    </article>
+          <Typography color="text.secondary">
+            {item.department}
+          </Typography>
+
+          {item.faculty && (
+            <Typography variant="body2" color="text.secondary">
+              {item.faculty}
+            </Typography>
+          )}
+        </Stack>
+
+        {actions && (
+          <Stack justifyContent="center" alignItems={{ xs: "flex-start", md: "flex-end" }}>
+            {actions}
+          </Stack>
+        )}
+      </Stack>
+    </Paper>
   );
 };
 
 export default DocumentListItem;
+

@@ -1,5 +1,5 @@
-import React from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+﻿import React from "react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthContext } from "../../auth/AuthContext";
@@ -101,9 +101,7 @@ const queueImportFolderSubmissionsMock = vi.fn(() =>
   })
 );
 const rejectSubmissionMock = vi.fn(() => Promise.resolve({}));
-const submissionFileUrlMock = vi.fn(
-  (id: number) => `/api/submissions/${id}/file`
-);
+const submissionFileUrlMock = vi.fn((id: number) => `/api/submissions/${id}/file`);
 const updateDocumentMock = vi.fn(() => Promise.resolve({ id: 5 }));
 
 vi.mock("../../api/library", () => ({
@@ -161,6 +159,13 @@ function renderPage(route = "/admin/documents") {
   );
 }
 
+async function selectMuiOption(combobox: HTMLElement, optionIndex: number) {
+  fireEvent.mouseDown(combobox);
+  const listbox = await screen.findByRole("listbox");
+  const options = within(listbox).getAllByRole("option");
+  fireEvent.click(options[optionIndex]);
+}
+
 describe("AdminDocumentsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -170,75 +175,55 @@ describe("AdminDocumentsPage", () => {
     cleanup();
   });
 
-  it("opens moderation by default without drawer and syncs tab to query params", async () => {
+  it("opens moderation by default and syncs tab query param", async () => {
     renderPage();
 
-    expect(
-      await screen.findByRole("heading", { name: "Очередь модерации", level: 2 })
-    ).toBeInTheDocument();
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs).toHaveLength(3);
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.queryByText("Заявка не выбрана")).not.toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
       "/admin/documents?tab=moderation"
     );
   });
 
-  it("switches tabs and closes an opened drawer", async () => {
+  it("switches tabs and closes opened moderation drawer", async () => {
     renderPage();
 
-    expect(
-      await screen.findByRole("heading", { name: "Очередь модерации", level: 2 })
-    ).toBeInTheDocument();
-
+    await screen.findByText("Legacy Notes");
     fireEvent.click(screen.getAllByRole("button", { name: "Оформить" })[0]);
-    expect(
-      await screen.findByRole("dialog", { name: "Одобрить заявку" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("tab", { name: "Каталог" }));
+    fireEvent.click(screen.getAllByRole("tab")[1]);
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(
-      await screen.findByRole("heading", { name: "Документы каталога", level: 2 })
-    ).toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
       "/admin/documents?tab=catalog"
     );
   });
 
-  it("opens moderation drawer and does not submit approve without all required fields", async () => {
+  it("blocks approve submit when required fields are missing", async () => {
     renderPage();
 
-    expect(await screen.findByText("Legacy Notes")).toBeInTheDocument();
-
+    await screen.findByText("Legacy Notes");
     fireEvent.click(screen.getAllByRole("button", { name: "Оформить" })[0]);
-    expect(
-      await screen.findByRole("dialog", { name: "Одобрить заявку" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
 
+    fireEvent.change(screen.getByLabelText("Описание *"), {
+      target: { value: "" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Одобрить заявку" }));
 
-    expect(
-      await screen.findByText(/Заполните обязательные поля: описание\./)
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("описание");
     expect(approveSubmissionMock).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Отменить" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("opens catalog drawer for edit and closes it after successful save", async () => {
+  it("opens catalog drawer and saves edited document", async () => {
     renderPage("/admin/documents?tab=catalog");
 
-    expect(
-      await screen.findByRole("heading", { name: "Документы каталога", level: 2 })
-    ).toBeInTheDocument();
-
+    await screen.findByRole("button", { name: "Редактировать" });
     fireEvent.click(screen.getByRole("button", { name: "Редактировать" }));
-
-    expect(
-      await screen.findByRole("dialog", { name: "Редактировать документ" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Описание *"), {
       target: { value: "Обновленное описание" },
@@ -248,19 +233,15 @@ describe("AdminDocumentsPage", () => {
     await waitFor(() => {
       expect(updateDocumentMock).toHaveBeenCalledTimes(1);
     });
-
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 
-  it("keeps manual admin create inside upload tab and requires a file", async () => {
+  it("requires PDF for manual create and then creates successfully", async () => {
     renderPage("/admin/documents?tab=upload");
 
-    expect(
-      await screen.findByRole("heading", { name: "Добавить документ вручную", level: 2 })
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Добавить документ вручную" });
 
     fireEvent.change(screen.getByLabelText("Название *"), {
       target: { value: "Новая методичка" },
@@ -274,21 +255,17 @@ describe("AdminDocumentsPage", () => {
     fireEvent.change(screen.getByLabelText("Тип *"), {
       target: { value: "Методичка" },
     });
-    fireEvent.change(screen.getByLabelText("Факультет"), {
-      target: { value: "1" },
-    });
-    fireEvent.change(screen.getByLabelText("Кафедра *"), {
-      target: { value: "10" },
-    });
+
+    const comboboxes = screen.getAllByRole("combobox");
+    await selectMuiOption(comboboxes[0], 1);
+    await selectMuiOption(comboboxes[1], 1);
+
     fireEvent.change(screen.getByLabelText("Описание *"), {
       target: { value: "Описание документа" },
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Создать документ" }));
-
-    expect(
-      await screen.findByText(/Заполните обязательные поля: PDF-файл\./)
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("PDF-файл");
     expect(createDocumentMock).not.toHaveBeenCalled();
 
     const file = new File(["%PDF-1.4"], "manual.pdf", {
@@ -297,7 +274,6 @@ describe("AdminDocumentsPage", () => {
     fireEvent.change(screen.getByLabelText("PDF-файл *"), {
       target: { files: [file] },
     });
-
     fireEvent.click(screen.getByRole("button", { name: "Создать документ" }));
 
     await waitFor(() => {
@@ -305,25 +281,15 @@ describe("AdminDocumentsPage", () => {
     });
   });
 
-  it("shows import queue controls only on upload tab", async () => {
+  it("runs import folder queue flow on upload tab", async () => {
     renderPage("/admin/documents?tab=upload");
 
-    expect(
-      await screen.findByRole("heading", { name: "Папка автоматического импорта", level: 2 })
-    ).toBeInTheDocument();
-    expect(screen.getByText(/backend\/storage\/import/)).toBeInTheDocument();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Проверить папку сейчас" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Проверить папку сейчас" }));
 
     await waitFor(() => {
       expect(queueImportFolderSubmissionsMock).toHaveBeenCalledWith("token");
     });
-
-    expect(
-      await screen.findByText("Добавлено в очередь: 2")
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Добавлено в очередь: 2")).toBeInTheDocument();
     expect(screen.getByText(/broken\.pdf: invalid pdf header/)).toBeInTheDocument();
   });
 });

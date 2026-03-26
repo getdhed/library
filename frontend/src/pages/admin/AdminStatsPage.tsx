@@ -1,8 +1,28 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
+import { Box, Grid, Paper, Stack, Typography } from "@mui/material";
 import { getAdminStats } from "../../api/library";
 import { useAuth } from "../../auth/AuthContext";
-import AdminSectionNav from "../../components/AdminSectionNav";
+import AdminFrame from "../../components/AdminFrame";
+import { ContentCard } from "../../components/mui-primitives";
 import type { AdminStats } from "../../types";
+
+type MetricCardProps = {
+  value: number;
+  label: string;
+  hint: string;
+};
+
+const MetricCard: React.FC<MetricCardProps> = ({ value, label, hint }) => (
+  <Paper sx={{ p: 2, borderRadius: 3, display: "grid", gap: 0.5 }}>
+    <Typography variant="h4" fontWeight={800} lineHeight={1.05}>
+      {value}
+    </Typography>
+    <Typography fontWeight={700}>{label}</Typography>
+    <Typography color="text.secondary" variant="body2">
+      {hint}
+    </Typography>
+  </Paper>
+);
 
 const AdminStatsPage: React.FC = () => {
   const { token } = useAuth();
@@ -18,84 +38,106 @@ const AdminStatsPage: React.FC = () => {
 
   if (!stats) {
     return (
-      <div className="page-shell admin-page-shell">
-        <AdminSectionNav />
-        <div className="content-card">Загрузка статистики...</div>
-      </div>
+      <AdminFrame
+        title="Статистика"
+        description="Сводка по каталогу, просмотрам, скачиваниям и поисковой активности."
+      >
+        <ContentCard>
+          <Typography>Загрузка статистики...</Typography>
+        </ContentCard>
+      </AdminFrame>
     );
   }
 
   return (
-    <div className="page-shell admin-page-shell">
-      <AdminSectionNav />
+    <AdminFrame
+      title="Статистика"
+      description="Сводка по каталогу, просмотрам, скачиваниям и поисковой активности."
+      chips={[
+        { label: `Документы: ${stats.documentsCount}` },
+        { label: `Открытия: ${stats.viewsToday}` },
+        { label: `Скачивания: ${stats.downloadsToday}` },
+      ]}
+    >
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", xl: "repeat(4, minmax(0, 1fr))" },
+          gap: 1.5,
+        }}
+      >
+        <MetricCard
+          value={stats.documentsCount}
+          label="Всего документов"
+          hint="Общий размер каталога"
+        />
+        <MetricCard
+          value={stats.viewsToday}
+          label="Открытий сегодня"
+          hint="Переходы к просмотру PDF"
+        />
+        <MetricCard
+          value={stats.downloadsToday}
+          label="Скачиваний сегодня"
+          hint="Выгрузки файлов пользователями"
+        />
+        <MetricCard
+          value={stats.searchesToday}
+          label="Поисков сегодня"
+          hint="Запросы по библиотеке"
+        />
+      </Box>
 
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">Админка</p>
-          <h1>Статистика</h1>
-          <p className="muted-text admin-page-copy">
-            Сводка по каталогу, просмотрам, скачиваниям и поисковой активности.
-          </p>
-        </div>
-      </div>
+      <Grid container spacing={1.5}>
+        <Grid size={{ xs: 12, md: 6, xl: 4 }}>
+          <ContentCard>
+            <Typography variant="h6" sx={{ mb: 1.2 }}>
+              Популярные запросы
+            </Typography>
+            <Stack spacing={1}>
+              {stats.topQueries.map((item) => (
+                <Stack key={item.name} direction="row" justifyContent="space-between">
+                  <Typography>{item.name}</Typography>
+                  <Typography fontWeight={700}>{item.count}</Typography>
+                </Stack>
+              ))}
+            </Stack>
+          </ContentCard>
+        </Grid>
 
-      <div className="stats-grid">
-        <div className="content-card stat-card">
-          <strong>{stats.documentsCount}</strong>
-          <span>Всего документов</span>
-        </div>
-        <div className="content-card stat-card">
-          <strong>{stats.viewsToday}</strong>
-          <span>Открытий сегодня</span>
-        </div>
-        <div className="content-card stat-card">
-          <strong>{stats.downloadsToday}</strong>
-          <span>Скачиваний сегодня</span>
-        </div>
-        <div className="content-card stat-card">
-          <strong>{stats.searchesToday}</strong>
-          <span>Поисков сегодня</span>
-        </div>
-      </div>
+        <Grid size={{ xs: 12, md: 6, xl: 4 }}>
+          <ContentCard>
+            <Typography variant="h6" sx={{ mb: 1.2 }}>
+              Популярные документы
+            </Typography>
+            <Stack spacing={1}>
+              {stats.topDocuments.map((item) => (
+                <Stack key={item.name} direction="row" justifyContent="space-between">
+                  <Typography>{item.name}</Typography>
+                  <Typography fontWeight={700}>{item.count}</Typography>
+                </Stack>
+              ))}
+            </Stack>
+          </ContentCard>
+        </Grid>
 
-      <div className="content-grid">
-        <div className="content-card">
-          <h2>Популярные запросы</h2>
-          <div className="stack-list">
-            {stats.topQueries.map((item) => (
-              <div key={item.name} className="stat-line">
-                {item.name}
-                <span>{item.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="content-card">
-          <h2>Популярные документы</h2>
-          <div className="stack-list">
-            {stats.topDocuments.map((item) => (
-              <div key={item.name} className="stat-line">
-                {item.name}
-                <span>{item.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="content-card">
-          <h2>Документы по факультетам</h2>
-          <div className="stack-list">
-            {stats.documentsByFaculty.map((item) => (
-              <div key={item.faculty} className="stat-line">
-                {item.faculty}
-                <span>{item.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
+        <Grid size={{ xs: 12, xl: 4 }}>
+          <ContentCard>
+            <Typography variant="h6" sx={{ mb: 1.2 }}>
+              Документы по факультетам
+            </Typography>
+            <Stack spacing={1}>
+              {stats.documentsByFaculty.map((item) => (
+                <Stack key={item.faculty} direction="row" justifyContent="space-between">
+                  <Typography>{item.faculty}</Typography>
+                  <Typography fontWeight={700}>{item.count}</Typography>
+                </Stack>
+              ))}
+            </Stack>
+          </ContentCard>
+        </Grid>
+      </Grid>
+    </AdminFrame>
   );
 };
 

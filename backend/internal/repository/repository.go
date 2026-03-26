@@ -78,17 +78,15 @@ func (r *Repository) EnsureSeedData(ctx context.Context, adminEmail, adminName, 
 		}
 	}
 
-	var adminCount int
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE role = 'admin'`).Scan(&adminCount); err != nil {
-		return err
-	}
-	if adminCount == 0 {
-		if _, err := r.db.ExecContext(ctx, `
-			INSERT INTO users(email, password_hash, full_name, role)
-			VALUES ($1, $2, $3, 'admin')
-		`, adminEmail, adminPasswordHash, adminName); err != nil {
-			return fmt.Errorf("seed admin: %w", err)
-		}
+	if _, err := r.db.ExecContext(ctx, `
+		INSERT INTO users(email, password_hash, full_name, role)
+		VALUES ($1, $2, $3, 'admin')
+		ON CONFLICT (email) DO UPDATE
+		SET password_hash = EXCLUDED.password_hash,
+			full_name = EXCLUDED.full_name,
+			role = 'admin'
+	`, strings.ToLower(strings.TrimSpace(adminEmail)), adminPasswordHash, strings.TrimSpace(adminName)); err != nil {
+		return fmt.Errorf("seed admin: %w", err)
 	}
 
 	return nil
@@ -316,7 +314,7 @@ func (r *Repository) ListSubmissionsByUser(ctx context.Context, userID int64) ([
 		LEFT JOIN departments dep ON dep.id = s.department_id
 		LEFT JOIN faculties f ON f.id = dep.faculty_id
 		WHERE s.user_id = $1
-		ORDER BY s.created_at DESC
+		ORDER BY s.updated_at DESC, s.created_at DESC
 	`, userID)
 	if err != nil {
 		return nil, err

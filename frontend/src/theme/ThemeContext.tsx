@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { CssBaseline, GlobalStyles, ThemeProvider as MuiThemeProvider } from "@mui/material";
+import { createAppTheme, getGlobalStyles } from "./muiTheme";
 
 export type ThemeMode = "light" | "dark";
 
@@ -31,6 +33,7 @@ function getInitialTheme(): ThemeMode {
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setThemeState] = useState<ThemeMode>(() => getInitialTheme());
+  const muiTheme = useMemo(() => createAppTheme(theme), [theme]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -48,7 +51,15 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     [theme]
   );
 
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+  return (
+    <ThemeContext.Provider value={value}>
+      <MuiThemeProvider theme={muiTheme}>
+        <CssBaseline />
+        <GlobalStyles styles={getGlobalStyles(theme)} />
+        {children}
+      </MuiThemeProvider>
+    </ThemeContext.Provider>
+  );
 };
 
 export function useTheme() {

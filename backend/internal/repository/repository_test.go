@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"library-backend/internal/auth"
 	"library-backend/internal/database"
 	"library-backend/internal/domain"
 )
@@ -156,6 +157,90 @@ func TestCreateAndApproveAdminImportSubmission(t *testing.T) {
 	}
 }
 
+func TestEnsureSeedDataUpsertsAdminCredentials(t *testing.T) {
+	adminDSN := os.Getenv("TEST_DATABASE_URL")
+	if strings.TrimSpace(adminDSN) == "" {
+		adminDSN = "postgres://library:library@localhost:5432/postgres?sslmode=disable"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	adminDB, err := sql.Open("postgres", adminDSN)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer adminDB.Close()
+
+	if err := adminDB.PingContext(ctx); err != nil {
+		t.Skipf("skipping integration test, postgres unavailable: %v", err)
+	}
+
+	dbName := fmt.Sprintf("library_repo_test_%d", time.Now().UnixNano())
+	if _, err := adminDB.ExecContext(ctx, `CREATE DATABASE `+dbName); err != nil {
+		t.Fatalf("create test database: %v", err)
+	}
+	defer adminDB.ExecContext(context.Background(), `DROP DATABASE IF EXISTS `+dbName)
+
+	testDSN := withDatabaseName(t, adminDSN, dbName)
+	db, err := database.Open(ctx, testDSN)
+	if err != nil {
+		t.Fatalf("database.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if err := database.Migrate(ctx, db, logger); err != nil {
+		t.Fatalf("database.Migrate() error = %v", err)
+	}
+
+	repo := New(db)
+
+	oldHash, err := auth.HashPassword("legacy-pass")
+	if err != nil {
+		t.Fatalf("HashPassword(old) error = %v", err)
+	}
+
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO users(email, password_hash, full_name, role)
+		VALUES ('admin@library.local', $1, 'Legacy Admin', 'admin')
+	`, oldHash); err != nil {
+		t.Fatalf("insert legacy admin: %v", err)
+	}
+
+	newHash, err := auth.HashPassword("admin12345")
+	if err != nil {
+		t.Fatalf("HashPassword(new) error = %v", err)
+	}
+
+	if err := repo.EnsureSeedData(ctx, "admin@library.local", "Администратор", newHash); err != nil {
+		t.Fatalf("EnsureSeedData() error = %v", err)
+	}
+
+	var passwordHash string
+	var fullName string
+	var role string
+	if err := db.QueryRowContext(ctx, `
+		SELECT password_hash, full_name, role
+		FROM users
+		WHERE email = 'admin@library.local'
+	`).Scan(&passwordHash, &fullName, &role); err != nil {
+		t.Fatalf("load admin after EnsureSeedData: %v", err)
+	}
+
+	if err := auth.ComparePassword(passwordHash, "admin12345"); err != nil {
+		t.Fatalf("expected admin password to be updated to configured value: %v", err)
+	}
+
+	if fullName != "Администратор" {
+		t.Fatalf("expected full name to be updated, got %q", fullName)
+	}
+
+	if role != "admin" {
+		t.Fatalf("expected role admin, got %q", role)
+	}
+}
+
 func TestListDocumentsSupportsEmptyAndTextSearch(t *testing.T) {
 	adminDSN := os.Getenv("TEST_DATABASE_URL")
 	if strings.TrimSpace(adminDSN) == "" {
@@ -275,6 +360,115 @@ func TestListDocumentsSupportsEmptyAndTextSearch(t *testing.T) {
 	}
 	if departmentSearch.Total != 1 || len(departmentSearch.Items) != 1 {
 		t.Fatalf("expected department search to find one document, got total=%d items=%d", departmentSearch.Total, len(departmentSearch.Items))
+	}
+}
+
+func TestListSubmissionsByUserOrdersByUpdatedAtDesc(t *testing.T) {
+	adminDSN := os.Getenv("TEST_DATABASE_URL")
+	if strings.TrimSpace(adminDSN) == "" {
+		adminDSN = "postgres://library:library@localhost:5432/postgres?sslmode=disable"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	adminDB, err := sql.Open("postgres", adminDSN)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer adminDB.Close()
+
+	if err := adminDB.PingContext(ctx); err != nil {
+		t.Skipf("skipping integration test, postgres unavailable: %v", err)
+	}
+
+	dbName := fmt.Sprintf("library_repo_test_%d", time.Now().UnixNano())
+	if _, err := adminDB.ExecContext(ctx, `CREATE DATABASE `+dbName); err != nil {
+		t.Fatalf("create test database: %v", err)
+	}
+	defer adminDB.ExecContext(context.Background(), `DROP DATABASE IF EXISTS `+dbName)
+
+	testDSN := withDatabaseName(t, adminDSN, dbName)
+	db, err := database.Open(ctx, testDSN)
+	if err != nil {
+		t.Fatalf("database.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if err := database.Migrate(ctx, db, logger); err != nil {
+		t.Fatalf("database.Migrate() error = %v", err)
+	}
+
+	repo := New(db)
+
+	var reviewerID int64
+	if err := db.QueryRowContext(ctx, `
+		INSERT INTO users(email, password_hash, full_name, role)
+		VALUES ('reviewer@example.com', 'hash', 'Reviewer', 'admin')
+		RETURNING id
+	`).Scan(&reviewerID); err != nil {
+		t.Fatalf("insert reviewer: %v", err)
+	}
+
+	var userID int64
+	if err := db.QueryRowContext(ctx, `
+		INSERT INTO users(email, password_hash, full_name, role)
+		VALUES ('submitter@example.com', 'hash', 'Submitter', 'user')
+		RETURNING id
+	`).Scan(&userID); err != nil {
+		t.Fatalf("insert submitter: %v", err)
+	}
+
+	firstSubmission, err := repo.CreateSubmission(ctx, userID, domain.CreateSubmissionInput{
+		Title:     "First draft",
+		FileName:  "first.pdf",
+		FilePath:  "pdfs/first.pdf",
+		FileSize:  1024,
+		MimeType:  "application/pdf",
+		CoverPath: "covers/first.png",
+		Source:    domain.SubmissionSourceUserUpload,
+	})
+	if err != nil {
+		t.Fatalf("CreateSubmission(first) error = %v", err)
+	}
+
+	time.Sleep(10 * time.Millisecond)
+
+	secondSubmission, err := repo.CreateSubmission(ctx, userID, domain.CreateSubmissionInput{
+		Title:     "Second draft",
+		FileName:  "second.pdf",
+		FilePath:  "pdfs/second.pdf",
+		FileSize:  2048,
+		MimeType:  "application/pdf",
+		CoverPath: "covers/second.png",
+		Source:    domain.SubmissionSourceUserUpload,
+	})
+	if err != nil {
+		t.Fatalf("CreateSubmission(second) error = %v", err)
+	}
+
+	time.Sleep(10 * time.Millisecond)
+
+	if _, err := repo.RejectSubmission(ctx, firstSubmission.ID, reviewerID, "Нужны правки"); err != nil {
+		t.Fatalf("RejectSubmission() error = %v", err)
+	}
+
+	items, err := repo.ListSubmissionsByUser(ctx, userID)
+	if err != nil {
+		t.Fatalf("ListSubmissionsByUser() error = %v", err)
+	}
+
+	if len(items) != 2 {
+		t.Fatalf("expected two submissions, got %d", len(items))
+	}
+
+	if items[0].ID != firstSubmission.ID {
+		t.Fatalf("expected rejected submission %d first after update, got %d", firstSubmission.ID, items[0].ID)
+	}
+
+	if items[1].ID != secondSubmission.ID {
+		t.Fatalf("expected untouched submission %d second, got %d", secondSubmission.ID, items[1].ID)
 	}
 }
 

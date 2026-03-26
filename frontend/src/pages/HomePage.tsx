@@ -1,18 +1,29 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+﻿import React, { useEffect, useMemo, useState } from "react";
+import {
+  Box,
+  Button,
+  Chip,
+  Grid,
+  IconButton,
+  Paper,
+  Stack,
+  TextField,
+  Typography,
+} from "@mui/material";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import { Link, useNavigate } from "react-router-dom";
 import { getHome, getSuggestions, markOpened } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
+import { ContentCard, PageShell } from "../components/mui-primitives";
 import DocumentListItem from "../components/DocumentListItem";
 import type { DocumentItem } from "../types";
 
 const HomePage: React.FC = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [recentItems, setRecentItems] = useState<DocumentItem[]>([]);
-  const [historyItems, setHistoryItems] = useState<{ id: number; query: string }[]>(
-    []
-  );
+  const [historyItems, setHistoryItems] = useState<{ id: number; query: string }[]>([]);
   const [suggestions, setSuggestions] = useState<DocumentItem[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -69,80 +80,134 @@ const HomePage: React.FC = () => {
   }
 
   return (
-    <div className="page-shell page-shell-clean">
-      <section
-        className={`hero-panel hero-panel-clean ${
-          showDropdown ? "hero-panel-search-open" : ""
-        }`}
+    <PageShell>
+      <Paper
+        sx={{
+          borderRadius: 4,
+          p: { xs: 2.25, md: 3.2 },
+          background:
+            "linear-gradient(145deg, rgba(10,108,116,0.16) 0%, rgba(255,253,248,0.96) 48%, rgba(10,108,116,0.08) 100%)",
+        }}
       >
-        <div className="hero-copy">
-          <h1>Поиск по библиотеке</h1>
-        </div>
+        <Grid container spacing={2.5}>
+          <Grid size={{ xs: 12, xl: 8 }}>
+            <Chip label="Material Green" sx={{ mb: 1.5 }} />
+            <Typography component="h1" variant="h3" sx={{ mb: 1.2, maxWidth: "14ch" }}>
+              Быстрый поиск по библиотеке PDF
+            </Typography>
+            <Typography color="text.secondary" sx={{ mb: 2.2, maxWidth: "70ch" }}>
+              Новый интерфейс объединяет каталог, историю запросов, избранное и
+              личные PDF в одном зелёном Material-style рабочем пространстве.
+            </Typography>
 
-        <form
-          className={`search-box search-box-hero ${
-            showDropdown ? "search-box-expanded" : ""
-          }`}
-          onSubmit={submitSearch}
-        >
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onFocus={() => setShowHistory(true)}
-            onBlur={() => window.setTimeout(() => setShowHistory(false), 150)}
-            placeholder="Название, автор, кафедра"
-          />
-          <button
-            className="primary-button search-submit-button"
-            type="submit"
-            aria-label="Поиск"
-            title="Поиск"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M10.5 4a6.5 6.5 0 1 0 4.14 11.52l4.92 4.92 1.41-1.41-4.92-4.92A6.5 6.5 0 0 0 10.5 4m0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9" />
-            </svg>
-          </button>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.1}>
+              <Button component={Link} to="/catalog" variant="contained">
+                Открыть каталог
+              </Button>
+              <Button component={Link} to="/favorites" variant="outlined">
+                Избранное
+              </Button>
+              {user?.role === "user" && (
+                <Button component={Link} to="/account/pdfs" variant="outlined">
+                  Мои PDF
+                </Button>
+              )}
+            </Stack>
+          </Grid>
+
+          <Grid size={{ xs: 12, xl: 4 }}>
+            <Stack spacing={1.1}>
+              <Paper sx={{ p: 2, borderRadius: 3 }}>
+                <Typography color="text.secondary">Документов под рукой</Typography>
+                <Typography variant="h4" fontWeight={800}>{recentItems.length}</Typography>
+              </Paper>
+              <Paper sx={{ p: 2, borderRadius: 3 }}>
+                <Typography color="text.secondary">Сохранённые запросы</Typography>
+                <Typography variant="h4" fontWeight={800}>{historyItems.length}</Typography>
+              </Paper>
+              <Paper sx={{ p: 2, borderRadius: 3 }}>
+                <Typography color="text.secondary">Рабочий сценарий</Typography>
+                <Typography>
+                  Ищите материалы, открывайте PDF, сохраняйте документы и
+                  следите за модерацией из одного интерфейса.
+                </Typography>
+              </Paper>
+            </Stack>
+          </Grid>
+        </Grid>
+
+        <Box component="form" onSubmit={submitSearch} sx={{ mt: 2.2, position: "relative" }}>
+          <Stack direction="row" spacing={1.2}>
+            <TextField
+              label="Поиск документов"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onFocus={() => setShowHistory(true)}
+              onBlur={() => window.setTimeout(() => setShowHistory(false), 150)}
+              placeholder="Название, автор, кафедра"
+              fullWidth
+            />
+            <IconButton
+              type="submit"
+              color="primary"
+              aria-label="Поиск"
+              title="Поиск"
+              sx={{
+                width: 54,
+                height: 54,
+                borderRadius: 2,
+                bgcolor: "primary.main",
+                color: "primary.contrastText",
+                "&:hover": {
+                  bgcolor: "primary.dark",
+                },
+              }}
+            >
+              <SearchRoundedIcon />
+            </IconButton>
+          </Stack>
 
           {showDropdown && (
-            <div className="search-dropdown">
-              <div className="dropdown-caption">
+            <Paper sx={{ position: "absolute", top: "calc(100% + 10px)", left: 0, right: 78, zIndex: 20, borderRadius: 2.25 }}>
+              <Typography sx={{ px: 1.7, py: 1, borderBottom: (theme) => `1px solid ${theme.palette.divider}`, color: "text.secondary", fontSize: 12 }}>
                 {query.trim() ? "Подходящие документы" : "Последние запросы"}
-              </div>
+              </Typography>
+
               {dropdownItems.map((item) => (
-                <button
+                <Button
                   key={item.key}
                   type="button"
-                  className="dropdown-row"
+                  fullWidth
+                  color="inherit"
                   onClick={item.onClick}
+                  sx={{ justifyContent: "flex-start", borderRadius: 0, px: 1.7, py: 1.1 }}
                 >
                   {item.label}
-                </button>
+                </Button>
               ))}
-            </div>
+            </Paper>
           )}
-        </form>
-      </section>
+        </Box>
+      </Paper>
 
-      <section className="content-card content-card-flat recent-section">
-        <div className="section-heading section-heading-tight">
-          <div>
-            <h2>Недавние документы</h2>
-          </div>
-        </div>
+      <ContentCard>
+        <Typography variant="h5" sx={{ mb: 1.5 }}>
+          Недавние документы
+        </Typography>
 
-        <div className="document-list recent-document-list">
+        <Stack spacing={1.5}>
           {recentItems.map((item) => (
             <DocumentListItem key={item.id} item={item} token={token} />
           ))}
 
           {recentItems.length === 0 && (
-            <div className="empty-inline-state">
-              <h3>Нет недавних документов</h3>
-            </div>
+            <Paper sx={{ p: 2.25, borderRadius: 3 }}>
+              <Typography variant="h6">Нет недавних документов</Typography>
+            </Paper>
           )}
-        </div>
-      </section>
-    </div>
+        </Stack>
+      </ContentCard>
+    </PageShell>
   );
 };
 

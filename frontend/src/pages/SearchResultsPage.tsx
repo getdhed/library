@@ -1,17 +1,37 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Box,
+  Button,
+  FormControl,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  Stack,
+  TextField,
+  Typography,
+} from "@mui/material";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  documentFileUrl,
-  favoriteDocument,
   getDepartments,
   getDocuments,
   getFaculties,
   getSuggestions,
   markOpened,
-  unfavoriteDocument,
+  toggleDocumentFavorite,
 } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
+import CatalogFiltersDialog from "../components/CatalogFiltersDialog";
+import DocumentCardActions from "../components/DocumentCardActions";
 import DocumentListItem from "../components/DocumentListItem";
+import { searchSortOptions } from "../constants/documentFilters";
+import {
+  ContentCard,
+  PageHeader,
+  PageShell,
+} from "../components/mui-primitives";
 import type { Department, DocumentItem, Faculty, PagedDocuments } from "../types";
 
 type FilterDraft = {
@@ -83,12 +103,25 @@ const SearchResultsPage: React.FC = () => {
       .catch(console.error);
   }, [effectiveFacultyId]);
 
-  useEffect(() => {
-    if (!token) return;
-    getDocuments(token, { q: query, sort, facultyId, departmentId, type, page })
-      .then(setPayload)
-      .catch(console.error);
+  const loadDocuments = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+
+    const response = await getDocuments(token, {
+      q: query,
+      sort,
+      facultyId,
+      departmentId,
+      type,
+      page,
+    });
+    setPayload(response);
   }, [departmentId, facultyId, page, query, sort, token, type]);
+
+  useEffect(() => {
+    loadDocuments().catch(console.error);
+  }, [loadDocuments]);
 
   useEffect(() => {
     if (!token || !searchInput.trim()) {
@@ -118,8 +151,7 @@ const SearchResultsPage: React.FC = () => {
     return Array.from(new Set(items.map((item) => item.type)));
   }, [payload?.items]);
 
-  const activeFiltersCount = [facultyId, departmentId, type].filter(Boolean)
-    .length;
+  const activeFiltersCount = [facultyId, departmentId, type].filter(Boolean).length;
   const showDropdown = showSuggestions && suggestions.length > 0;
 
   function updateParam(next: Record<string, string>) {
@@ -146,48 +178,29 @@ const SearchResultsPage: React.FC = () => {
   }
 
   async function openSuggestedDocument(item: DocumentItem) {
-    if (!token) return;
+    if (!token) {
+      return;
+    }
+
     await markOpened(token, item.id);
     navigate(`/documents/${item.id}`);
   }
 
-  function buildFreshFileUrl(item: DocumentItem) {
-    return documentFileUrl(
-      item.id,
-      token ?? "",
-      false,
-      `${item.updatedAt}-${Date.now()}`
-    );
-  }
-
-  function handleQuickOpen(
-    event: React.MouseEvent<HTMLAnchorElement>,
-    item: DocumentItem
-  ) {
-    event.preventDefault();
-    if (!token) return;
-
-    void markOpened(token, item.id).catch(console.error);
-    window.open(buildFreshFileUrl(item), "_blank", "noopener,noreferrer");
-  }
-
   async function toggleFavorite(id: number, isFavorite: boolean) {
-    if (!token) return;
-    if (isFavorite) {
-      await unfavoriteDocument(token, id);
-    } else {
-      await favoriteDocument(token, id);
+    if (!token) {
+      return;
     }
 
-    const refreshed = await getDocuments(token, {
-      q: query,
-      sort,
-      facultyId,
-      departmentId,
-      type,
-      page,
-    });
-    setPayload(refreshed);
+    await toggleDocumentFavorite(token, id, isFavorite);
+    await loadDocuments();
+  }
+
+  function handleQuickOpen(id: number) {
+    if (!token) {
+      return;
+    }
+
+    void markOpened(token, id).catch(console.error);
   }
 
   function applyFilters() {
@@ -210,290 +223,216 @@ const SearchResultsPage: React.FC = () => {
   }
 
   return (
-    <div className="page-shell page-shell-clean">
-      <div className="page-header page-header-search">
-        <div>
-          <p className="eyebrow">Поиск</p>
-          <h1>
-            {query ? `Результаты по запросу "${query}"` : "Все документы"}
-          </h1>
-        </div>
-        <div className="search-header-meta">
-          {payload?.total ?? 0} документов
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader
+        eyebrow="Поиск"
+        title={query ? `Результаты по запросу "${query}"` : "Все документы"}
+        side={<Typography fontWeight={700}>{payload?.total ?? 0} документов</Typography>}
+      />
 
-      <div
-        className={`content-card content-card-flat search-results-shell ${
-          showDropdown ? "search-results-shell-open" : ""
-        }`}
-      >
-        <form
-          className={`search-box search-box-results ${
-            showDropdown ? "search-box-expanded" : ""
-          }`}
-          onSubmit={submitSearch}
-        >
-          <input
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            onFocus={() => setShowSuggestions(true)}
-            onBlur={() => {
-              if (blurTimeoutRef.current) {
-                window.clearTimeout(blurTimeoutRef.current);
-              }
-              blurTimeoutRef.current = window.setTimeout(
-                () => setShowSuggestions(false),
-                150
-              );
-            }}
-            placeholder="Название, автор, кафедра"
-          />
-          <button
-            className="primary-button search-submit-button"
-            type="submit"
-            aria-label="Поиск"
-            title="Поиск"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M10.5 4a6.5 6.5 0 1 0 4.14 11.52l4.92 4.92 1.41-1.41-4.92-4.92A6.5 6.5 0 0 0 10.5 4m0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9" />
-            </svg>
-          </button>
+      <ContentCard>
+        <Box component="form" onSubmit={submitSearch} sx={{ position: "relative", mb: 1.8 }}>
+          <Stack direction="row" spacing={1.1}>
+            <TextField
+              label="Поиск документов"
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => {
+                if (blurTimeoutRef.current) {
+                  window.clearTimeout(blurTimeoutRef.current);
+                }
+                blurTimeoutRef.current = window.setTimeout(
+                  () => setShowSuggestions(false),
+                  150
+                );
+              }}
+              placeholder="Название, автор, кафедра"
+              fullWidth
+            />
+            <IconButton
+              type="submit"
+              aria-label="Поиск"
+              title="Поиск"
+              sx={{
+                width: 54,
+                height: 54,
+                borderRadius: 2,
+                bgcolor: "primary.main",
+                color: "primary.contrastText",
+                "&:hover": {
+                  bgcolor: "primary.dark",
+                },
+              }}
+            >
+              <SearchRoundedIcon />
+            </IconButton>
+          </Stack>
 
           {showDropdown && (
-            <div className="search-dropdown">
-              <div className="dropdown-caption">Подходящие документы</div>
+            <Paper
+              sx={{
+                position: "absolute",
+                top: "calc(100% + 10px)",
+                left: 0,
+                right: 78,
+                zIndex: 20,
+                borderRadius: 2.25,
+              }}
+            >
+              <Typography
+                sx={{
+                  px: 1.6,
+                  py: 1,
+                  borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+                  color: "text.secondary",
+                  fontSize: 12,
+                }}
+              >
+                Подходящие документы
+              </Typography>
               {suggestions.map((item) => (
-                <button
+                <Button
                   key={item.id}
                   type="button"
-                  className="dropdown-row"
+                  color="inherit"
+                  fullWidth
+                  sx={{ justifyContent: "flex-start", borderRadius: 0, px: 1.6, py: 1.1 }}
                   onClick={() => void openSuggestedDocument(item)}
                 >
                   {item.title}
-                </button>
+                </Button>
               ))}
-            </div>
+            </Paper>
           )}
-        </form>
+        </Box>
 
-        <div className="search-toolbar search-toolbar-clean">
-          <button
-            type="button"
-            className="secondary-button filter-trigger"
-            onClick={() => setFiltersOpen(true)}
-          >
-            <span>Фильтры</span>
-            {activeFiltersCount > 0 && <span className="pill">{activeFiltersCount}</span>}
-          </button>
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          spacing={1.2}
+          alignItems={{ xs: "stretch", md: "center" }}
+          justifyContent="space-between"
+          sx={{ mb: 1.8 }}
+        >
+          <Button type="button" variant="outlined" onClick={() => setFiltersOpen(true)}>
+            Фильтры{activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ""}
+          </Button>
 
-          <div className="toolbar-group toolbar-sort">
-            <label className="sort-label" htmlFor="search-sort">
-              Сортировка
-            </label>
-            <select
+          <FormControl sx={{ minWidth: 230 }}>
+            <InputLabel id="search-sort-label">Сортировка</InputLabel>
+            <Select
+              labelId="search-sort-label"
               id="search-sort"
               value={sort}
-              onChange={(e) => updateParam({ sort: e.target.value })}
+              label="Сортировка"
+              onChange={(event) => updateParam({ sort: event.target.value })}
             >
-              <option value="relevance">По совпадению</option>
-              <option value="date_desc">Сначала новые</option>
-              <option value="date_asc">Сначала старые</option>
-              <option value="size_desc">Сначала крупные</option>
-              <option value="size_asc">Сначала компактные</option>
-              <option value="title_asc">По названию</option>
-            </select>
-          </div>
-        </div>
+              {searchSortOptions.map((item) => (
+                <MenuItem key={item.value} value={item.value}>
+                  {item.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Stack>
 
-        <div className="search-submit-callout">
-          <div>
-            <strong>Не нашли нужный PDF?</strong>
-            <p className="muted-text">
-              Отправьте файл на модерацию, и после проверки он появится в
-              каталоге.
-            </p>
-          </div>
-          <Link className="primary-button" to="/submit">
-            Предложить документ
-          </Link>
-        </div>
+        <Paper sx={{ p: 2, borderRadius: 3, mb: 1.8 }}>
+          <Stack
+            direction={{ xs: "column", md: "row" }}
+            spacing={1.2}
+            alignItems={{ xs: "flex-start", md: "center" }}
+            justifyContent="space-between"
+          >
+            <Box>
+              <Typography fontWeight={700}>Не нашли нужный PDF?</Typography>
+              <Typography color="text.secondary">
+                Отправьте файл на модерацию, и после проверки он появится в каталоге.
+              </Typography>
+            </Box>
+            <Button component={Link} to="/submit" variant="contained">
+              Предложить документ
+            </Button>
+          </Stack>
+        </Paper>
 
-        {filtersOpen && (
-          <div className="filter-overlay" onClick={() => setFiltersOpen(false)}>
-            <aside
-              className="filter-panel"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="filter-panel-header">
-                <div>
-                  <p className="eyebrow">Поиск</p>
-                  <h2>Фильтры</h2>
-                </div>
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => setFiltersOpen(false)}
-                >
-                  Закрыть
-                </button>
-              </div>
-
-              <div className="filter-form">
-                <label className="filter-field">
-                  <span>Факультет</span>
-                  <select
-                    value={draftFilters.facultyId}
-                    onChange={(e) =>
-                      setDraftFilters((current) => ({
-                        ...current,
-                        facultyId: e.target.value,
-                        departmentId: "",
-                      }))
-                    }
-                  >
-                    <option value="">Все факультеты</option>
-                    {faculties.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="filter-field">
-                  <span>Кафедра</span>
-                  <select
-                    value={draftFilters.departmentId}
-                    disabled={!draftFilters.facultyId}
-                    onChange={(e) =>
-                      setDraftFilters((current) => ({
-                        ...current,
-                        departmentId: e.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">Все кафедры</option>
-                    {departments.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="filter-field">
-                  <span>Тип документа</span>
-                  <select
-                    value={draftFilters.type}
-                    onChange={(e) =>
-                      setDraftFilters((current) => ({
-                        ...current,
-                        type: e.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">Все типы</option>
-                    {documentTypes.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div className="filter-actions">
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={resetFilters}
-                >
-                  Сбросить
-                </button>
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={applyFilters}
-                >
-                  Применить
-                </button>
-              </div>
-            </aside>
-          </div>
-        )}
-
-        <div className="document-list">
+        <Stack spacing={1.4}>
           {(payload?.items ?? []).map((item) => (
             <DocumentListItem
               key={item.id}
               item={item}
               token={token}
               actions={
-                <div className="document-card-action-set">
-                  <a
-                    className="document-action-button document-action-button-with-label"
-                    href={buildFreshFileUrl(item)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(event) => handleQuickOpen(event, item)}
-                    aria-label="Открыть документ"
-                    title="Открыть документ"
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zm0 1.5L17.5 8H14zM12 11a1 1 0 0 1 1 1v2.59l1.3-1.29a1 1 0 1 1 1.4 1.41l-3 3a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.41L11 14.59V12a1 1 0 0 1 1-1" />
-                    </svg>
-                    <span>Открыть</span>
-                  </a>
-                  <button
-                    type="button"
-                    className={`document-action-button document-action-button-with-label ${
-                      item.isFavorite ? "document-action-button-active" : ""
-                    }`}
-                    onClick={() => toggleFavorite(item.id, item.isFavorite)}
-                    aria-label={
-                      item.isFavorite
-                        ? "Убрать из избранного"
-                        : "Добавить в избранное"
-                    }
-                    title={
-                      item.isFavorite
-                        ? "Убрать из избранного"
-                        : "Добавить в избранное"
-                    }
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="m12 20.4-1.45-1.32C5.4 14.36 2 11.28 2 7.5 2 4.42 4.42 2 7.5 2c1.74 0 3.41.81 4.5 2.09C13.09 2.81 14.76 2 16.5 2 19.58 2 22 4.42 22 7.5c0 3.78-3.4 6.86-8.55 11.58z" />
-                    </svg>
-                    <span>{item.isFavorite ? "В избранном" : "В избранное"}</span>
-                  </button>
-                </div>
+                <DocumentCardActions
+                  item={item}
+                  token={token}
+                  onOpen={handleQuickOpen}
+                  onToggleFavorite={toggleFavorite}
+                />
               }
             />
           ))}
-        </div>
+        </Stack>
 
         {payload && payload.total > payload.pageSize && (
-          <div className="pagination-row pagination-row-clean">
-            <button
-              className="secondary-button"
+          <Stack
+            direction="row"
+            spacing={1.2}
+            alignItems="center"
+            justifyContent="center"
+            sx={{ mt: 2.2 }}
+          >
+            <Button
+              variant="outlined"
               disabled={page <= 1}
               onClick={() => updateParam({ page: String(page - 1) })}
             >
               Назад
-            </button>
-            <span>Страница {page}</span>
-            <button
-              className="secondary-button"
+            </Button>
+            <Typography>Страница {page}</Typography>
+            <Button
+              variant="outlined"
               disabled={page * payload.pageSize >= payload.total}
               onClick={() => updateParam({ page: String(page + 1) })}
             >
               Вперёд
-            </button>
-          </div>
+            </Button>
+          </Stack>
         )}
-      </div>
-    </div>
+      </ContentCard>
+
+      <CatalogFiltersDialog
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onApply={applyFilters}
+        onReset={resetFilters}
+        idPrefix="search"
+        faculties={faculties}
+        departments={departments}
+        documentTypes={documentTypes}
+        facultyValue={draftFilters.facultyId}
+        departmentValue={draftFilters.departmentId}
+        typeValue={draftFilters.type}
+        onFacultyChange={(value) =>
+          setDraftFilters((current) => ({
+            ...current,
+            facultyId: value,
+            departmentId: "",
+          }))
+        }
+        onDepartmentChange={(value) =>
+          setDraftFilters((current) => ({
+            ...current,
+            departmentId: value,
+          }))
+        }
+        onTypeChange={(value) =>
+          setDraftFilters((current) => ({
+            ...current,
+            type: value,
+          }))
+        }
+      />
+    </PageShell>
   );
 };
 

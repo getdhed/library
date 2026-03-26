@@ -57,12 +57,18 @@ describe("AdminStatsPage", () => {
     cleanup();
   });
 
-  it("renders admin subnav and clean russian labels", async () => {
+  it("renders admin subnav and stats sections", async () => {
     renderPage();
 
     expect(await screen.findByRole("heading", { name: "Статистика" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Документы" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Статистика" })).toHaveClass("active");
+
+    const activeLink = screen
+      .getAllByRole("link")
+      .find((link) => link.getAttribute("aria-current") === "page");
+    expect(activeLink).toBeDefined();
+    expect(activeLink).toHaveTextContent("Статистика");
+
     expect(screen.getByText("Всего документов")).toBeInTheDocument();
     expect(screen.getByText("Популярные запросы")).toBeInTheDocument();
     expect(screen.getByText("Документы по факультетам")).toBeInTheDocument();

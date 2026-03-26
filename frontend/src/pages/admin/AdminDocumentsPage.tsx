@@ -1,6 +1,48 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
+  Alert,
+  Box,
+  Card,
+  CardActions,
+  CardContent,
+  Button,
+  Checkbox,
+  Chip,
+  Divider,
+  Drawer,
+  FormControl,
+  FormControlLabel,
+  IconButton,
+  InputLabel,
+  List,
+  ListItem,
+  ListItemText,
+  MenuItem,
+  Paper,
+  Select,
+  Stack,
+  Tab,
+  Tabs,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Tooltip,
+  Typography,
+  alpha,
+  useMediaQuery,
+} from "@mui/material";
+import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
+import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
+import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
+import RemoveCircleOutlineRoundedIcon from "@mui/icons-material/RemoveCircleOutlineRounded";
+import {
   approveSubmission,
   createDocument,
   deleteDocument,
@@ -14,7 +56,17 @@ import {
   updateDocument,
 } from "../../api/library";
 import { useAuth } from "../../auth/AuthContext";
-import AdminSectionNav from "../../components/AdminSectionNav";
+import AdminFrame from "../../components/AdminFrame";
+import {
+  cardActionIconButtonDangerSx,
+  cardActionIconButtonPrimarySx,
+  cardActionIconButtonSx,
+  ContentCard,
+  eyebrowSx,
+  filterPanelSx,
+  statusToneChipSx,
+  tableSurfaceSx,
+} from "../../components/mui-primitives";
 import type {
   Department,
   DocumentItem,
@@ -48,9 +100,11 @@ type DocumentFormFieldsProps = {
   faculties: Faculty[];
   departments: Department[];
   fileLabel?: string;
+  idPrefix: string;
 };
 
 type AdminDrawerProps = {
+  open: boolean;
   eyebrow: string;
   title: string;
   titleId: string;
@@ -198,169 +252,210 @@ function getDepartmentsForFaculty(
   );
 }
 
+function submissionStatusTone(status: SubmissionStatus) {
+  if (status === "approved") {
+    return "success" as const;
+  }
+
+  if (status === "rejected") {
+    return "danger" as const;
+  }
+
+  return "warning" as const;
+}
+
 const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
   form,
   setForm,
   faculties,
   departments,
   fileLabel,
+  idPrefix,
 }) => {
   return (
-    <>
-      <label className="form-field">
-        <span>Название *</span>
-        <input
-          value={form.title}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, title: event.target.value }))
-          }
-          placeholder="Название"
-          required
-        />
-      </label>
+    <Stack spacing={1.4}>
+      <TextField
+        label="Название *"
+        value={form.title}
+        onChange={(event) =>
+          setForm((current) => ({ ...current, title: event.target.value }))
+        }
+        placeholder="Название"
+        required
+        fullWidth
+        inputProps={{ "aria-label": "Название *" }}
+      />
 
-      <label className="form-field">
-        <span>Автор *</span>
-        <input
-          value={form.author}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, author: event.target.value }))
-          }
-          placeholder="Автор"
-          required
-        />
-      </label>
+      <TextField
+        label="Автор *"
+        value={form.author}
+        onChange={(event) =>
+          setForm((current) => ({ ...current, author: event.target.value }))
+        }
+        placeholder="Автор"
+        required
+        fullWidth
+        inputProps={{ "aria-label": "Автор *" }}
+      />
 
-      <label className="form-field">
-        <span>Год *</span>
-        <input
-          value={String(form.year || "")}
-          onChange={(event) =>
-            setForm((current) => ({
-              ...current,
-              year: Number(event.target.value),
-            }))
-          }
-          placeholder="Год"
-          type="number"
-          required
-        />
-      </label>
+      <TextField
+        label="Год *"
+        value={String(form.year || "")}
+        onChange={(event) =>
+          setForm((current) => ({
+            ...current,
+            year: Number(event.target.value),
+          }))
+        }
+        placeholder="Год"
+        type="number"
+        required
+        fullWidth
+        inputProps={{ "aria-label": "Год *" }}
+      />
 
-      <label className="form-field">
-        <span>Тип *</span>
-        <input
-          value={form.type}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, type: event.target.value }))
-          }
-          placeholder="Тип"
-          required
-        />
-      </label>
+      <TextField
+        label="Тип *"
+        value={form.type}
+        onChange={(event) =>
+          setForm((current) => ({ ...current, type: event.target.value }))
+        }
+        placeholder="Тип"
+        required
+        fullWidth
+        inputProps={{ "aria-label": "Тип *" }}
+      />
 
-      <label className="form-field">
-        <span>Факультет</span>
-        <select
-          value={form.facultyId || ""}
-          onChange={(event) =>
-            setForm((current) => ({
-              ...current,
-              facultyId: Number(event.target.value) || 0,
-              departmentId: 0,
-            }))
-          }
-        >
-          <option value="">Факультет</option>
-          {faculties.map((faculty) => (
-            <option key={faculty.id} value={faculty.id}>
-              {faculty.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <TextField
+        select
+        label="Факультет"
+        value={form.facultyId || ""}
+        onChange={(event) =>
+          setForm((current) => ({
+            ...current,
+            facultyId: Number(event.target.value) || 0,
+            departmentId: 0,
+          }))
+        }
+        fullWidth
+        inputProps={{ "aria-label": "Факультет" }}
+      >
+        <MenuItem value="">Факультет</MenuItem>
+        {faculties.map((faculty) => (
+          <MenuItem key={faculty.id} value={faculty.id}>
+            {faculty.name}
+          </MenuItem>
+        ))}
+      </TextField>
 
-      <label className="form-field">
-        <span>Кафедра *</span>
-        <select
-          value={form.departmentId || ""}
-          onChange={(event) =>
-            setForm((current) => ({
-              ...current,
-              departmentId: Number(event.target.value) || 0,
-            }))
-          }
-          required
-        >
-          <option value="">Кафедра</option>
-          {departments.map((department) => (
-            <option key={department.id} value={department.id}>
-              {department.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <TextField
+        select
+        label="Кафедра *"
+        value={form.departmentId || ""}
+        onChange={(event) =>
+          setForm((current) => ({
+            ...current,
+            departmentId: Number(event.target.value) || 0,
+          }))
+        }
+        required
+        fullWidth
+        inputProps={{ "aria-label": "Кафедра *" }}
+      >
+        <MenuItem value="">Кафедра</MenuItem>
+        {departments.map((department) => (
+          <MenuItem key={department.id} value={department.id}>
+            {department.name}
+          </MenuItem>
+        ))}
+      </TextField>
 
-      <label className="form-field">
-        <span>Теги</span>
-        <input
-          value={form.tags}
-          onChange={(event) =>
-            setForm((current) => ({ ...current, tags: event.target.value }))
-          }
-          placeholder="Теги через запятую"
-        />
-      </label>
+      <TextField
+        label="Теги"
+        value={form.tags}
+        onChange={(event) =>
+          setForm((current) => ({ ...current, tags: event.target.value }))
+        }
+        placeholder="Теги через запятую"
+        fullWidth
+      />
 
       {fileLabel && (
-        <label className="file-label">
-          <span>{fileLabel}</span>
-          <input
-            type="file"
-            accept=".pdf,application/pdf"
+        <Box sx={{ display: "grid", gap: 0.8 }}>
+          <Typography fontWeight={600}>
+            {fileLabel}
+          </Typography>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "flex-start", sm: "center" }}>
+            <Button component="label" variant="outlined" type="button">
+              {form.file ? "Заменить PDF" : "Выбрать PDF"}
+              <Box
+                component="input"
+                type="file"
+                aria-label={fileLabel}
+                accept=".pdf,application/pdf"
+                onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                  setForm((current) => ({
+                    ...current,
+                    file: event.target.files?.[0] ?? null,
+                  }))
+                }
+                sx={{
+                  position: "absolute",
+                  width: 1,
+                  height: 1,
+                  p: 0,
+                  m: -1,
+                  overflow: "hidden",
+                  clip: "rect(0 0 0 0)",
+                  whiteSpace: "nowrap",
+                  border: 0,
+                }}
+              />
+            </Button>
+            <Typography variant="body2" color="text.secondary">
+              {form.file ? form.file.name : "Файл не выбран"}
+            </Typography>
+          </Stack>
+        </Box>
+      )}
+
+      <TextField
+        label="Описание *"
+        value={form.description}
+        onChange={(event) =>
+          setForm((current) => ({
+            ...current,
+            description: event.target.value,
+          }))
+        }
+        placeholder="Описание"
+        required
+        multiline
+        minRows={4}
+        fullWidth
+        inputProps={{ "aria-label": "Описание *" }}
+      />
+
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={form.isVisible}
             onChange={(event) =>
               setForm((current) => ({
                 ...current,
-                file: event.target.files?.[0] ?? null,
+                isVisible: event.target.checked,
               }))
             }
           />
-        </label>
-      )}
-
-      <label className="form-field">
-        <span>Описание *</span>
-        <textarea
-          value={form.description}
-          onChange={(event) =>
-            setForm((current) => ({
-              ...current,
-              description: event.target.value,
-            }))
-          }
-          placeholder="Описание"
-          required
-        />
-      </label>
-
-      <label className="checkbox-row">
-        <input
-          type="checkbox"
-          checked={form.isVisible}
-          onChange={(event) =>
-            setForm((current) => ({
-              ...current,
-              isVisible: event.target.checked,
-            }))
-          }
-        />
-        Документ видим пользователям
-      </label>
-    </>
+        }
+        label="Документ видим пользователям"
+      />
+    </Stack>
   );
 };
 
 const AdminDrawer: React.FC<AdminDrawerProps> = ({
+  open,
   eyebrow,
   title,
   titleId,
@@ -368,35 +463,50 @@ const AdminDrawer: React.FC<AdminDrawerProps> = ({
   children,
 }) => {
   return (
-    <>
-      <button
-        type="button"
-        className="admin-drawer-overlay"
-        aria-label="Закрыть окно оформления"
-        onClick={onClose}
-      />
-      <aside
-        className="admin-drawer"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
+    <Drawer
+      anchor="right"
+      variant="persistent"
+      open={open}
+      onClose={onClose}
+      slotProps={{
+        paper: {
+          role: "dialog",
+          "aria-modal": true,
+          "aria-labelledby": titleId,
+          sx: {
+            width: { xs: "100%", sm: "min(560px, 100vw)" },
+            height: "100dvh",
+            p: 2.25,
+            display: "grid",
+            gridTemplateRows: "auto minmax(0, 1fr)",
+            gap: 1.5,
+          },
+        },
+      }}
+    >
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={1.25}
+        justifyContent="space-between"
+        alignItems={{ xs: "flex-start", sm: "center" }}
       >
-        <div className="admin-drawer-header">
-          <div>
-            <p className="eyebrow">{eyebrow}</p>
-            <h2 id={titleId}>{title}</h2>
-          </div>
-          <button
-            type="button"
-            className="secondary-button admin-drawer-close"
-            onClick={onClose}
+        <Box>
+          <Typography
+            variant="caption"
+            sx={eyebrowSx}
           >
-            Закрыть
-          </button>
-        </div>
-        <div className="admin-drawer-body">{children}</div>
-      </aside>
-    </>
+            {eyebrow}
+          </Typography>
+          <Typography id={titleId} variant="h5">
+            {title}
+          </Typography>
+        </Box>
+        <Button type="button" variant="outlined" onClick={onClose}>
+          Закрыть
+        </Button>
+      </Stack>
+      <Box sx={{ overflowY: "auto", pr: 0.5 }}>{children}</Box>
+    </Drawer>
   );
 };
 
@@ -581,32 +691,23 @@ const AdminDocumentsPage: React.FC = () => {
     };
   }, [submissions]);
 
+  const catalogSummary = useMemo(() => {
+    const items = payload?.items ?? [];
+    const visibleCount = items.filter((item) => item.isVisible).length;
+    return {
+      visibleCount,
+      hiddenCount: items.length - visibleCount,
+    };
+  }, [payload]);
+
+  const isDesktop = useMediaQuery("(min-width:960px)", {
+    defaultMatches: true,
+    noSsr: true,
+  });
+
   const showModerationDrawer =
     activeTab === "moderation" && Boolean(approvingSubmission);
   const showCatalogDrawer = activeTab === "catalog" && Boolean(editingDocument);
-  const drawerOpen = showModerationDrawer || showCatalogDrawer;
-
-  useEffect(() => {
-    if (!drawerOpen) {
-      document.body.style.removeProperty("overflow");
-      return;
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        closeDrawer();
-      }
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [drawerOpen]);
 
   function switchTab(nextTab: AdminTab, preserveSelection = false) {
     if (!preserveSelection && nextTab !== activeTab) {
@@ -771,532 +872,878 @@ const AdminDocumentsPage: React.FC = () => {
   }
 
   return (
-    <div className="page-shell admin-page-shell">
-      <AdminSectionNav />
-
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">Админка</p>
-          <h1>Управление документами</h1>
-          <p className="muted-text admin-page-copy">
-            Каталог, очередь модерации и загрузка PDF теперь разнесены по
-            отдельным режимам.
-          </p>
-        </div>
-      </div>
-
-      <div className="admin-tab-nav" role="tablist" aria-label="Режимы админки">
-        {adminTabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === tab.id}
-            className={`admin-tab-button ${
-              activeTab === tab.id ? "active" : ""
-            }`}
-            onClick={() => switchTab(tab.id)}
+    <AdminFrame
+      title="Управление документами"
+      description="Каталог, очередь модерации и загрузка PDF собраны в единую рабочую панель."
+      chips={[
+        { label: `На модерации: ${pendingSummary.total}` },
+        { label: `В каталоге: ${payload?.total ?? 0}` },
+      ]}
+    >
+      <ContentCard sx={{ p: { xs: 1.2, md: 1.6 } }}>
+        <Stack spacing={1.25}>
+          <Stack
+            direction={{ xs: "column", md: "row" }}
+            spacing={1}
+            justifyContent="space-between"
+            alignItems={{ xs: "flex-start", md: "center" }}
           >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+            <Box>
+              <Typography
+                variant="caption"
+                sx={{
+                  textTransform: "uppercase",
+                  letterSpacing: "0.12em",
+                  color: "secondary.main",
+                  fontWeight: 700,
+                }}
+              >
+                Рабочие режимы
+              </Typography>
+              <Typography color="text.secondary">
+                Выберите область работы: модерация, каталог или ручная загрузка.
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap">
+              <Chip label={`В очереди: ${pendingSummary.total}`} />
+              <Chip label={`Import: ${pendingSummary.importCount}`} />
+              <Chip label={`Пользователи: ${pendingSummary.userCount}`} />
+            </Stack>
+          </Stack>
+
+          <Paper sx={{ borderRadius: 2.5, px: 1, py: 0.75 }}>
+            <Tabs
+              value={activeTab}
+              onChange={(_, nextTab: AdminTab) => switchTab(nextTab)}
+              aria-label="Режимы админки"
+              variant="scrollable"
+              allowScrollButtonsMobile
+            >
+              {adminTabs.map((tab) => (
+                <Tab
+                  key={tab.id}
+                  value={tab.id}
+                  label={tab.label}
+                  sx={{ mr: 0.75 }}
+                />
+              ))}
+            </Tabs>
+          </Paper>
+        </Stack>
+      </ContentCard>
 
       {activeTab === "moderation" && (
-        <div className="content-card admin-list-card">
-          <div className="page-header page-header-compact">
-            <div>
-              <p className="eyebrow">Модерация</p>
-              <h2>Очередь модерации</h2>
-            </div>
-          </div>
+        <ContentCard>
+          <Stack spacing={2}>
+            <Stack>
+              <Typography
+                variant="caption"
+                sx={eyebrowSx}
+              >
+                Модерация
+              </Typography>
+              <Typography component="h2" variant="h5">
+                Очередь модерации
+              </Typography>
+            </Stack>
 
-          <div className="admin-summary-grid">
-            <div className="admin-summary-card">
-              <span>На модерации</span>
-              <strong>{pendingSummary.total}</strong>
-            </div>
-            <div className="admin-summary-card">
-              <span>Из import-папки</span>
-              <strong>{pendingSummary.importCount}</strong>
-            </div>
-            <div className="admin-summary-card">
-              <span>От пользователей</span>
-              <strong>{pendingSummary.userCount}</strong>
-            </div>
-          </div>
-
-          <div className="filters-bar admin-filters-bar">
-            <select
-              aria-label="Фильтр по источнику"
-              value={moderationSource}
-              onChange={(event) =>
-                setModerationSource(
-                  (event.target.value as SubmissionSource | "") ?? ""
-                )
-              }
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" },
+                gap: 1.25,
+              }}
             >
-              <option value="">Все источники</option>
-              <option value="user_upload">Пользователь</option>
-              <option value="admin_import">Import-папка</option>
-            </select>
-            <select
-              aria-label="Фильтр по статусу"
-              value={moderationStatus}
-              onChange={(event) =>
-                setModerationStatus(
-                  (event.target.value as ModerationFilterValue) ?? ""
-                )
-              }
-            >
-              <option value="">Все статусы</option>
-              <option value="pending">На модерации</option>
-              <option value="approved">Одобрено</option>
-              <option value="rejected">Отклонено</option>
-            </select>
-          </div>
+              <Paper sx={{ p: 1.8, borderRadius: 2.5 }}>
+                <Typography variant="body2" color="text.secondary">
+                  На модерации
+                </Typography>
+                <Typography variant="h4">{pendingSummary.total}</Typography>
+              </Paper>
+              <Paper sx={{ p: 1.8, borderRadius: 2.5 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Из import-папки
+                </Typography>
+                <Typography variant="h4">{pendingSummary.importCount}</Typography>
+              </Paper>
+              <Paper sx={{ p: 1.8, borderRadius: 2.5 }}>
+                <Typography variant="body2" color="text.secondary">
+                  От пользователей
+                </Typography>
+                <Typography variant="h4">{pendingSummary.userCount}</Typography>
+              </Paper>
+            </Box>
 
-          <div className="table-wrapper">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Название</th>
-                  <th>Источник</th>
-                  <th>Пользователь</th>
-                  <th>Кафедра</th>
-                  <th>Статус</th>
-                  <th>Создано</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
+            <Paper sx={filterPanelSx}>
+              <Stack spacing={1}>
+                <Typography variant="body2" color="text.secondary" fontWeight={600}>
+                  Фильтры очереди
+                </Typography>
+                <Stack direction={{ xs: "column", md: "row" }} spacing={1.25}>
+                  <FormControl sx={{ minWidth: 240 }}>
+                    <InputLabel id="moderation-source-label">Фильтр по источнику</InputLabel>
+                    <Select
+                      labelId="moderation-source-label"
+                      aria-label="Фильтр по источнику"
+                      value={moderationSource}
+                      label="Фильтр по источнику"
+                      onChange={(event) =>
+                        setModerationSource(
+                          (event.target.value as SubmissionSource | "") ?? ""
+                        )
+                      }
+                    >
+                      <MenuItem value="">Все источники</MenuItem>
+                      <MenuItem value="user_upload">Пользователь</MenuItem>
+                      <MenuItem value="admin_import">Import-папка</MenuItem>
+                    </Select>
+                  </FormControl>
+
+                  <FormControl sx={{ minWidth: 240 }}>
+                    <InputLabel id="moderation-status-label">Фильтр по статусу</InputLabel>
+                    <Select
+                      labelId="moderation-status-label"
+                      aria-label="Фильтр по статусу"
+                      value={moderationStatus}
+                      label="Фильтр по статусу"
+                      onChange={(event) =>
+                        setModerationStatus(
+                          (event.target.value as ModerationFilterValue) ?? ""
+                        )
+                      }
+                    >
+                      <MenuItem value="">Все статусы</MenuItem>
+                      <MenuItem value="pending">На модерации</MenuItem>
+                      <MenuItem value="approved">Одобрено</MenuItem>
+                      <MenuItem value="rejected">Отклонено</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Stack>
+              </Stack>
+            </Paper>
+
+            {isDesktop ? (
+              <TableContainer component={Paper} sx={tableSurfaceSx}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Название</TableCell>
+                      <TableCell>Источник</TableCell>
+                      <TableCell>Пользователь</TableCell>
+                      <TableCell>Кафедра</TableCell>
+                      <TableCell>Статус</TableCell>
+                      <TableCell>Создано</TableCell>
+                      <TableCell align="right">Действия</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {filteredSubmissions.map((item) => (
+                      <TableRow
+                        key={item.id}
+                        selected={approvingSubmission?.id === item.id}
+                        hover
+                      >
+                        <TableCell>{item.title}</TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            label={submissionSourceLabel(item.source)}
+                            sx={{
+                              borderColor: "divider",
+                              backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.1),
+                              color: "primary.dark",
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Typography>{item.uploaderName || "Пользователь"}</Typography>
+                          {item.uploaderEmail && (
+                            <Typography variant="body2" color="text.secondary">
+                              {item.uploaderEmail}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>{item.department || "Не указана"}</TableCell>
+                        <TableCell>
+                          <Chip size="small" label={submissionStatusLabel(item.status)} sx={statusToneChipSx(submissionStatusTone(item.status))} />
+                          {item.moderationNote && (
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.4 }}>
+                              {item.moderationNote}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>{formatDate(item.createdAt)}</TableCell>
+                        <TableCell align="right">
+                          <Stack direction="row" spacing={0.6} justifyContent="flex-end">
+                            <Tooltip title="Открыть PDF">
+                              <IconButton
+                                aria-label="Открыть PDF"
+                                size="small"
+                                component="a"
+                                href={submissionFileUrl(
+                                  item.id,
+                                  token ?? "",
+                                  false,
+                                  item.updatedAt
+                                )}
+                                target="_blank"
+                                rel="noreferrer"
+                                sx={cardActionIconButtonSx}
+                              >
+                                <PictureAsPdfRoundedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+
+                            {item.status === "pending" && (
+                              <>
+                                <Tooltip title="Оформить">
+                                  <IconButton
+                                    aria-label="Оформить"
+                                    size="small"
+                                    type="button"
+                                    onClick={() => startApprove(item)}
+                                    sx={[cardActionIconButtonSx, cardActionIconButtonPrimarySx]}
+                                  >
+                                    <CheckCircleRoundedIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Отклонить">
+                                  <IconButton
+                                    aria-label="Отклонить"
+                                    size="small"
+                                    type="button"
+                                    onClick={() => void handleRejectSubmission(item)}
+                                    sx={[cardActionIconButtonSx, cardActionIconButtonDangerSx]}
+                                  >
+                                    <RemoveCircleOutlineRoundedIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              </>
+                            )}
+
+                            {item.approvedDocumentId && (
+                              <Tooltip title="Открыть документ">
+                                <IconButton
+                                  aria-label="Открыть документ"
+                                  size="small"
+                                  component={Link}
+                                  to={`/documents/${item.approvedDocumentId}`}
+                                  sx={cardActionIconButtonSx}
+                                >
+                                  <OpenInNewRoundedIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {filteredSubmissions.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={7}>
+                          <Typography color="text.secondary">
+                            По текущим фильтрам заявки не найдены.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Stack spacing={1}>
                 {filteredSubmissions.map((item) => (
-                  <tr
-                    key={item.id}
-                    className={
-                      approvingSubmission?.id === item.id ? "admin-row-selected" : ""
-                    }
-                  >
-                    <td>{item.title}</td>
-                    <td>
-                      <span
-                        className={`submission-source-pill submission-source-${item.source}`}
-                      >
-                        {submissionSourceLabel(item.source)}
-                      </span>
-                    </td>
-                    <td>
-                      <div>{item.uploaderName || "Пользователь"}</div>
-                      {item.uploaderEmail && (
-                        <div className="muted-text">{item.uploaderEmail}</div>
-                      )}
-                    </td>
-                    <td>{item.department || "Не указана"}</td>
-                    <td>
-                      <span
-                        className={`submission-status-pill submission-status-${item.status}`}
-                      >
-                        {submissionStatusLabel(item.status)}
-                      </span>
+                  <Card key={item.id} sx={{ borderRadius: 2.5 }}>
+                    <CardContent sx={{ display: "grid", gap: 1 }}>
+                      <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="flex-start">
+                        <Typography fontWeight={700}>{item.title}</Typography>
+                        <Chip
+                          size="small"
+                          label={submissionStatusLabel(item.status)}
+                          sx={statusToneChipSx(submissionStatusTone(item.status))}
+                        />
+                      </Stack>
+
+                      <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap">
+                        <Chip
+                          size="small"
+                          label={submissionSourceLabel(item.source)}
+                          sx={{
+                            borderColor: "divider",
+                            backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.1),
+                            color: "primary.dark",
+                          }}
+                        />
+                        <Chip size="small" label={formatDate(item.createdAt)} />
+                      </Stack>
+
+                      <Typography variant="body2" color="text.secondary">
+                        {(item.uploaderName || "Пользователь") +
+                          (item.uploaderEmail ? ` • ${item.uploaderEmail}` : "")}
+                      </Typography>
+
+                      <Typography variant="body2" color="text.secondary">
+                        Кафедра: {item.department || "Не указана"}
+                      </Typography>
+
                       {item.moderationNote && (
-                        <div className="muted-text submission-table-note">
-                          {item.moderationNote}
-                        </div>
+                        <Typography variant="body2" color="text.secondary">
+                          Комментарий: {item.moderationNote}
+                        </Typography>
                       )}
-                    </td>
-                    <td>{formatDate(item.createdAt)}</td>
-                    <td className="actions-cell">
-                      <a
-                        className="secondary-button"
-                        href={submissionFileUrl(
-                          item.id,
-                          token ?? "",
-                          false,
-                          item.updatedAt
-                        )}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Открыть PDF
-                      </a>
+                    </CardContent>
+
+                    <Divider />
+                    <CardActions sx={{ px: 1.3, py: 0.95, justifyContent: "flex-end", gap: 0.6 }}>
+                      <Tooltip title="Открыть PDF">
+                        <IconButton
+                          aria-label="Открыть PDF"
+                          size="small"
+                          component="a"
+                          href={submissionFileUrl(
+                            item.id,
+                            token ?? "",
+                            false,
+                            item.updatedAt
+                          )}
+                          target="_blank"
+                          rel="noreferrer"
+                          sx={cardActionIconButtonSx}
+                        >
+                          <PictureAsPdfRoundedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+
                       {item.status === "pending" && (
                         <>
-                          <button
-                            className="primary-button"
-                            type="button"
-                            onClick={() => startApprove(item)}
-                          >
-                            Оформить
-                          </button>
-                          <button
-                            className="secondary-button danger"
-                            type="button"
-                            onClick={() => void handleRejectSubmission(item)}
-                          >
-                            Отклонить
-                          </button>
+                          <Tooltip title="Оформить">
+                            <IconButton
+                              aria-label="Оформить"
+                              size="small"
+                              type="button"
+                              onClick={() => startApprove(item)}
+                              sx={[cardActionIconButtonSx, cardActionIconButtonPrimarySx]}
+                            >
+                              <CheckCircleRoundedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Отклонить">
+                            <IconButton
+                              aria-label="Отклонить"
+                              size="small"
+                              type="button"
+                              onClick={() => void handleRejectSubmission(item)}
+                              sx={[cardActionIconButtonSx, cardActionIconButtonDangerSx]}
+                            >
+                              <RemoveCircleOutlineRoundedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                         </>
                       )}
+
                       {item.approvedDocumentId && (
-                        <Link
-                          className="secondary-button"
-                          to={`/documents/${item.approvedDocumentId}`}
-                        >
-                          Открыть документ
-                        </Link>
+                        <Tooltip title="Открыть документ">
+                          <IconButton
+                            aria-label="Открыть документ"
+                            size="small"
+                            component={Link}
+                            to={`/documents/${item.approvedDocumentId}`}
+                            sx={cardActionIconButtonSx}
+                          >
+                            <OpenInNewRoundedIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       )}
-                    </td>
-                  </tr>
+                    </CardActions>
+                  </Card>
                 ))}
                 {filteredSubmissions.length === 0 && (
-                  <tr>
-                    <td colSpan={7}>
-                      <div className="empty-inline-state">
-                        По текущим фильтрам заявки не найдены.
-                      </div>
-                    </td>
-                  </tr>
+                  <Paper sx={{ p: 2, borderRadius: 2.5 }}>
+                    <Typography color="text.secondary">
+                      По текущим фильтрам заявки не найдены.
+                    </Typography>
+                  </Paper>
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </Stack>
+            )}
+          </Stack>
+        </ContentCard>
       )}
 
       {activeTab === "catalog" && (
-        <div className="content-card admin-list-card">
-          <div className="page-header page-header-compact">
-            <div>
-              <p className="eyebrow">Каталог</p>
-              <h2>Документы каталога</h2>
-            </div>
-          </div>
+        <ContentCard>
+          <Stack spacing={2}>
+            <Stack>
+              <Typography
+                variant="caption"
+                sx={eyebrowSx}
+              >
+                Каталог
+              </Typography>
+              <Typography component="h2" variant="h5">
+                Документы каталога
+              </Typography>
+            </Stack>
 
-          <div className="filters-bar">
-            <input
-              className="inline-input"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Поиск по названию"
-            />
-            <select
-              value={sort}
-              onChange={(event) => setSort(event.target.value)}
-              aria-label="Сортировка документов"
-            >
-              <option value="date_desc">Новые</option>
-              <option value="date_asc">Старые</option>
-              <option value="title_asc">А-Я</option>
-              <option value="size_desc">Большой размер</option>
-            </select>
-            <select
-              value={visibility}
-              onChange={(event) => setVisibility(event.target.value)}
-              aria-label="Видимость документов"
-            >
-              <option value="">Вся видимость</option>
-              <option value="visible">Только видимые</option>
-              <option value="hidden">Только скрытые</option>
-            </select>
-            <select
-              value={filterFacultyId || ""}
-              onChange={(event) => {
-                setFilterFacultyId(Number(event.target.value) || 0);
-                setFilterDepartmentId(0);
-              }}
-              aria-label="Фильтр по факультету"
-            >
-              <option value="">Все факультеты</option>
-              {faculties.map((faculty) => (
-                <option key={faculty.id} value={faculty.id}>
-                  {faculty.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={filterDepartmentId || ""}
-              onChange={(event) =>
-                setFilterDepartmentId(Number(event.target.value) || 0)
-              }
-              aria-label="Фильтр по кафедре"
-            >
-              <option value="">Все кафедры</option>
-              {filterDepartments.map((department) => (
-                <option key={department.id} value={department.id}>
-                  {department.name}
-                </option>
-              ))}
-            </select>
-          </div>
+            <Paper sx={filterPanelSx}>
+              <Stack spacing={1}>
+                <Typography variant="body2" color="text.secondary" fontWeight={600}>
+                  Фильтры каталога
+                </Typography>
+                <Stack direction={{ xs: "column", lg: "row" }} spacing={1.25} flexWrap="wrap" useFlexGap>
+                  <TextField
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Поиск по названию"
+                    sx={{ minWidth: { xs: "100%", lg: 260 } }}
+                  />
 
-          <div className="table-wrapper">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Название</th>
-                  <th>Тип</th>
-                  <th>Кафедра</th>
-                  <th>Год</th>
-                  <th>Видимость</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
+                  <FormControl sx={{ minWidth: 180 }}>
+                    <InputLabel id="catalog-sort-label">Сортировка документов</InputLabel>
+                    <Select
+                      labelId="catalog-sort-label"
+                      value={sort}
+                      label="Сортировка документов"
+                      aria-label="Сортировка документов"
+                      onChange={(event) => setSort(event.target.value)}
+                    >
+                      <MenuItem value="date_desc">Новые</MenuItem>
+                      <MenuItem value="date_asc">Старые</MenuItem>
+                      <MenuItem value="title_asc">А-Я</MenuItem>
+                      <MenuItem value="size_desc">Большой размер</MenuItem>
+                    </Select>
+                  </FormControl>
+
+                  <FormControl sx={{ minWidth: 200 }}>
+                    <InputLabel id="catalog-visibility-label">Видимость документов</InputLabel>
+                    <Select
+                      labelId="catalog-visibility-label"
+                      value={visibility}
+                      label="Видимость документов"
+                      aria-label="Видимость документов"
+                      onChange={(event) => setVisibility(event.target.value)}
+                    >
+                      <MenuItem value="">Вся видимость</MenuItem>
+                      <MenuItem value="visible">Только видимые</MenuItem>
+                      <MenuItem value="hidden">Только скрытые</MenuItem>
+                    </Select>
+                  </FormControl>
+
+                  <FormControl sx={{ minWidth: 200 }}>
+                    <InputLabel id="catalog-faculty-filter-label">Фильтр по факультету</InputLabel>
+                    <Select
+                      labelId="catalog-faculty-filter-label"
+                      value={filterFacultyId || ""}
+                      label="Фильтр по факультету"
+                      aria-label="Фильтр по факультету"
+                      onChange={(event) => {
+                        setFilterFacultyId(Number(event.target.value) || 0);
+                        setFilterDepartmentId(0);
+                      }}
+                    >
+                      <MenuItem value="">Все факультеты</MenuItem>
+                      {faculties.map((faculty) => (
+                        <MenuItem key={faculty.id} value={faculty.id}>
+                          {faculty.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <FormControl sx={{ minWidth: 200 }}>
+                    <InputLabel id="catalog-department-filter-label">Фильтр по кафедре</InputLabel>
+                    <Select
+                      labelId="catalog-department-filter-label"
+                      value={filterDepartmentId || ""}
+                      label="Фильтр по кафедре"
+                      aria-label="Фильтр по кафедре"
+                      onChange={(event) =>
+                        setFilterDepartmentId(Number(event.target.value) || 0)
+                      }
+                    >
+                      <MenuItem value="">Все кафедры</MenuItem>
+                      {filterDepartments.map((department) => (
+                        <MenuItem key={department.id} value={department.id}>
+                          {department.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Stack>
+              </Stack>
+            </Paper>
+
+            <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap">
+              <Chip label={`Видимых: ${catalogSummary.visibleCount}`} />
+              <Chip label={`Скрытых: ${catalogSummary.hiddenCount}`} />
+            </Stack>
+
+            {isDesktop ? (
+              <TableContainer component={Paper} sx={tableSurfaceSx}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Название</TableCell>
+                      <TableCell>Тип</TableCell>
+                      <TableCell>Кафедра</TableCell>
+                      <TableCell>Год</TableCell>
+                      <TableCell>Видимость</TableCell>
+                      <TableCell align="right">Действия</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {(payload?.items ?? []).map((item) => (
+                      <TableRow key={item.id} selected={editingDocument?.id === item.id} hover>
+                        <TableCell>{item.title}</TableCell>
+                        <TableCell>{item.type}</TableCell>
+                        <TableCell>{item.department}</TableCell>
+                        <TableCell>{item.year}</TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            label={item.isVisible ? "Видим" : "Скрыт"}
+                            sx={statusToneChipSx(item.isVisible ? "success" : "danger")}
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Stack direction="row" spacing={0.6} justifyContent="flex-end">
+                            <Tooltip title="Редактировать">
+                              <IconButton
+                                aria-label="Редактировать"
+                                size="small"
+                                type="button"
+                                onClick={() => startEdit(item)}
+                                sx={[cardActionIconButtonSx, cardActionIconButtonPrimarySx]}
+                              >
+                                <EditRoundedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Удалить">
+                              <IconButton
+                                aria-label="Удалить"
+                                size="small"
+                                type="button"
+                                onClick={() => void removeDocument(item.id)}
+                                sx={[cardActionIconButtonSx, cardActionIconButtonDangerSx]}
+                              >
+                                <DeleteOutlineRoundedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {(payload?.items ?? []).length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6}>
+                          <Typography color="text.secondary">
+                            Документы по текущим фильтрам не найдены.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Stack spacing={1}>
                 {(payload?.items ?? []).map((item) => (
-                  <tr
-                    key={item.id}
-                    className={
-                      editingDocument?.id === item.id ? "admin-row-selected" : ""
-                    }
-                  >
-                    <td>{item.title}</td>
-                    <td>{item.type}</td>
-                    <td>{item.department}</td>
-                    <td>{item.year}</td>
-                    <td>{item.isVisible ? "Видим" : "Скрыт"}</td>
-                    <td className="actions-cell">
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={() => startEdit(item)}
-                      >
-                        Редактировать
-                      </button>
-                      <button
-                        className="secondary-button danger"
-                        type="button"
-                        onClick={() => void removeDocument(item.id)}
-                      >
-                        Удалить
-                      </button>
-                    </td>
-                  </tr>
+                  <Card key={item.id} sx={{ borderRadius: 2.5 }}>
+                    <CardContent sx={{ display: "grid", gap: 1 }}>
+                      <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="flex-start">
+                        <Typography fontWeight={700}>{item.title}</Typography>
+                        <Chip
+                          size="small"
+                          label={item.isVisible ? "Видим" : "Скрыт"}
+                          sx={statusToneChipSx(item.isVisible ? "success" : "danger")}
+                        />
+                      </Stack>
+
+                      <Typography variant="body2" color="text.secondary">
+                        {item.type} • {item.year}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {item.department}
+                      </Typography>
+                    </CardContent>
+                    <Divider />
+                    <CardActions sx={{ px: 1.3, py: 0.95, justifyContent: "flex-end", gap: 0.6 }}>
+                      <Tooltip title="Редактировать">
+                        <IconButton
+                          aria-label="Редактировать"
+                          size="small"
+                          type="button"
+                          onClick={() => startEdit(item)}
+                          sx={[cardActionIconButtonSx, cardActionIconButtonPrimarySx]}
+                        >
+                          <EditRoundedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Удалить">
+                        <IconButton
+                          aria-label="Удалить"
+                          size="small"
+                          type="button"
+                          onClick={() => void removeDocument(item.id)}
+                          sx={[cardActionIconButtonSx, cardActionIconButtonDangerSx]}
+                        >
+                          <DeleteOutlineRoundedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </CardActions>
+                  </Card>
                 ))}
-                {payload?.items.length === 0 && (
-                  <tr>
-                    <td colSpan={6}>
-                      <div className="empty-inline-state">
-                        Документы по текущим фильтрам не найдены.
-                      </div>
-                    </td>
-                  </tr>
+                {(payload?.items ?? []).length === 0 && (
+                  <Paper sx={{ p: 2, borderRadius: 2.5 }}>
+                    <Typography color="text.secondary">
+                      Документы по текущим фильтрам не найдены.
+                    </Typography>
+                  </Paper>
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </Stack>
+            )}
+          </Stack>
+        </ContentCard>
       )}
 
       {activeTab === "upload" && (
-        <div className="admin-upload-grid">
-          <div className="content-card admin-pane-card">
-            <div className="admin-pane-header">
-              <div>
-                <p className="eyebrow">Загрузка</p>
-                <h2>Добавить документ вручную</h2>
-              </div>
-            </div>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", xl: "1.05fr 0.95fr" },
+            gap: 2,
+          }}
+        >
+          <ContentCard>
+            <Stack spacing={1.5}>
+              <Stack>
+                <Typography
+                  variant="caption"
+                  sx={eyebrowSx}
+                >
+                  Загрузка
+                </Typography>
+                <Typography component="h2" variant="h5">
+                  Добавить документ вручную
+                </Typography>
+              </Stack>
 
-            <p className="admin-required-note">
-              Этот режим создаёт документ сразу в каталоге. Все поля со
-              звёздочкой обязательны.
-            </p>
+              <Typography color="text.secondary">
+                Этот режим создаёт документ сразу в каталоге. Все поля со
+                звёздочкой обязательны.
+              </Typography>
 
-            <form className="form-grid" onSubmit={handleCreateDocument} noValidate>
-              <DocumentFormFields
-                form={createForm}
-                setForm={setCreateForm}
-                faculties={faculties}
-                departments={createDepartments}
-                fileLabel="PDF-файл *"
-              />
+              <Stack component="form" spacing={1.5} onSubmit={handleCreateDocument} noValidate>
+                <DocumentFormFields
+                  form={createForm}
+                  setForm={setCreateForm}
+                  faculties={faculties}
+                  departments={createDepartments}
+                  fileLabel="PDF-файл *"
+                  idPrefix="admin-create"
+                />
 
-              {createFormError && <p className="error-text">{createFormError}</p>}
+                {createFormError && <Alert severity="error">{createFormError}</Alert>}
 
-              <div className="admin-form-actions">
-                <button className="primary-button" type="submit">
-                  Создать документ
-                </button>
-              </div>
-            </form>
-          </div>
+                <Box>
+                  <Button variant="contained" type="submit">
+                    Создать документ
+                  </Button>
+                </Box>
+              </Stack>
+            </Stack>
+          </ContentCard>
 
-          <div className="content-card admin-pane-card">
-            <div className="admin-pane-header">
-              <div>
-                <p className="eyebrow">Import-папка</p>
-                <h2>Папка автоматического импорта</h2>
-              </div>
-            </div>
+          <ContentCard>
+            <Stack spacing={1.5}>
+              <Stack>
+                <Typography
+                  variant="caption"
+                  sx={eyebrowSx}
+                >
+                  Import-папка
+                </Typography>
+                <Typography component="h2" variant="h5">
+                  Папка автоматического импорта
+                </Typography>
+              </Stack>
 
-            <div className="admin-import-copy">
-              <p className="muted-text">
+              <Typography color="text.secondary">
                 Кладите PDF в <code>backend/storage/import</code>. Новые файлы
                 автоматически попадают в очередь модерации и не появляются в
                 каталоге до одобрения.
-              </p>
-              <p className="muted-text">
+              </Typography>
+              <Typography color="text.secondary">
                 Если нужно, можно запустить проверку папки вручную и сразу
                 увидеть результат.
-              </p>
-            </div>
+              </Typography>
 
-            {importError && <p className="error-text">{importError}</p>}
+              {importError && <Alert severity="error">{importError}</Alert>}
 
-            {importResult && (
-              <div className="import-result">
-                <strong>Добавлено в очередь: {importResult.queued}</strong>
-                {importResult.errors.length > 0 && (
-                  <ul className="import-errors-list">
-                    {importResult.errors.map((item) => (
-                      <li key={`${item.fileName}-${item.error}`}>
-                        {item.fileName}: {item.error}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
+              {importResult && (
+                <Paper sx={{ p: 1.8, borderRadius: 2.5 }}>
+                  <Typography fontWeight={700}>
+                    Добавлено в очередь: {importResult.queued}
+                  </Typography>
+                  {importResult.errors.length > 0 && (
+                    <List dense disablePadding sx={{ mt: 1 }}>
+                      {importResult.errors.map((item) => (
+                        <ListItem key={`${item.fileName}-${item.error}`} disablePadding sx={{ py: 0.15 }}>
+                          <ListItemText primary={`${item.fileName}: ${item.error}`} />
+                        </ListItem>
+                      ))}
+                    </List>
+                  )}
+                </Paper>
+              )}
 
-            <div className="admin-form-actions">
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => void handleImportFromFolder()}
-              >
-                Проверить папку сейчас
-              </button>
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => switchTab("moderation")}
-              >
-                Перейти к модерации
-              </button>
-            </div>
-          </div>
-        </div>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Button
+                  variant="outlined"
+                  type="button"
+                  onClick={() => void handleImportFromFolder()}
+                >
+                  Проверить папку сейчас
+                </Button>
+                <Button
+                  variant="outlined"
+                  type="button"
+                  onClick={() => switchTab("moderation")}
+                >
+                  Перейти к модерации
+                </Button>
+              </Stack>
+            </Stack>
+          </ContentCard>
+        </Box>
       )}
 
       {showModerationDrawer && approvingSubmission && (
         <AdminDrawer
+          open={showModerationDrawer}
           eyebrow="Модерация"
           title="Одобрить заявку"
           titleId="admin-approve-drawer-title"
           onClose={closeDrawer}
         >
-          <p className="admin-required-note">
-            Заполните обязательные поля каталога. PDF уже загружен и будет
-            привязан к документу после одобрения.
-          </p>
+          <Stack spacing={1.5}>
+            <Typography color="text.secondary">
+              Заполните обязательные поля каталога. PDF уже загружен и будет
+              привязан к документу после одобрения.
+            </Typography>
 
-          <div className="submission-approve-summary">
-            <strong>{approvingSubmission.title}</strong>
-            <p className="muted-text">
-              Источник: {submissionSourceLabel(approvingSubmission.source)}
-            </p>
-            {approvingSubmission.department && (
-              <p className="submission-meta">
-                Предложенная кафедра: {approvingSubmission.department}
-              </p>
-            )}
-            {approvingSubmission.comment && (
-              <p className="submission-note">{approvingSubmission.comment}</p>
-            )}
-            <a
-              className="secondary-button"
-              href={submissionFileUrl(
-                approvingSubmission.id,
-                token ?? "",
-                false,
-                approvingSubmission.updatedAt
-              )}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Открыть PDF заявки
-            </a>
-          </div>
+            <Paper sx={{ p: 1.8, borderRadius: 2.5 }}>
+              <Stack spacing={0.75}>
+                <Typography fontWeight={700}>{approvingSubmission.title}</Typography>
+                <Typography color="text.secondary">
+                  Источник: {submissionSourceLabel(approvingSubmission.source)}
+                </Typography>
+                {approvingSubmission.department && (
+                  <Typography variant="body2">
+                    Предложенная кафедра: {approvingSubmission.department}
+                  </Typography>
+                )}
+                {approvingSubmission.comment && (
+                  <Typography variant="body2">{approvingSubmission.comment}</Typography>
+                )}
+                <Box sx={{ pt: 0.5 }}>
+                  <Button
+                    component="a"
+                    variant="outlined"
+                    href={submissionFileUrl(
+                      approvingSubmission.id,
+                      token ?? "",
+                      false,
+                      approvingSubmission.updatedAt
+                    )}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Открыть PDF заявки
+                  </Button>
+                </Box>
+              </Stack>
+            </Paper>
 
-          <form className="form-grid" onSubmit={handleApproveSubmission} noValidate>
-            <DocumentFormFields
-              form={approveForm}
-              setForm={setApproveForm}
-              faculties={faculties}
-              departments={approveDepartments}
-            />
+            <Stack component="form" spacing={1.5} onSubmit={handleApproveSubmission} noValidate>
+              <DocumentFormFields
+                form={approveForm}
+                setForm={setApproveForm}
+                faculties={faculties}
+                departments={approveDepartments}
+                idPrefix="admin-approve"
+              />
 
-            {approveFormError && <p className="error-text">{approveFormError}</p>}
+              {approveFormError && <Alert severity="error">{approveFormError}</Alert>}
 
-            <div className="admin-form-actions">
-              <button className="primary-button" type="submit">
-                Одобрить заявку
-              </button>
-              <button
-                className="secondary-button danger"
-                type="button"
-                onClick={() => void handleRejectSubmission(approvingSubmission)}
-              >
-                Отклонить
-              </button>
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={closeDrawer}
-              >
-                Отменить
-              </button>
-            </div>
-          </form>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Button variant="contained" type="submit">
+                  Одобрить заявку
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  type="button"
+                  onClick={() => void handleRejectSubmission(approvingSubmission)}
+                >
+                  Отклонить
+                </Button>
+                <Button variant="outlined" type="button" onClick={closeDrawer}>
+                  Отменить
+                </Button>
+              </Stack>
+            </Stack>
+          </Stack>
         </AdminDrawer>
       )}
 
       {showCatalogDrawer && editingDocument && (
         <AdminDrawer
+          open={showCatalogDrawer}
           eyebrow="Каталог"
           title="Редактировать документ"
           titleId="admin-edit-drawer-title"
           onClose={closeDrawer}
         >
-          <p className="admin-required-note">
-            Меняйте метаданные здесь. Новый PDF добавляйте только если нужно
-            заменить файл документа.
-          </p>
+          <Stack spacing={1.5}>
+            <Typography color="text.secondary">
+              Меняйте метаданные здесь. Новый PDF добавляйте только если нужно
+              заменить файл документа.
+            </Typography>
 
-          <form className="form-grid" onSubmit={handleUpdateDocument} noValidate>
-            <DocumentFormFields
-              form={editForm}
-              setForm={setEditForm}
-              faculties={faculties}
-              departments={editDepartments}
-              fileLabel="Новый PDF"
-            />
+            <Stack component="form" spacing={1.5} onSubmit={handleUpdateDocument} noValidate>
+              <DocumentFormFields
+                form={editForm}
+                setForm={setEditForm}
+                faculties={faculties}
+                departments={editDepartments}
+                fileLabel="Новый PDF"
+                idPrefix="admin-edit"
+              />
 
-            {editFormError && <p className="error-text">{editFormError}</p>}
+              {editFormError && <Alert severity="error">{editFormError}</Alert>}
 
-            <div className="admin-form-actions">
-              <button className="primary-button" type="submit">
-                Сохранить
-              </button>
-              <button
-                className="secondary-button danger"
-                type="button"
-                onClick={() => void removeDocument(editingDocument.id)}
-              >
-                Удалить
-              </button>
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={closeDrawer}
-              >
-                Отменить
-              </button>
-            </div>
-          </form>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Button variant="contained" type="submit">
+                  Сохранить
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  type="button"
+                  onClick={() => void removeDocument(editingDocument.id)}
+                >
+                  Удалить
+                </Button>
+                <Button variant="outlined" type="button" onClick={closeDrawer}>
+                  Отменить
+                </Button>
+              </Stack>
+            </Stack>
+          </Stack>
         </AdminDrawer>
       )}
-    </div>
+    </AdminFrame>
   );
 };
 

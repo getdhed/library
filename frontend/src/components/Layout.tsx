@@ -1,6 +1,37 @@
-import React, { useEffect, useRef, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
+import {
+  AppBar,
+  Avatar,
+  Box,
+  Button,
+  Divider,
+  Drawer,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  Stack,
+  Toolbar,
+  Typography,
+  alpha,
+  useTheme as useMuiTheme,
+} from "@mui/material";
+import HomeRoundedIcon from "@mui/icons-material/HomeRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import MenuBookRoundedIcon from "@mui/icons-material/MenuBookRounded";
+import FavoriteRoundedIcon from "@mui/icons-material/FavoriteRounded";
+import AdminPanelSettingsRoundedIcon from "@mui/icons-material/AdminPanelSettingsRounded";
+import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
+import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
+import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { prefetchPath, useSmartRoutePrefetch } from "../routing/routePrefetch";
+import { getThemeTokens } from "../theme/muiTheme";
 
 type NavItem = {
   to: string;
@@ -11,52 +42,16 @@ type NavItem = {
 type NavMode = "desktop" | "topbar-icons" | "topbar-compact" | "mobile";
 
 const navItems: NavItem[] = [
-  {
-    to: "/",
-    label: "Главная",
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-4.5v-5h-5v5H5a1 1 0 0 1-1-1z" />
-      </svg>
-    ),
-  },
-  {
-    to: "/search",
-    label: "Поиск",
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M10.5 4a6.5 6.5 0 1 0 4.14 11.52l4.92 4.92 1.41-1.41-4.92-4.92A6.5 6.5 0 0 0 10.5 4m0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9" />
-      </svg>
-    ),
-  },
-  {
-    to: "/catalog",
-    label: "Каталог",
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 0-3 3zm3 2v13a4.98 4.98 0 0 1 2-.42H17V7a1 1 0 0 0-1-1z" />
-      </svg>
-    ),
-  },
-  {
-    to: "/favorites",
-    label: "Избранное",
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="m12 20.4-1.45-1.32C5.4 14.36 2 11.28 2 7.5 2 4.42 4.42 2 7.5 2c1.74 0 3.41.81 4.5 2.09C13.09 2.81 14.76 2 16.5 2 19.58 2 22 4.42 22 7.5c0 3.78-3.4 6.86-8.55 11.58z" />
-      </svg>
-    ),
-  },
+  { to: "/", label: "Главная", icon: <HomeRoundedIcon /> },
+  { to: "/search", label: "Поиск", icon: <SearchRoundedIcon /> },
+  { to: "/catalog", label: "Каталог", icon: <MenuBookRoundedIcon /> },
+  { to: "/favorites", label: "Избранное", icon: <FavoriteRoundedIcon /> },
 ];
 
 const adminItem: NavItem = {
   to: "/admin/documents",
   label: "Админка",
-  icon: (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M11.07 4.93 6 7v5c0 3.55 2.42 6.85 6 7.74 3.58-.89 6-4.19 6-7.74V7zm.93 3.19 1.1 2.23 2.46.36-1.78 1.73.42 2.45L12 13.73l-2.2 1.16.42-2.45-1.78-1.73 2.46-.36z" />
-    </svg>
-  ),
+  icon: <AdminPanelSettingsRoundedIcon />,
 };
 
 function getNavMode(width: number): NavMode {
@@ -75,20 +70,34 @@ function getNavMode(width: number): NavMode {
   return "desktop";
 }
 
+const linkReset = {
+  color: "inherit",
+  textDecoration: "none",
+};
+
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuth();
+  const muiTheme = useMuiTheme();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [accountAnchor, setAccountAnchor] = useState<HTMLElement | null>(null);
   const [navMode, setNavMode] = useState<NavMode>(() => getNavMode(window.innerWidth));
-  const accountMenuRef = useRef<HTMLDivElement | null>(null);
-  const items = user?.role === "admin" ? [...navItems, adminItem] : navItems;
+
+  const paletteTokens = getThemeTokens(muiTheme.palette.mode);
+  const items = useMemo(
+    () => (user?.role === "admin" ? [...navItems, adminItem] : navItems),
+    [user?.role]
+  );
+
+  const accountMenuOpen = Boolean(accountAnchor);
   const usesTopbar = navMode === "topbar-icons" || navMode === "topbar-compact" || navMode === "mobile";
   const showsCompactMenu = navMode === "topbar-compact" || navMode === "mobile";
 
+  useSmartRoutePrefetch(location.pathname, user?.role);
+
   useEffect(() => {
     setMobileMenuOpen(false);
-    setAccountMenuOpen(false);
+    setAccountAnchor(null);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -101,26 +110,18 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       }
     }
 
-    function handlePointerDown(event: MouseEvent) {
-      if (!accountMenuRef.current?.contains(event.target as Node)) {
-        setAccountMenuOpen(false);
-      }
-    }
-
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        setAccountMenuOpen(false);
+        setAccountAnchor(null);
         setMobileMenuOpen(false);
       }
     }
 
     window.addEventListener("resize", handleResize);
-    document.addEventListener("mousedown", handlePointerDown);
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       window.removeEventListener("resize", handleResize);
-      document.removeEventListener("mousedown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, []);
@@ -129,185 +130,471 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     setMobileMenuOpen(false);
   }
 
+  function openAccountMenu(event: React.MouseEvent<HTMLElement>) {
+    setAccountAnchor(event.currentTarget);
+  }
+
+  function closeAccountMenu() {
+    setAccountAnchor(null);
+  }
+
+  function handleLogout() {
+    closeAccountMenu();
+    logout();
+  }
+
+  function handleNavIntent(path: string) {
+    void prefetchPath(path);
+  }
+
   function renderAccountMenu() {
     return (
-      <div className="account-menu" aria-label="Меню аккаунта">
-        <div className="account-menu-header">
-          <div className="strong-text">{user?.fullName ?? "Гость"}</div>
-          <div className="muted-text">{user?.email ?? "guest@library.local"}</div>
-        </div>
-        <Link to="/settings" className="account-menu-link">
+      <Menu
+        anchorEl={accountAnchor}
+        open={accountMenuOpen}
+        onClose={closeAccountMenu}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+        MenuListProps={{ "aria-label": "Меню аккаунта" }}
+        slotProps={{
+          paper: {
+            sx: {
+              minWidth: 260,
+              borderRadius: 2,
+              p: 1,
+            },
+          },
+        }}
+      >
+        <Box sx={{ px: 1.5, py: 1 }}>
+          <Typography variant="subtitle2" fontWeight={700}>
+            {user?.fullName ?? "Гость"}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {user?.email ?? "guest@library.local"}
+          </Typography>
+        </Box>
+
+        <Divider sx={{ my: 0.5 }} />
+
+        {user?.role === "user" && (
+          <Button
+            component={Link}
+            to="/account/pdfs"
+            onClick={closeAccountMenu}
+            onMouseEnter={() => handleNavIntent("/account/pdfs")}
+            onFocus={() => handleNavIntent("/account/pdfs")}
+            color="inherit"
+            startIcon={<DescriptionRoundedIcon fontSize="small" />}
+            sx={{
+              justifyContent: "flex-start",
+              width: "100%",
+              px: 1.5,
+              py: 1.1,
+              borderRadius: 1.5,
+            }}
+          >
+            Мои PDF
+          </Button>
+        )}
+
+        <Button
+          component={Link}
+          to="/settings"
+          onClick={closeAccountMenu}
+          onMouseEnter={() => handleNavIntent("/settings")}
+          onFocus={() => handleNavIntent("/settings")}
+          color="inherit"
+          startIcon={<SettingsRoundedIcon fontSize="small" />}
+          sx={{
+            justifyContent: "flex-start",
+            width: "100%",
+            px: 1.5,
+            py: 1.1,
+            borderRadius: 1.5,
+          }}
+        >
           Настройки
-        </Link>
-        <button type="button" className="account-menu-link account-menu-button" onClick={logout}>
-          Выйти
-        </button>
-      </div>
+        </Button>
+
+        <Box sx={{ px: 1, pt: 0.5, pb: 0.75 }}>
+          <Button
+            fullWidth
+            color="inherit"
+            startIcon={<LogoutRoundedIcon />}
+            onClick={handleLogout}
+          >
+            Выйти
+          </Button>
+        </Box>
+      </Menu>
+    );
+  }
+
+  function renderNavList(isCompact = false) {
+    return (
+      <List component="nav" aria-label="Основная навигация" sx={{ py: 0.5, px: isCompact ? 0 : 0.5 }}>
+        {items.map((item) => (
+          <ListItemButton
+            key={item.to}
+            component={NavLink}
+            to={item.to}
+            title={item.label}
+            aria-label={item.label}
+            onClick={isCompact ? closeMobileMenu : undefined}
+            onMouseEnter={() => handleNavIntent(item.to)}
+            onFocus={() => handleNavIntent(item.to)}
+            sx={{
+              minHeight: 48,
+              px: 1.5,
+              borderRadius: 2,
+              mb: 0.5,
+              color: isCompact ? "text.primary" : alpha(paletteTokens.sidebarInk, 0.86),
+              "&.active": {
+                color: isCompact ? "primary.contrastText" : paletteTokens.sidebarInk,
+                background: isCompact
+                  ? "linear-gradient(180deg, rgba(10, 108, 116, 0.82), #0a6c74)"
+                  : alpha("#ffffff", 0.14),
+              },
+              "&:hover": {
+                background: isCompact
+                  ? alpha(paletteTokens.accent, 0.12)
+                  : alpha("#ffffff", 0.1),
+              },
+            }}
+          >
+            <ListItemIcon sx={{ minWidth: 38, color: "inherit" }}>{item.icon}</ListItemIcon>
+            <ListItemText
+              primary={item.label}
+              primaryTypographyProps={{
+                fontWeight: 600,
+                noWrap: true,
+              }}
+            />
+          </ListItemButton>
+        ))}
+      </List>
     );
   }
 
   return (
-    <div className={`app-shell nav-mode-${navMode}`}>
+    <Box sx={{ minHeight: "100vh", display: "flex", position: "relative" }}>
+      <Box
+        component="a"
+        href="#main-content"
+        sx={{
+          position: "absolute",
+          top: 12,
+          left: 12,
+          zIndex: 1600,
+          px: 1.5,
+          py: 1,
+          borderRadius: 1.5,
+          color: "text.primary",
+          backgroundColor: "background.paper",
+          border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.44)}`,
+          transform: "translateY(-220%)",
+          transition: "transform 0.2s ease",
+          "&:focus-visible": {
+            transform: "translateY(0)",
+            outline: (theme) => `2px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+            outlineOffset: 2,
+          },
+        }}
+      >
+        Перейти к содержимому
+      </Box>
+
       {navMode === "desktop" && (
-        <aside className="sidebar desktop-sidebar">
-          <Link to="/" className="brand" title="Библиотека ИПС">
-            <span className="brand-mark">PL</span>
-            <div className="brand-copy">
-              <span className="brand-text">Библиотека ИПС</span>
-              <span className="brand-subtitle">Институт пограничной службы</span>
-            </div>
-          </Link>
-
-          <nav className="sidebar-nav" aria-label="Основная навигация">
-            {items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                title={item.label}
-                aria-label={item.label}
-                className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}
+        <Box
+          component="aside"
+          sx={{
+            width: 292,
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            background: `linear-gradient(180deg, ${paletteTokens.sidebarStart}, ${paletteTokens.sidebarEnd})`,
+            color: paletteTokens.sidebarInk,
+            borderRight: (muiTheme) => `1px solid ${alpha(muiTheme.palette.divider, 0.5)}`,
+            px: 2.25,
+            py: 2.5,
+            gap: 2,
+          }}
+        >
+          <Box
+            component={Link}
+            to="/"
+            title="Библиотека ИПС"
+            sx={{
+              ...linkReset,
+              display: "grid",
+              gap: 0.75,
+              p: 2,
+              borderRadius: 3,
+              backgroundColor: alpha("#ffffff", 0.08),
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
+          >
+            <Stack direction="row" spacing={1.25} alignItems="center">
+              <Box
+                sx={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 1.75,
+                  display: "grid",
+                  placeItems: "center",
+                  fontWeight: 700,
+                  letterSpacing: "0.12em",
+                  fontSize: 13,
+                  backgroundColor: alpha("#ffffff", 0.18),
+                }}
               >
-                <span className="nav-icon">{item.icon}</span>
-                <span className="nav-label">{item.label}</span>
-              </NavLink>
-            ))}
-          </nav>
+                PL
+              </Box>
+              <Typography fontWeight={700} fontSize={20} lineHeight={1.1} noWrap>
+                Библиотека ИПС
+              </Typography>
+            </Stack>
+            <Typography variant="body2" sx={{ color: alpha(paletteTokens.sidebarInk, 0.78) }}>
+              Институт пограничной службы
+            </Typography>
+          </Box>
 
-          <div className="sidebar-footer" ref={accountMenuRef}>
-            <button
-              type="button"
-              className="avatar-tile avatar-button"
-              onClick={() => setAccountMenuOpen((value) => !value)}
-              aria-label="Открыть меню аккаунта"
-            >
-              <div className="avatar-circle">{user?.fullName?.slice(0, 1).toUpperCase() ?? "U"}</div>
-              <div>
-                <div className="muted-label">Аккаунт</div>
-                <div className="strong-text">{user?.fullName ?? "Гость"}</div>
-              </div>
-            </button>
+          <Box sx={{ flexGrow: 1, overflowY: "auto" }}>{renderNavList()}</Box>
 
-            {accountMenuOpen && <div className="account-menu-shell">{renderAccountMenu()}</div>}
-          </div>
-        </aside>
+          <Button
+            color="inherit"
+            onClick={openAccountMenu}
+            aria-label="Открыть меню аккаунта"
+            sx={{
+              justifyContent: "flex-start",
+              p: 1.25,
+              borderRadius: 2,
+              backgroundColor: alpha("#ffffff", 0.12),
+              border: "1px solid rgba(255,255,255,0.08)",
+              "&:hover": {
+                backgroundColor: alpha("#ffffff", 0.18),
+              },
+            }}
+          >
+            <Avatar sx={{ mr: 1.25, bgcolor: "secondary.main", color: "#17363c", fontWeight: 700 }}>
+              {user?.fullName?.slice(0, 1).toUpperCase() ?? "U"}
+            </Avatar>
+            <Box sx={{ textAlign: "left", minWidth: 0 }}>
+              <Typography variant="caption" sx={{ color: alpha(paletteTokens.sidebarInk, 0.72) }}>
+                Аккаунт
+              </Typography>
+              <Typography fontWeight={700} noWrap>
+                {user?.fullName ?? "Гость"}
+              </Typography>
+            </Box>
+          </Button>
+        </Box>
       )}
 
-      <div className="mobile-nav-shell">
+      <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         {usesTopbar && (
-          <header className={`topbar ${navMode}-mode`}>
-            <Link to="/" className="brand topbar-brand" title="Библиотека ИПС">
-              <span className="brand-mark">PL</span>
-              <span className="brand-text">Библиотека ИПС</span>
-            </Link>
-
-            {navMode === "topbar-icons" && (
-              <nav className="topbar-nav topbar-nav-icons" aria-label="Основная навигация">
-                {items.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    title={item.label}
-                    aria-label={item.label}
-                    className={({ isActive }) => `topbar-link topbar-icon-link ${isActive ? "active" : ""}`}
-                  >
-                    <span className="nav-icon">{item.icon}</span>
-                  </NavLink>
-                ))}
-              </nav>
-            )}
-
-            <div
-              className={`topbar-actions ${
-                navMode === "topbar-compact" ? "topbar-actions-compact" : ""
-              }`}
-              ref={accountMenuRef}
+          <AppBar
+            position="sticky"
+            color="transparent"
+            elevation={0}
+            sx={{
+              top: 0,
+              px: { xs: 1.5, sm: 2.25 },
+              pt: 1.75,
+              background: "transparent",
+            }}
+          >
+            <Toolbar
+              disableGutters
+              sx={{
+                minHeight: "52px !important",
+                gap: 1.5,
+              }}
             >
+              <Box
+                component={Link}
+                to="/"
+                title="Библиотека ИПС"
+                sx={{
+                  ...linkReset,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 1,
+                  minWidth: 0,
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 1.5,
+                    display: "grid",
+                    placeItems: "center",
+                    fontWeight: 700,
+                    letterSpacing: "0.11em",
+                    fontSize: 12,
+                    backgroundColor: alpha(paletteTokens.accent, 0.14),
+                    color: "primary.dark",
+                  }}
+                >
+                  PL
+                </Box>
+                <Typography
+                  fontWeight={700}
+                  variant="h6"
+                  sx={{
+                    fontSize: { xs: 16, sm: 18 },
+                    lineHeight: 1.1,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Библиотека ИПС
+                </Typography>
+              </Box>
+
               {navMode === "topbar-icons" && (
-                <>
-                  <button
-                    type="button"
-                    className="topbar-account-button"
-                    onClick={() => setAccountMenuOpen((value) => !value)}
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  sx={{ flex: 1, justifyContent: "center" }}
+                  aria-label="Основная навигация"
+                >
+                  {items.map((item) => (
+                    <IconButton
+                      key={item.to}
+                      component={NavLink}
+                      to={item.to}
+                      title={item.label}
+                      aria-label={item.label}
+                      onMouseEnter={() => handleNavIntent(item.to)}
+                      onFocus={() => handleNavIntent(item.to)}
+                      sx={{
+                        width: 46,
+                        height: 46,
+                        borderRadius: 2,
+                        border: (muiTheme) => `1px solid ${alpha(muiTheme.palette.divider, 0.9)}`,
+                        backgroundColor: alpha(paletteTokens.surface, 0.85),
+                        color: "text.primary",
+                        "&.active": {
+                          background: "linear-gradient(180deg, rgba(10, 108, 116, 0.82), #0a6c74)",
+                          color: "primary.contrastText",
+                        },
+                      }}
+                    >
+                      {item.icon}
+                    </IconButton>
+                  ))}
+                </Stack>
+              )}
+
+              <Box sx={{ ml: "auto", display: "flex", alignItems: "center", gap: 1 }}>
+                {navMode === "topbar-icons" && (
+                  <IconButton
+                    onClick={openAccountMenu}
                     aria-label="Открыть меню аккаунта"
                     title="Аккаунт"
+                    sx={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 2,
+                      border: (muiTheme) => `1px solid ${alpha(muiTheme.palette.divider, 0.9)}`,
+                      backgroundColor: alpha(paletteTokens.surface, 0.9),
+                    }}
                   >
-                    <span className="avatar-circle">{user?.fullName?.slice(0, 1).toUpperCase() ?? "U"}</span>
-                  </button>
+                    <Avatar sx={{ width: 32, height: 32, fontSize: 14, fontWeight: 700 }}>
+                      {user?.fullName?.slice(0, 1).toUpperCase() ?? "U"}
+                    </Avatar>
+                  </IconButton>
+                )}
 
-                  {accountMenuOpen && <div className="topbar-account-menu">{renderAccountMenu()}</div>}
-                </>
-              )}
-
-              {showsCompactMenu && (
-                <button
-                  type="button"
-                  className="burger-button"
-                  onClick={() => setMobileMenuOpen((value) => !value)}
-                  aria-label={mobileMenuOpen ? "Закрыть меню" : "Открыть меню"}
-                  title={mobileMenuOpen ? "Закрыть меню" : "Открыть меню"}
-                >
-                  <span />
-                  <span />
-                  <span />
-                </button>
-              )}
-            </div>
-          </header>
+                {showsCompactMenu && (
+                  <IconButton
+                    onClick={() => setMobileMenuOpen((value) => !value)}
+                    aria-label={mobileMenuOpen ? "Закрыть меню" : "Открыть меню"}
+                    title={mobileMenuOpen ? "Закрыть меню" : "Открыть меню"}
+                    sx={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 2,
+                      border: (muiTheme) => `1px solid ${alpha(muiTheme.palette.primary.main, 0.22)}`,
+                      backgroundColor: alpha(paletteTokens.surface, 0.92),
+                    }}
+                  >
+                    {mobileMenuOpen ? <CloseRoundedIcon /> : <MenuRoundedIcon />}
+                  </IconButton>
+                )}
+              </Box>
+            </Toolbar>
+          </AppBar>
         )}
 
         {showsCompactMenu && mobileMenuOpen && (
-          <div className="mobile-menu-overlay" onClick={closeMobileMenu}>
-            <div className="mobile-menu" onClick={(event) => event.stopPropagation()}>
-              <div className="mobile-menu-header">
-                <div>
-                  <div className="muted-label">Навигация</div>
-                  <div className="strong-text">{user?.fullName ?? "Гость"}</div>
-                </div>
-                <button type="button" className="text-button" onClick={closeMobileMenu}>
-                  Закрыть
-                </button>
-              </div>
+          <Drawer
+            anchor="right"
+            open
+            onClose={closeMobileMenu}
+            sx={{
+              "& .MuiDrawer-paper": {
+                width: "min(88vw, 340px)",
+                p: 2,
+                gap: 1.25,
+              },
+            }}
+          >
+            <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1.5}>
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  Навигация
+                </Typography>
+                <Typography fontWeight={700}>{user?.fullName ?? "Гость"}</Typography>
+              </Box>
+              <Button onClick={closeMobileMenu}>Закрыть</Button>
+            </Stack>
 
-              <nav className="mobile-menu-nav" aria-label="Меню навигации">
-                {items.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    title={item.label}
-                    aria-label={item.label}
-                    onClick={closeMobileMenu}
-                    className={({ isActive }) => `mobile-menu-link ${isActive ? "active" : ""}`}
-                  >
-                    <span className="nav-icon">{item.icon}</span>
-                    <span>{item.label}</span>
-                  </NavLink>
-                ))}
-              </nav>
+            <Divider />
 
-              <div className="mobile-account-block" ref={accountMenuRef}>
-                <button
-                  type="button"
-                  className="avatar-tile avatar-button mobile-account-trigger"
-                  onClick={() => setAccountMenuOpen((value) => !value)}
-                  aria-label="Открыть меню аккаунта"
-                >
-                  <div className="avatar-circle">{user?.fullName?.slice(0, 1).toUpperCase() ?? "U"}</div>
-                  <div>
-                    <div className="muted-label">Аккаунт</div>
-                    <div className="strong-text">{user?.fullName ?? "Гость"}</div>
-                  </div>
-                </button>
+            <Box component="nav" aria-label="Меню навигации">
+              {renderNavList(true)}
+            </Box>
 
-                {accountMenuOpen && renderAccountMenu()}
-              </div>
-            </div>
-          </div>
+            <Divider />
+
+            <Button
+              onClick={openAccountMenu}
+              aria-label="Открыть меню аккаунта"
+              sx={{ justifyContent: "flex-start", borderRadius: 2 }}
+              color="inherit"
+            >
+              <Avatar sx={{ mr: 1.25, width: 32, height: 32 }}>
+                {user?.fullName?.slice(0, 1).toUpperCase() ?? "U"}
+              </Avatar>
+              <Box sx={{ textAlign: "left", minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Аккаунт
+                </Typography>
+                <Typography fontWeight={700} noWrap>
+                  {user?.fullName ?? "Гость"}
+                </Typography>
+              </Box>
+            </Button>
+          </Drawer>
         )}
 
-        <div className="content-shell">{children}</div>
-      </div>
-    </div>
+        {renderAccountMenu()}
+
+        <Box
+          component="main"
+          id="main-content"
+          tabIndex={-1}
+          sx={{ px: { xs: 2, sm: 2.5, md: 3.5 }, pb: { xs: 2, md: 3 }, pt: usesTopbar ? 1.5 : 3, flex: 1 }}
+        >
+          {children}
+        </Box>
+      </Box>
+    </Box>
   );
 };
 
 export default Layout;
+
