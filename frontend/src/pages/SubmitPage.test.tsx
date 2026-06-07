@@ -7,14 +7,10 @@ import SubmitPage from "./SubmitPage";
 
 vi.mock("../api/library", () => ({
   createSubmission: vi.fn(),
-  getDepartments: vi.fn(),
-  getFaculties: vi.fn(),
 }));
 
 import {
   createSubmission,
-  getDepartments,
-  getFaculties,
 } from "../api/library";
 
 afterEach(() => {
@@ -23,9 +19,7 @@ afterEach(() => {
 
 describe("SubmitPage", () => {
   beforeEach(() => {
-    vi.mocked(getFaculties).mockResolvedValue({ items: [] });
-    vi.mocked(getDepartments).mockResolvedValue({ items: [] });
-    vi.mocked(createSubmission).mockReset();
+            vi.mocked(createSubmission).mockReset();
   });
 
   it("renders only the upload flow and no longer shows moderation history", async () => {

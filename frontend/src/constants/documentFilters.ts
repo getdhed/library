@@ -9,6 +9,8 @@ export const catalogSortOptions: SortOption[] = [
   { value: "size_desc", label: "Сначала крупные" },
   { value: "size_asc", label: "Сначала компактные" },
   { value: "title_asc", label: "По названию" },
+  { value: "type_asc", label: "Тип: А-Я" },
+  { value: "type_desc", label: "Тип: Я-А" },
 ];
 
 export const searchSortOptions: SortOption[] = [

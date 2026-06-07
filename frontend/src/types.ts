@@ -1,85 +1,71 @@
 export interface User {
   id: number;
-  email: string;
+  username: string;
   fullName: string;
   role: "user" | "admin";
   avatarUrl?: string;
+  isActive: boolean;
   createdAt: string;
-}
-
-export interface Faculty {
-  id: number;
-  name: string;
-  slug: string;
-}
-
-export interface Department {
-  id: number;
-  facultyId: number;
-  name: string;
-  slug: string;
-  faculty?: string;
+  updatedAt: string;
 }
 
 export interface DocumentItem {
   id: number;
   title: string;
   author: string;
+  executor?: string;
+  scientificAdvisor?: string;
   year: number;
   type: string;
+  placeOfPublication?: string;
+  publisher?: string;
+  periodicalName?: string;
+  volume?: string;
   description: string;
   fileName: string;
   fileSizeBytes: number;
   mimeType: string;
   coverPath?: string;
-  isVisible: boolean;
   createdAt: string;
   updatedAt: string;
-  departmentId: number;
-  department: string;
-  facultyId: number;
-  faculty: string;
   tags: string[];
   isFavorite: boolean;
   similarity?: number;
 }
 
 export type SubmissionStatus = "pending" | "approved" | "rejected";
-export type SubmissionSource = "user_upload" | "admin_import";
 
 export interface SubmissionItem {
   id: number;
   userId: number;
   title: string;
+  source: string;
   author?: string;
-  departmentId?: number;
-  department?: string;
-  facultyId?: number;
-  faculty?: string;
+  executor?: string;
+  scientificAdvisor?: string;
+  placeOfPublication?: string;
+  publisher?: string;
+  periodicalName?: string;
+  volume?: string;
   comment?: string;
   fileName: string;
   fileSizeBytes: number;
   mimeType: string;
   coverPath?: string;
   status: SubmissionStatus;
-  source: SubmissionSource;
   moderationNote?: string;
   approvedDocumentId?: number;
   reviewedBy?: number;
+  reviewerName?: string;
+  reviewerUsername?: string;
+  reviewerEmail?: string;
   reviewedAt?: string;
   createdAt: string;
   updatedAt: string;
   uploaderName?: string;
-  uploaderEmail?: string;
+  uploaderUsername?: string;
 }
 
-export interface ImportFolderResult {
-  queued: number;
-  errors: Array<{
-    fileName: string;
-    error: string;
-  }>;
-}
 
 export interface SearchHistoryItem {
   id: number;
@@ -100,6 +86,13 @@ export interface HomePayload {
   searchHistory: SearchHistoryItem[];
 }
 
+export interface PagedUsers {
+  items: User[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
 export interface AuthPayload {
   token: string;
   user: User;
@@ -110,17 +103,37 @@ export interface NamedStat {
   count: number;
 }
 
-export interface FacultyDocStat {
-  faculty: string;
-  count: number;
-}
-
 export interface AdminStats {
   documentsCount: number;
   viewsToday: number;
   downloadsToday: number;
   searchesToday: number;
+  uploadedInPeriod: number;
+  uploadPeriodFrom: string;
+  uploadPeriodTo: string;
   topQueries: NamedStat[];
   topDocuments: NamedStat[];
-  documentsByFaculty: FacultyDocStat[];
+  documentsByType: NamedStat[];
+  documentsUploadedByDay: NamedStat[];
+}
+
+export interface DocumentAuditEvent {
+  id: number;
+  action: string;
+  actorId?: number;
+  actorName?: string;
+  actorUsername?: string;
+  documentId?: number;
+  submissionId?: number;
+  documentTitle: string;
+  fileName: string;
+  details: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface PagedAuditEvents {
+  items: DocumentAuditEvent[];
+  page: number;
+  pageSize: number;
+  total: number;
 }

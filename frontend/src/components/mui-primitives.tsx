@@ -12,70 +12,74 @@ import type { SxProps, Theme } from "@mui/material/styles";
 
 export const pageShellSx = {
   display: "grid",
-  gap: 2.25,
+  gap: 1.5,
 };
 
 export const contentCardSx = {
-  borderRadius: 3,
-  p: { xs: 2, md: 2.75 },
-  background: (theme: any) =>
-    theme.palette.mode === "light"
-      ? "linear-gradient(180deg, rgba(255,253,248,0.98), rgba(246,241,231,0.74))"
-      : "linear-gradient(180deg, rgba(23,33,43,0.96), rgba(29,39,50,0.88))",
+  borderRadius: 0,
+  p: 2.5,
+  borderColor: (theme: any) => alpha(theme.palette.divider, 0.95),
+  backgroundColor: (theme: any) => alpha(theme.palette.background.paper, 0.98),
 };
 
 export const headerCardSx = {
-  borderRadius: 3.5,
-  p: { xs: 2.25, md: 3 },
-  background: (theme: any) =>
-    `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.12)} 0%, ${alpha(
-      theme.palette.background.paper,
-      0.95
-    )} 62%, ${alpha(theme.palette.primary.main, 0.05)} 100%)`,
+  borderRadius: 0,
+  p: 2.5,
+  borderColor: (theme: any) => alpha(theme.palette.divider, 0.98),
+  position: "relative",
+  overflow: "hidden",
+  backgroundColor: (theme: any) => theme.palette.background.paper,
+  "&::before": {
+    content: '""',
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    background: (theme: any) => alpha(theme.palette.primary.main, 0.8),
+  },
 };
 
 export const eyebrowSx: SxProps<Theme> = {
   textTransform: "uppercase",
-  letterSpacing: "0.12em",
+  letterSpacing: "0.14em",
   color: "secondary.main",
-  fontWeight: 700,
+  fontWeight: 500,
 };
 
 export const tableSurfaceSx: SxProps<Theme> = {
-  borderRadius: 2.5,
+  borderRadius: 0,
   overflow: "hidden",
 };
 
 export const filterPanelSx: SxProps<Theme> = {
   p: 1.5,
-  borderRadius: 2.5,
+  borderRadius: 0,
 };
 
 export const cardActionIconButtonSx: SxProps<Theme> = {
   width: 42,
   height: 42,
-  borderRadius: 2,
-  border: (theme) => `1px solid ${alpha(theme.palette.divider, 0.95)}`,
-  backgroundColor: (theme) => alpha(theme.palette.background.paper, 0.82),
+  borderRadius: 0,
+  border: (theme) => `1px solid ${alpha(theme.palette.divider, 0.98)}`,
+  backgroundColor: (theme) => alpha(theme.palette.background.paper, 0.98),
   color: "text.primary",
   "&:hover": {
     borderColor: "primary.main",
-    backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.12),
+    backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.1),
   },
   "&:focus-visible": {
-    outline: (theme) => `2px solid ${alpha(theme.palette.primary.main, 0.4)}`,
+    outline: (theme) => `2px solid ${alpha(theme.palette.primary.main, 0.52)}`,
     outlineOffset: 2,
   },
 };
 
 export const cardActionIconButtonActiveSx: SxProps<Theme> = {
-  borderColor: "primary.main",
-  background: (theme) =>
-    `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.86)}, ${theme.palette.primary.main})`,
+  borderColor: "primary.dark",
+  backgroundColor: "primary.main",
   color: "primary.contrastText",
   "&:hover": {
-    background: (theme) =>
-      `linear-gradient(180deg, ${alpha(theme.palette.primary.dark, 0.88)}, ${theme.palette.primary.dark})`,
+    backgroundColor: "primary.dark",
     borderColor: "primary.dark",
   },
 };
@@ -105,24 +109,24 @@ export type StatusTone = "success" | "warning" | "danger";
 export function statusToneChipSx(tone: StatusTone): SxProps<Theme> {
   if (tone === "success") {
     return {
-      color: "#1b5e20",
-      backgroundColor: "#dbf2dc",
-      borderColor: "#aed7b2",
+      color: "#f0ede4",
+      backgroundColor: "#4a5c3a",
+      borderColor: "#3d4d30",
     };
   }
 
   if (tone === "danger") {
     return {
-      color: "#8d1f1f",
-      backgroundColor: "#fde3e3",
-      borderColor: "#efb7b7",
+      color: "#f0ede4",
+      backgroundColor: "#8b2020",
+      borderColor: "#6f1a1a",
     };
   }
 
   return {
-    color: "#8a5a00",
-    backgroundColor: "#fff1cc",
-    borderColor: "#f0d58a",
+    color: "#1a2e1a",
+    backgroundColor: "#d9cfad",
+    borderColor: "#b8972a",
   };
 }
 
@@ -157,9 +161,9 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   return (
     <Paper sx={headerCardSx}>
       <Stack
-        direction={{ xs: "column", sm: "row" }}
-        spacing={1.75}
-        alignItems={{ xs: "flex-start", sm: "flex-end" }}
+        direction="row"
+        spacing={1.5}
+        alignItems="flex-end"
         justifyContent="space-between"
       >
         <Box>

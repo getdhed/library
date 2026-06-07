@@ -5,27 +5,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthContext } from "../auth/AuthContext";
 import Layout from "./Layout";
 
-function setWindowWidth(width: number) {
-  Object.defineProperty(window, "innerWidth", {
-    configurable: true,
-    writable: true,
-    value: width,
-  });
-}
-
 function renderLayout(
   options: {
     logout?: ReturnType<typeof vi.fn>;
     role?: "user" | "admin";
     fullName?: string;
-    email?: string;
+    username?: string;
   } = {}
 ) {
   const {
     logout = vi.fn(),
     role = "admin",
     fullName = "Admin User",
-    email = "admin@library.local",
+    username = "admin",
   } = options;
 
   render(
@@ -34,10 +26,12 @@ function renderLayout(
         token: "token",
         user: {
           id: 1,
-          email,
+          username,
           fullName,
           role,
+          isActive: true,
           createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         },
         ready: true,
         login: async () => undefined,
@@ -58,45 +52,58 @@ function renderLayout(
 
 afterEach(() => {
   cleanup();
-  setWindowWidth(1024);
 });
 
 describe("Layout", () => {
-  it("opens and closes the mobile burger menu", () => {
-    setWindowWidth(640);
+  it("renders desktop header navigation with accent search item and footer", () => {
     renderLayout();
 
-    expect(screen.queryByLabelText("Меню навигации")).not.toBeInTheDocument();
+    const mainNavigation = screen.getByLabelText("Основная навигация");
+    const searchLink = within(mainNavigation).getByRole("link", { name: "Поиск" });
 
-    fireEvent.click(screen.getByLabelText("Открыть меню"));
-    expect(screen.getByLabelText("Меню навигации")).toBeInTheDocument();
+    expect(
+      within(mainNavigation).getByRole("link", { name: "Главная" })
+    ).toBeInTheDocument();
+    expect(
+      within(mainNavigation).getByRole("link", { name: "Админка" })
+    ).toBeInTheDocument();
+    expect(searchLink).toHaveAttribute("href", "/search");
+    expect(searchLink).toHaveAttribute("data-header-accent", "danger");
+    expect(
+      within(mainNavigation).queryByRole("link", { name: "Предложить материал" })
+    ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Закрыть"));
-    expect(screen.queryByLabelText("Меню навигации")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Открыть меню аккаунта")).toBeInTheDocument();
+    expect(screen.getByText("ИПС РБ · Библиотека")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Открыть меню")).not.toBeInTheDocument();
   });
 
-  it("opens account popup on desktop and shows settings plus logout actions", () => {
-    setWindowWidth(1500);
-    renderLayout();
+  it("opens account menu and triggers logout action", () => {
+    const { logout } = renderLayout();
 
     fireEvent.click(screen.getByLabelText("Открыть меню аккаунта"));
+
     const accountMenu = screen.getByLabelText("Меню аккаунта");
-    expect(accountMenu).toBeInTheDocument();
     expect(within(accountMenu).getByText("Настройки")).toBeInTheDocument();
     expect(within(accountMenu).getByRole("button", { name: "Выйти" })).toBeInTheDocument();
+
+    fireEvent.click(within(accountMenu).getByRole("button", { name: "Выйти" }));
+    expect(logout).toHaveBeenCalledTimes(1);
   });
 
-  it("shows My PDF link only inside the user account menu", () => {
-    setWindowWidth(1500);
+  it("shows My PDF only in user account menu and hides admin link", () => {
     renderLayout({
       role: "user",
       fullName: "Regular User",
-      email: "user@library.local",
+      username: "regular",
     });
 
     const mainNavigation = screen.getByLabelText("Основная навигация");
     expect(
       within(mainNavigation).queryByRole("link", { name: "Мои PDF" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(mainNavigation).queryByRole("link", { name: "Админка" })
     ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("Открыть меню аккаунта"));
@@ -104,25 +111,5 @@ describe("Layout", () => {
     expect(
       within(accountMenu).getByRole("link", { name: "Мои PDF" })
     ).toHaveAttribute("href", "/account/pdfs");
-  });
-
-  it("renders icon topbar navigation on medium desktop widths", () => {
-    setWindowWidth(1280);
-    renderLayout();
-
-    expect(screen.getByLabelText("Основная навигация")).toBeInTheDocument();
-    expect(screen.getByLabelText("Избранное")).toBeInTheDocument();
-    expect(screen.getByLabelText("Открыть меню аккаунта")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Открыть меню")).not.toBeInTheDocument();
-  });
-
-  it("renders compact topbar with burger only on half-screen widths", () => {
-    setWindowWidth(1000);
-    renderLayout();
-
-    expect(screen.queryByLabelText("Основная навигация")).not.toBeInTheDocument();
-    expect(screen.getByText("Библиотека ИПС")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Открыть меню аккаунта")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Открыть меню")).toBeInTheDocument();
   });
 });

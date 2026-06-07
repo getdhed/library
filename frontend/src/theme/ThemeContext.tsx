@@ -15,19 +15,6 @@ const STORAGE_KEY = "library-theme";
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 function getInitialTheme(): ThemeMode {
-  if (typeof window === "undefined") {
-    return "light";
-  }
-
-  const storedTheme = window.localStorage.getItem(STORAGE_KEY);
-  if (storedTheme === "light" || storedTheme === "dark") {
-    return storedTheme;
-  }
-
-  if (typeof window.matchMedia === "function") {
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
-
   return "light";
 }
 
@@ -36,17 +23,16 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const muiTheme = useMemo(() => createAppTheme(theme), [theme]);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.style.colorScheme = theme;
-    window.localStorage.setItem(STORAGE_KEY, theme);
+    document.documentElement.dataset.theme = "light";
+    document.documentElement.style.colorScheme = "light";
+    window.localStorage.setItem(STORAGE_KEY, "light");
   }, [theme]);
 
   const value = useMemo<ThemeContextValue>(
     () => ({
       theme,
-      setTheme: (nextTheme) => setThemeState(nextTheme),
-      toggleTheme: () =>
-        setThemeState((currentTheme) => (currentTheme === "light" ? "dark" : "light")),
+      setTheme: () => setThemeState("light"),
+      toggleTheme: () => setThemeState("light"),
     }),
     [theme]
   );

@@ -3,9 +3,11 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"library-backend/internal/apperror"
 	"library-backend/internal/domain"
@@ -23,86 +25,70 @@ func New(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) EnsureSeedData(ctx context.Context, adminEmail, adminName, adminPasswordHash string) error {
-	seeds := []struct {
-		faculty     string
-		facultySlug string
-		departments []struct {
-			name string
-			slug string
+func splitFilterTerms(value string) []string {
+	rawItems := strings.Fields(strings.NewReplacer(",", " ", ";", " ").Replace(value))
+	items := make([]string, 0, len(rawItems))
+	seen := map[string]struct{}{}
+	for _, item := range rawItems {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
 		}
-	}{
-		{
-			faculty:     "ФКТИ",
-			facultySlug: "fkti",
-			departments: []struct {
-				name string
-				slug string
-			}{
-				{name: "Кафедра программной инженерии", slug: "software-engineering"},
-				{name: "Кафедра информационных систем", slug: "information-systems"},
-			},
-		},
-		{
-			faculty:     "ФМИКН",
-			facultySlug: "fmikn",
-			departments: []struct {
-				name string
-				slug string
-			}{
-				{name: "Кафедра высшей математики", slug: "higher-math"},
-				{name: "Кафедра прикладной информатики", slug: "applied-informatics"},
-			},
-		},
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		items = append(items, trimmed)
 	}
+	return items
+}
 
-	for _, seed := range seeds {
-		var facultyID int64
-		if err := r.db.QueryRowContext(ctx, `
-			INSERT INTO faculties(name, slug)
-			VALUES ($1, $2)
-			ON CONFLICT (name) DO UPDATE SET slug = EXCLUDED.slug
-			RETURNING id
-		`, seed.faculty, seed.facultySlug).Scan(&facultyID); err != nil {
-			return fmt.Errorf("seed faculty: %w", err)
-		}
+func scanUser(row rowScanner) (domain.User, error) {
+	var user domain.User
+	err := row.Scan(
+		&user.ID,
+		&user.Username,
+		&user.FullName,
+		&user.Role,
+		&user.AvatarURL,
+		&user.IsActive,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+	return user, err
+}
 
-		for _, department := range seed.departments {
-			if _, err := r.db.ExecContext(ctx, `
-				INSERT INTO departments(faculty_id, name, slug)
-				VALUES ($1, $2, $3)
-				ON CONFLICT (faculty_id, name) DO UPDATE SET slug = EXCLUDED.slug
-			`, facultyID, department.name, department.slug); err != nil {
-				return fmt.Errorf("seed department: %w", err)
-			}
-		}
-	}
-
+func (r *Repository) EnsureSeedData(ctx context.Context, adminUsername, adminName, adminPasswordHash string) error {
 	if _, err := r.db.ExecContext(ctx, `
-		INSERT INTO users(email, password_hash, full_name, role)
+		INSERT INTO users(username, password_hash, full_name, role)
 		VALUES ($1, $2, $3, 'admin')
-		ON CONFLICT (email) DO UPDATE
+		ON CONFLICT (username) DO UPDATE
 		SET password_hash = EXCLUDED.password_hash,
 			full_name = EXCLUDED.full_name,
-			role = 'admin'
-	`, strings.ToLower(strings.TrimSpace(adminEmail)), adminPasswordHash, strings.TrimSpace(adminName)); err != nil {
+			role = 'admin',
+			is_active = TRUE,
+			updated_at = NOW()
+	`, strings.ToLower(strings.TrimSpace(adminUsername)), adminPasswordHash, strings.TrimSpace(adminName)); err != nil {
 		return fmt.Errorf("seed admin: %w", err)
 	}
 
 	return nil
 }
 
-func (r *Repository) EnsureSystemUser(ctx context.Context, email, fullName, passwordHash string) (domain.User, error) {
+func (r *Repository) EnsureSystemUser(ctx context.Context, username, fullName, passwordHash string) (domain.User, error) {
 	var user domain.User
 	err := r.db.QueryRowContext(ctx, `
-		INSERT INTO users(email, password_hash, full_name, role)
+		INSERT INTO users(username, password_hash, full_name, role)
 		VALUES ($1, $2, $3, 'admin')
-		ON CONFLICT (email) DO UPDATE
+		ON CONFLICT (username) DO UPDATE
 		SET full_name = EXCLUDED.full_name,
-			role = 'admin'
-		RETURNING id, email, full_name, role, avatar_url, created_at
-	`, strings.ToLower(strings.TrimSpace(email)), passwordHash, strings.TrimSpace(fullName)).
-		Scan(&user.ID, &user.Email, &user.FullName, &user.Role, &user.AvatarURL, &user.CreatedAt)
+			role = 'admin',
+			is_active = TRUE,
+			updated_at = NOW()
+		RETURNING id, username, full_name, role, avatar_url, is_active, created_at, updated_at
+	`, strings.ToLower(strings.TrimSpace(username)), passwordHash, strings.TrimSpace(fullName)).
+		Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		return domain.User{}, err
 	}
@@ -112,11 +98,11 @@ func (r *Repository) EnsureSystemUser(ctx context.Context, email, fullName, pass
 func (r *Repository) CreateUser(ctx context.Context, input domain.RegisterInput, passwordHash string) (domain.User, error) {
 	var user domain.User
 	err := r.db.QueryRowContext(ctx, `
-		INSERT INTO users(email, password_hash, full_name, role)
+		INSERT INTO users(username, password_hash, full_name, role)
 		VALUES ($1, $2, $3, 'user')
-		RETURNING id, email, full_name, role, avatar_url, created_at
-	`, strings.ToLower(strings.TrimSpace(input.Email)), passwordHash, strings.TrimSpace(input.FullName)).
-		Scan(&user.ID, &user.Email, &user.FullName, &user.Role, &user.AvatarURL, &user.CreatedAt)
+		RETURNING id, username, full_name, role, avatar_url, is_active, created_at, updated_at
+	`, strings.ToLower(strings.TrimSpace(input.Username)), passwordHash, strings.TrimSpace(input.FullName)).
+		Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") {
 			return domain.User{}, apperror.ErrConflict
@@ -126,14 +112,14 @@ func (r *Repository) CreateUser(ctx context.Context, input domain.RegisterInput,
 	return user, nil
 }
 
-func (r *Repository) GetUserByEmail(ctx context.Context, email string) (domain.User, error) {
+func (r *Repository) GetUserByUsername(ctx context.Context, username string) (domain.User, error) {
 	var user domain.User
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, email, full_name, role, avatar_url, password_hash, created_at
+		SELECT id, username, full_name, role, avatar_url, is_active, password_hash, created_at, updated_at
 		FROM users
-		WHERE email = $1
-	`, strings.ToLower(strings.TrimSpace(email))).
-		Scan(&user.ID, &user.Email, &user.FullName, &user.Role, &user.AvatarURL, &user.PasswordHash, &user.CreatedAt)
+		WHERE username = $1
+	`, strings.ToLower(strings.TrimSpace(username))).
+		Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.PasswordHash, &user.CreatedAt, &user.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.User{}, apperror.ErrNotFound
 	}
@@ -143,62 +129,156 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (domain.U
 func (r *Repository) GetUserByID(ctx context.Context, id int64) (domain.User, error) {
 	var user domain.User
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, email, full_name, role, avatar_url, created_at
+		SELECT id, username, full_name, role, avatar_url, is_active, created_at, updated_at
 		FROM users
 		WHERE id = $1
-	`, id).Scan(&user.ID, &user.Email, &user.FullName, &user.Role, &user.AvatarURL, &user.CreatedAt)
+	`, id).Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.CreatedAt, &user.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.User{}, apperror.ErrNotFound
 	}
 	return user, err
 }
 
-func (r *Repository) ListFaculties(ctx context.Context) ([]domain.Faculty, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, name, slug FROM faculties ORDER BY name`)
+func (r *Repository) ListUsers(ctx context.Context, filters domain.UserFilters) (domain.PagedUsers, error) {
+	page := filters.Page
+	if page <= 0 {
+		page = 1
+	}
+	pageSize := filters.PageSize
+	if pageSize <= 0 || pageSize > 50 {
+		pageSize = 50
+	}
+
+	args := []any{}
+	conditions := []string{"1=1"}
+	argIndex := 1
+
+	query := strings.TrimSpace(filters.Query)
+	if query != "" {
+		conditions = append(conditions, fmt.Sprintf("(username ILIKE $%d OR full_name ILIKE $%d)", argIndex, argIndex))
+		args = append(args, "%"+query+"%")
+		argIndex++
+	}
+	if filters.Role != "" {
+		conditions = append(conditions, fmt.Sprintf("role = $%d", argIndex))
+		args = append(args, filters.Role)
+		argIndex++
+	}
+	switch filters.Status {
+	case "active":
+		conditions = append(conditions, "is_active = TRUE")
+	case "inactive":
+		conditions = append(conditions, "is_active = FALSE")
+	}
+
+	var total int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM users
+		WHERE `+strings.Join(conditions, " AND "), args...).Scan(&total)
 	if err != nil {
-		return nil, err
+		return domain.PagedUsers{}, err
+	}
+
+	offset := (page - 1) * pageSize
+	args = append(args, pageSize, offset)
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, username, full_name, role, avatar_url, is_active, created_at, updated_at
+		FROM users
+		WHERE `+strings.Join(conditions, " AND ")+`
+		ORDER BY created_at DESC, id DESC
+		LIMIT $`+fmt.Sprint(argIndex)+` OFFSET $`+fmt.Sprint(argIndex+1), args...)
+	if err != nil {
+		return domain.PagedUsers{}, err
 	}
 	defer rows.Close()
 
-	items := []domain.Faculty{}
+	items := []domain.User{}
 	for rows.Next() {
-		var item domain.Faculty
-		if err := rows.Scan(&item.ID, &item.Name, &item.Slug); err != nil {
-			return nil, err
+		item, err := scanUser(rows)
+		if err != nil {
+			return domain.PagedUsers{}, err
 		}
 		items = append(items, item)
 	}
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		return domain.PagedUsers{}, err
+	}
+
+	return domain.PagedUsers{
+		Items: items,
+		Pagination: domain.Pagination{
+			Page:     page,
+			PageSize: pageSize,
+			Total:    total,
+		},
+	}, nil
 }
 
-func (r *Repository) ListDepartments(ctx context.Context, facultyID int64) ([]domain.Department, error) {
-	query := `
-		SELECT d.id, d.faculty_id, d.name, d.slug, f.name
-		FROM departments d
-		JOIN faculties f ON f.id = d.faculty_id
-	`
-	args := []any{}
-	if facultyID > 0 {
-		query += ` WHERE d.faculty_id = $1`
-		args = append(args, facultyID)
-	}
-	query += ` ORDER BY f.name, d.name`
-
-	rows, err := r.db.QueryContext(ctx, query, args...)
+func (r *Repository) CreateAdminUser(ctx context.Context, input domain.AdminUserInput, passwordHash string) (domain.User, error) {
+	user, err := scanUser(r.db.QueryRowContext(ctx, `
+		INSERT INTO users(username, password_hash, full_name, role)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, username, full_name, role, avatar_url, is_active, created_at, updated_at
+	`, strings.ToLower(strings.TrimSpace(input.Username)), passwordHash, strings.TrimSpace(input.FullName), input.Role))
 	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	items := []domain.Department{}
-	for rows.Next() {
-		var item domain.Department
-		if err := rows.Scan(&item.ID, &item.FacultyID, &item.Name, &item.Slug, &item.Faculty); err != nil {
-			return nil, err
+		if strings.Contains(err.Error(), "duplicate") {
+			return domain.User{}, apperror.ErrConflict
 		}
-		items = append(items, item)
+		return domain.User{}, err
 	}
-	return items, rows.Err()
+	return user, nil
+}
+
+func (r *Repository) UpdateUser(ctx context.Context, id int64, input domain.AdminUserInput) (domain.User, error) {
+	user, err := scanUser(r.db.QueryRowContext(ctx, `
+		UPDATE users
+		SET username = $2,
+			full_name = $3,
+			role = $4,
+			updated_at = NOW()
+		WHERE id = $1
+		RETURNING id, username, full_name, role, avatar_url, is_active, created_at, updated_at
+	`, id, strings.ToLower(strings.TrimSpace(input.Username)), strings.TrimSpace(input.FullName), input.Role))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.User{}, apperror.ErrNotFound
+	}
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate") {
+			return domain.User{}, apperror.ErrConflict
+		}
+		return domain.User{}, err
+	}
+	return user, nil
+}
+
+func (r *Repository) SetUserActive(ctx context.Context, id int64, isActive bool) (domain.User, error) {
+	user, err := scanUser(r.db.QueryRowContext(ctx, `
+		UPDATE users
+		SET is_active = $2,
+			updated_at = NOW()
+		WHERE id = $1
+		RETURNING id, username, full_name, role, avatar_url, is_active, created_at, updated_at
+	`, id, isActive))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.User{}, apperror.ErrNotFound
+	}
+	return user, err
+}
+
+func (r *Repository) ResetUserPassword(ctx context.Context, id int64, passwordHash string) (domain.User, error) {
+	user, err := scanUser(r.db.QueryRowContext(ctx, `
+		UPDATE users
+		SET password_hash = $2,
+			updated_at = NOW()
+		WHERE id = $1
+		RETURNING id, username, full_name, role, avatar_url, is_active, created_at, updated_at
+	`, id, passwordHash))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.User{}, apperror.ErrNotFound
+	}
+	return user, err
 }
 
 func (r *Repository) CreateSubmission(ctx context.Context, userID int64, input domain.CreateSubmissionInput) (domain.DocumentSubmission, error) {
@@ -208,7 +288,12 @@ func (r *Repository) CreateSubmission(ctx context.Context, userID int64, input d
 			user_id,
 			title,
 			author,
-			department_id,
+			executor,
+			scientific_advisor,
+			place_of_publication,
+			publisher,
+			periodical_name,
+			volume,
 			comment,
 			file_path,
 			file_name,
@@ -218,13 +303,18 @@ func (r *Repository) CreateSubmission(ctx context.Context, userID int64, input d
 			status,
 			source
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'pending', $16)
 		RETURNING id
 	`,
 		userID,
 		input.Title,
 		input.Author,
-		nullableInt64(input.DepartmentID),
+		input.Executor,
+		input.ScientificAdvisor,
+		input.PlaceOfPublication,
+		input.Publisher,
+		input.PeriodicalName,
+		input.Volume,
 		input.Comment,
 		input.FilePath,
 		input.FileName,
@@ -247,10 +337,12 @@ func (r *Repository) GetSubmissionByID(ctx context.Context, id int64) (domain.Do
 			s.user_id,
 			s.title,
 			s.author,
-			COALESCE(dep.id, 0),
-			COALESCE(dep.name, ''),
-			COALESCE(f.id, 0),
-			COALESCE(f.name, ''),
+			s.executor,
+			s.scientific_advisor,
+			s.place_of_publication,
+			s.publisher,
+			s.periodical_name,
+			s.volume,
 			s.comment,
 			s.file_path,
 			s.file_name,
@@ -266,11 +358,12 @@ func (r *Repository) GetSubmissionByID(ctx context.Context, id int64) (domain.Do
 			s.created_at,
 			s.updated_at,
 			u.full_name,
-			u.email
+			u.username,
+			COALESCE(reviewer.full_name, ''),
+			COALESCE(reviewer.username, '')
 		FROM document_submissions s
 		JOIN users u ON u.id = s.user_id
-		LEFT JOIN departments dep ON dep.id = s.department_id
-		LEFT JOIN faculties f ON f.id = dep.faculty_id
+		LEFT JOIN users reviewer ON reviewer.id = s.reviewed_by
 		WHERE s.id = $1
 	`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -289,10 +382,12 @@ func (r *Repository) ListSubmissionsByUser(ctx context.Context, userID int64) ([
 			s.user_id,
 			s.title,
 			s.author,
-			COALESCE(dep.id, 0),
-			COALESCE(dep.name, ''),
-			COALESCE(f.id, 0),
-			COALESCE(f.name, ''),
+			s.executor,
+			s.scientific_advisor,
+			s.place_of_publication,
+			s.publisher,
+			s.periodical_name,
+			s.volume,
 			s.comment,
 			s.file_path,
 			s.file_name,
@@ -308,11 +403,12 @@ func (r *Repository) ListSubmissionsByUser(ctx context.Context, userID int64) ([
 			s.created_at,
 			s.updated_at,
 			u.full_name,
-			u.email
+			u.username,
+			COALESCE(reviewer.full_name, ''),
+			COALESCE(reviewer.username, '')
 		FROM document_submissions s
 		JOIN users u ON u.id = s.user_id
-		LEFT JOIN departments dep ON dep.id = s.department_id
-		LEFT JOIN faculties f ON f.id = dep.faculty_id
+		LEFT JOIN users reviewer ON reviewer.id = s.reviewed_by
 		WHERE s.user_id = $1
 		ORDER BY s.updated_at DESC, s.created_at DESC
 	`, userID)
@@ -339,10 +435,12 @@ func (r *Repository) ListSubmissions(ctx context.Context, status domain.Submissi
 			s.user_id,
 			s.title,
 			s.author,
-			COALESCE(dep.id, 0),
-			COALESCE(dep.name, ''),
-			COALESCE(f.id, 0),
-			COALESCE(f.name, ''),
+			s.executor,
+			s.scientific_advisor,
+			s.place_of_publication,
+			s.publisher,
+			s.periodical_name,
+			s.volume,
 			s.comment,
 			s.file_path,
 			s.file_name,
@@ -358,11 +456,12 @@ func (r *Repository) ListSubmissions(ctx context.Context, status domain.Submissi
 			s.created_at,
 			s.updated_at,
 			u.full_name,
-			u.email
+			u.username,
+			COALESCE(reviewer.full_name, ''),
+			COALESCE(reviewer.username, '')
 		FROM document_submissions s
 		JOIN users u ON u.id = s.user_id
-		LEFT JOIN departments dep ON dep.id = s.department_id
-		LEFT JOIN faculties f ON f.id = dep.faculty_id
+		LEFT JOIN users reviewer ON reviewer.id = s.reviewed_by
 	`
 
 	args := []any{}
@@ -463,6 +562,10 @@ func buildOrder(sort string) string {
 		return "ORDER BY d.title ASC"
 	case "title_desc":
 		return "ORDER BY d.title DESC"
+	case "type_asc":
+		return "ORDER BY d.type ASC, d.title ASC"
+	case "type_desc":
+		return "ORDER BY d.type DESC, d.title ASC"
 	default:
 		return "ORDER BY similarity DESC, d.created_at DESC"
 	}
@@ -500,10 +603,12 @@ func scanSubmission(row rowScanner) (domain.DocumentSubmission, error) {
 		&item.UserID,
 		&item.Title,
 		&item.Author,
-		&item.DepartmentID,
-		&item.Department,
-		&item.FacultyID,
-		&item.Faculty,
+		&item.Executor,
+		&item.ScientificAdvisor,
+		&item.PlaceOfPublication,
+		&item.Publisher,
+		&item.PeriodicalName,
+		&item.Volume,
 		&item.Comment,
 		&item.FilePath,
 		&item.FileName,
@@ -519,7 +624,9 @@ func scanSubmission(row rowScanner) (domain.DocumentSubmission, error) {
 		&item.CreatedAt,
 		&item.UpdatedAt,
 		&item.UploaderName,
-		&item.UploaderEmail,
+		&item.UploaderUsername,
+		&item.ReviewerName,
+		&item.ReviewerUsername,
 	)
 	if err != nil {
 		return domain.DocumentSubmission{}, err
@@ -544,6 +651,9 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 
 	requestedQuery := strings.TrimSpace(filters.Query)
 	likeQuery := "%" + requestedQuery + "%"
+	requestedAuthor := strings.TrimSpace(filters.Author)
+	likeAuthor := "%" + requestedAuthor + "%"
+	tagTerms := splitFilterTerms(filters.TagsQuery)
 
 	queryArgs := []any{userID}
 	queryConditions := []string{"1=1"}
@@ -553,10 +663,6 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 	countConditions := []string{"1=1"}
 	countArgIndex := 1
 
-	if !adminMode {
-		queryConditions = append(queryConditions, "d.is_visible = TRUE")
-		countConditions = append(countConditions, "d.is_visible = TRUE")
-	}
 	if requestedQuery != "" {
 		queryConditions = append(
 			queryConditions,
@@ -564,8 +670,11 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 				`(
 					d.title %% $%d OR d.title ILIKE $%d OR
 					d.author %% $%d OR d.author ILIKE $%d OR
-					dep.name %% $%d OR dep.name ILIKE $%d OR
-					f.name %% $%d OR f.name ILIKE $%d
+					EXISTS (
+						SELECT 1 FROM document_tags dt2
+						JOIN tags t2 ON t2.id = dt2.tag_id
+						WHERE dt2.document_id = d.id AND (t2.name %% $%d OR t2.name ILIKE $%d)
+					)
 				)`,
 				queryArgIndex,
 				queryArgIndex+1,
@@ -573,8 +682,6 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 				queryArgIndex+3,
 				queryArgIndex+4,
 				queryArgIndex+5,
-				queryArgIndex+6,
-				queryArgIndex+7,
 			),
 		)
 		queryArgs = append(
@@ -585,10 +692,8 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			likeQuery,
 			requestedQuery,
 			likeQuery,
-			requestedQuery,
-			likeQuery,
 		)
-		queryArgIndex += 8
+		queryArgIndex += 6
 
 		countConditions = append(
 			countConditions,
@@ -596,8 +701,11 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 				`(
 					d.title %% $%d OR d.title ILIKE $%d OR
 					d.author %% $%d OR d.author ILIKE $%d OR
-					dep.name %% $%d OR dep.name ILIKE $%d OR
-					f.name %% $%d OR f.name ILIKE $%d
+					EXISTS (
+						SELECT 1 FROM document_tags dt2
+						JOIN tags t2 ON t2.id = dt2.tag_id
+						WHERE dt2.document_id = d.id AND (t2.name %% $%d OR t2.name ILIKE $%d)
+					)
 				)`,
 				countArgIndex,
 				countArgIndex+1,
@@ -605,8 +713,6 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 				countArgIndex+3,
 				countArgIndex+4,
 				countArgIndex+5,
-				countArgIndex+6,
-				countArgIndex+7,
 			),
 		)
 		countArgs = append(
@@ -617,28 +723,8 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			likeQuery,
 			requestedQuery,
 			likeQuery,
-			requestedQuery,
-			likeQuery,
 		)
-		countArgIndex += 8
-	}
-	if filters.FacultyID > 0 {
-		queryConditions = append(queryConditions, fmt.Sprintf("f.id = $%d", queryArgIndex))
-		queryArgs = append(queryArgs, filters.FacultyID)
-		queryArgIndex++
-
-		countConditions = append(countConditions, fmt.Sprintf("f.id = $%d", countArgIndex))
-		countArgs = append(countArgs, filters.FacultyID)
-		countArgIndex++
-	}
-	if filters.DepartmentID > 0 {
-		queryConditions = append(queryConditions, fmt.Sprintf("dep.id = $%d", queryArgIndex))
-		queryArgs = append(queryArgs, filters.DepartmentID)
-		queryArgIndex++
-
-		countConditions = append(countConditions, fmt.Sprintf("dep.id = $%d", countArgIndex))
-		countArgs = append(countArgs, filters.DepartmentID)
-		countArgIndex++
+		countArgIndex += 6
 	}
 	if strings.TrimSpace(filters.Type) != "" {
 		queryConditions = append(queryConditions, fmt.Sprintf("d.type = $%d", queryArgIndex))
@@ -649,17 +735,82 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 		countArgs = append(countArgs, strings.TrimSpace(filters.Type))
 		countArgIndex++
 	}
-	if adminMode {
-		switch filters.Visibility {
-		case "visible":
-			queryConditions = append(queryConditions, "d.is_visible = TRUE")
-			countConditions = append(countConditions, "d.is_visible = TRUE")
-		case "hidden":
-			queryConditions = append(queryConditions, "d.is_visible = FALSE")
-			countConditions = append(countConditions, "d.is_visible = FALSE")
-		}
-	}
+	if requestedAuthor != "" {
+		queryConditions = append(
+			queryConditions,
+			fmt.Sprintf("(d.author %% $%d OR d.author ILIKE $%d)", queryArgIndex, queryArgIndex+1),
+		)
+		queryArgs = append(queryArgs, requestedAuthor, likeAuthor)
+		queryArgIndex += 2
 
+		countConditions = append(
+			countConditions,
+			fmt.Sprintf("(d.author %% $%d OR d.author ILIKE $%d)", countArgIndex, countArgIndex+1),
+		)
+		countArgs = append(countArgs, requestedAuthor, likeAuthor)
+		countArgIndex += 2
+	}
+	if len(tagTerms) > 0 {
+		queryTagConditions := make([]string, 0, len(tagTerms))
+		for _, term := range tagTerms {
+			queryTagConditions = append(
+				queryTagConditions,
+				fmt.Sprintf("(t2.name %% $%d OR t2.name ILIKE $%d)", queryArgIndex, queryArgIndex+1),
+			)
+			queryArgs = append(queryArgs, term, "%"+term+"%")
+			queryArgIndex += 2
+		}
+		queryConditions = append(
+			queryConditions,
+			fmt.Sprintf(
+				`EXISTS (
+					SELECT 1 FROM document_tags dt2
+					JOIN tags t2 ON t2.id = dt2.tag_id
+					WHERE dt2.document_id = d.id AND (%s)
+				)`,
+				strings.Join(queryTagConditions, " OR "),
+			),
+		)
+
+		countTagConditions := make([]string, 0, len(tagTerms))
+		for _, term := range tagTerms {
+			countTagConditions = append(
+				countTagConditions,
+				fmt.Sprintf("(t2.name %% $%d OR t2.name ILIKE $%d)", countArgIndex, countArgIndex+1),
+			)
+			countArgs = append(countArgs, term, "%"+term+"%")
+			countArgIndex += 2
+		}
+		countConditions = append(
+			countConditions,
+			fmt.Sprintf(
+				`EXISTS (
+					SELECT 1 FROM document_tags dt2
+					JOIN tags t2 ON t2.id = dt2.tag_id
+					WHERE dt2.document_id = d.id AND (%s)
+				)`,
+				strings.Join(countTagConditions, " OR "),
+			),
+		)
+	}
+	if filters.YearFrom > 0 {
+		queryConditions = append(queryConditions, fmt.Sprintf("d.year >= $%d", queryArgIndex))
+		queryArgs = append(queryArgs, filters.YearFrom)
+		queryArgIndex++
+
+		countConditions = append(countConditions, fmt.Sprintf("d.year >= $%d", countArgIndex))
+		countArgs = append(countArgs, filters.YearFrom)
+		countArgIndex++
+	}
+	if filters.YearTo > 0 {
+		queryConditions = append(queryConditions, fmt.Sprintf("d.year <= $%d", queryArgIndex))
+		queryArgs = append(queryArgs, filters.YearTo)
+		queryArgIndex++
+
+		countConditions = append(countConditions, fmt.Sprintf("d.year <= $%d", countArgIndex))
+		countArgs = append(countArgs, filters.YearTo)
+		countArgIndex++
+	}
 	similarityArg := queryArgIndex
 	queryArgs = append(queryArgs, requestedQuery)
 
@@ -668,21 +819,22 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			d.id,
 			d.title,
 			d.author,
+			d.executor,
+			d.scientific_advisor,
 			d.year,
 			d.type,
+			d.place_of_publication,
+			d.publisher,
+			d.periodical_name,
+			d.volume,
 			d.description,
 			d.file_path,
 			d.file_name,
 			d.file_size_bytes,
 			d.mime_type,
 			d.cover_path,
-			d.is_visible,
 			d.created_at,
 			d.updated_at,
-			dep.id,
-			dep.name,
-			f.id,
-			f.name,
 			COALESCE(array_to_string(array_agg(DISTINCT t.name), ','), '') AS tags,
 			CASE WHEN $1 > 0 THEN EXISTS (
 				SELECT 1 FROM favorites fav WHERE fav.user_id = $1 AND fav.document_id = d.id
@@ -690,16 +842,14 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			CASE WHEN $` + fmt.Sprintf("%d", similarityArg) + ` <> '' THEN GREATEST(
 				similarity(d.title, $` + fmt.Sprintf("%d", similarityArg) + `),
 				similarity(d.author, $` + fmt.Sprintf("%d", similarityArg) + `),
-				similarity(dep.name, $` + fmt.Sprintf("%d", similarityArg) + `),
-				similarity(f.name, $` + fmt.Sprintf("%d", similarityArg) + `)
+				similarity(d.type, $` + fmt.Sprintf("%d", similarityArg) + `),
+				similarity(d.description, $` + fmt.Sprintf("%d", similarityArg) + `)
 			) ELSE 0 END AS similarity
 		FROM documents d
-		JOIN departments dep ON dep.id = d.department_id
-		JOIN faculties f ON f.id = dep.faculty_id
 		LEFT JOIN document_tags dt ON dt.document_id = d.id
 		LEFT JOIN tags t ON t.id = dt.tag_id
 		WHERE ` + strings.Join(queryConditions, " AND ") + `
-		GROUP BY d.id, dep.id, f.id
+		GROUP BY d.id
 		` + buildOrder(filters.Sort) + `
 		LIMIT ` + fmt.Sprintf("%d", pageSize) + ` OFFSET ` + fmt.Sprintf("%d", (page-1)*pageSize)
 
@@ -717,21 +867,22 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			&item.ID,
 			&item.Title,
 			&item.Author,
+			&item.Executor,
+			&item.ScientificAdvisor,
 			&item.Year,
 			&item.Type,
+			&item.PlaceOfPublication,
+			&item.Publisher,
+			&item.PeriodicalName,
+			&item.Volume,
 			&item.Description,
 			&item.FilePath,
 			&item.FileName,
 			&item.FileSizeBytes,
 			&item.MimeType,
 			&item.CoverPath,
-			&item.IsVisible,
 			&item.CreatedAt,
 			&item.UpdatedAt,
-			&item.DepartmentID,
-			&item.Department,
-			&item.FacultyID,
-			&item.Faculty,
 			&tags,
 			&item.IsFavorite,
 			&item.Similarity,
@@ -748,8 +899,6 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 	countQuery := `
 		SELECT COUNT(*)
 		FROM documents d
-		JOIN departments dep ON dep.id = d.department_id
-		JOIN faculties f ON f.id = dep.faculty_id
 		WHERE ` + strings.Join(countConditions, " AND ")
 	var total int
 	if err := r.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
@@ -772,37 +921,33 @@ func (r *Repository) GetDocumentByID(ctx context.Context, userID, id int64, admi
 			d.id,
 			d.title,
 			d.author,
+			d.executor,
+			d.scientific_advisor,
 			d.year,
 			d.type,
+			d.place_of_publication,
+			d.publisher,
+			d.periodical_name,
+			d.volume,
 			d.description,
 			d.file_path,
 			d.file_name,
 			d.file_size_bytes,
 			d.mime_type,
 			d.cover_path,
-			d.is_visible,
 			d.created_at,
 			d.updated_at,
-			dep.id,
-			dep.name,
-			f.id,
-			f.name,
 			COALESCE(array_to_string(array_agg(DISTINCT t.name), ','), '') AS tags,
 			CASE WHEN $1 > 0 THEN EXISTS (
 				SELECT 1 FROM favorites fav WHERE fav.user_id = $1 AND fav.document_id = d.id
 			) ELSE FALSE END AS is_favorite,
 			0 AS similarity
 		FROM documents d
-		JOIN departments dep ON dep.id = d.department_id
-		JOIN faculties f ON f.id = dep.faculty_id
 		LEFT JOIN document_tags dt ON dt.document_id = d.id
 		LEFT JOIN tags t ON t.id = dt.tag_id
 		WHERE d.id = $2
 	`
-	if !adminMode {
-		query += ` AND d.is_visible = TRUE`
-	}
-	query += ` GROUP BY d.id, dep.id, f.id`
+	query += ` GROUP BY d.id`
 
 	var document domain.Document
 	var tags string
@@ -810,21 +955,22 @@ func (r *Repository) GetDocumentByID(ctx context.Context, userID, id int64, admi
 		&document.ID,
 		&document.Title,
 		&document.Author,
+		&document.Executor,
+		&document.ScientificAdvisor,
 		&document.Year,
 		&document.Type,
+		&document.PlaceOfPublication,
+		&document.Publisher,
+		&document.PeriodicalName,
+		&document.Volume,
 		&document.Description,
 		&document.FilePath,
 		&document.FileName,
 		&document.FileSizeBytes,
 		&document.MimeType,
 		&document.CoverPath,
-		&document.IsVisible,
 		&document.CreatedAt,
 		&document.UpdatedAt,
-		&document.DepartmentID,
-		&document.Department,
-		&document.FacultyID,
-		&document.Faculty,
 		&tags,
 		&document.IsFavorite,
 		&document.Similarity,
@@ -903,32 +1049,33 @@ func (r *Repository) listDocumentsByRelation(ctx context.Context, relationTable,
 			d.id,
 			d.title,
 			d.author,
+			d.executor,
+			d.scientific_advisor,
 			d.year,
 			d.type,
+			d.place_of_publication,
+			d.publisher,
+			d.periodical_name,
+			d.volume,
 			d.description,
 			d.file_path,
 			d.file_name,
 			d.file_size_bytes,
 			d.mime_type,
 			d.cover_path,
-			d.is_visible,
 			d.created_at,
 			d.updated_at,
-			dep.id,
-			dep.name,
-			f.id,
-			f.name,
 			COALESCE(array_to_string(array_agg(DISTINCT t.name), ','), '') AS tags,
-			TRUE AS is_favorite,
+			EXISTS (
+				SELECT 1 FROM favorites fav WHERE fav.user_id = $1 AND fav.document_id = d.id
+			) AS is_favorite,
 			0 AS similarity
 		FROM `+relationTable+` rel
 		JOIN documents d ON d.id = rel.document_id
-		JOIN departments dep ON dep.id = d.department_id
-		JOIN faculties f ON f.id = dep.faculty_id
 		LEFT JOIN document_tags dt ON dt.document_id = d.id
 		LEFT JOIN tags t ON t.id = dt.tag_id
-		WHERE rel.user_id = $1 AND d.is_visible = TRUE
-		GROUP BY d.id, dep.id, f.id, rel.`+orderColumn+`
+		WHERE rel.user_id = $1
+		GROUP BY d.id, rel.`+orderColumn+`
 		ORDER BY rel.`+orderColumn+` DESC
 		LIMIT $2
 	`, userID, limit)
@@ -942,10 +1089,11 @@ func (r *Repository) listDocumentsByRelation(ctx context.Context, relationTable,
 		var item domain.Document
 		var tags string
 		if err := rows.Scan(
-			&item.ID, &item.Title, &item.Author, &item.Year, &item.Type, &item.Description,
+			&item.ID, &item.Title, &item.Author, &item.Executor, &item.ScientificAdvisor,
+			&item.Year, &item.Type, &item.PlaceOfPublication, &item.Publisher, &item.PeriodicalName,
+			&item.Volume, &item.Description,
 			&item.FilePath, &item.FileName, &item.FileSizeBytes, &item.MimeType, &item.CoverPath,
-			&item.IsVisible, &item.CreatedAt, &item.UpdatedAt, &item.DepartmentID, &item.Department,
-			&item.FacultyID, &item.Faculty, &tags, &item.IsFavorite, &item.Similarity,
+			&item.CreatedAt, &item.UpdatedAt, &tags, &item.IsFavorite, &item.Similarity,
 		); err != nil {
 			return nil, err
 		}
@@ -972,10 +1120,12 @@ func (r *Repository) CreateDocument(ctx context.Context, input domain.UpsertDocu
 
 	var id int64
 	if err := tx.QueryRowContext(ctx, `
-		INSERT INTO documents(title, author, year, type, department_id, description, file_path, file_name, file_size_bytes, mime_type, cover_path, is_visible)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		INSERT INTO documents(title, author, executor, scientific_advisor, year, type, place_of_publication, publisher, periodical_name, volume, description, file_path, file_name, file_size_bytes, mime_type, cover_path)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+
 		RETURNING id
-	`, input.Title, input.Author, input.Year, input.Type, input.DepartmentID, input.Description, input.FilePath, input.FileName, input.FileSize, input.MimeType, input.CoverPath, input.IsVisible).Scan(&id); err != nil {
+
+	`, input.Title, input.Author, input.Executor, input.ScientificAdvisor, input.Year, input.Type, input.PlaceOfPublication, input.Publisher, input.PeriodicalName, input.Volume, input.Description, input.FilePath, input.FileName, input.FileSize, input.MimeType, input.CoverPath).Scan(&id); err != nil {
 		return domain.Document{}, err
 	}
 
@@ -1000,19 +1150,24 @@ func (r *Repository) UpdateDocument(ctx context.Context, id int64, input domain.
 		UPDATE documents
 		SET title = $2,
 			author = $3,
-			year = $4,
-			type = $5,
-			department_id = $6,
-			description = $7,
-			file_path = CASE WHEN $8 = '' THEN file_path ELSE $8 END,
-			file_name = CASE WHEN $9 = '' THEN file_name ELSE $9 END,
-			file_size_bytes = CASE WHEN $10 = 0 THEN file_size_bytes ELSE $10 END,
-			mime_type = CASE WHEN $11 = '' THEN mime_type ELSE $11 END,
-			cover_path = CASE WHEN $12 = '' THEN cover_path ELSE $12 END,
-			is_visible = $13,
+			executor = $4,
+			scientific_advisor = $5,
+			year = $6,
+			type = $7,
+			place_of_publication = $8,
+			publisher = $9,
+			periodical_name = $10,
+			volume = $11,
+			description = $12,
+
+			file_path = CASE WHEN $13 = '' THEN file_path ELSE $14 END,
+			file_name = CASE WHEN $15 = '' THEN file_name ELSE $15 END,
+			file_size_bytes = CASE WHEN $16 = 0 THEN file_size_bytes ELSE $16 END,
+			mime_type = CASE WHEN $17 = '' THEN mime_type ELSE $17 END,
+			cover_path = CASE WHEN $18 = '' THEN cover_path ELSE $18 END,
 			updated_at = NOW()
 		WHERE id = $1
-	`, id, input.Title, input.Author, input.Year, input.Type, input.DepartmentID, input.Description, input.FilePath, input.FileName, input.FileSize, input.MimeType, input.CoverPath, input.IsVisible)
+	`, id, input.Title, input.Author, input.Executor, input.ScientificAdvisor, input.Year, input.Type, input.PlaceOfPublication, input.Publisher, input.PeriodicalName, input.Volume, input.Description, input.FilePath, input.FileName, input.FileSize, input.MimeType, input.CoverPath)
 	if err != nil {
 		return domain.Document{}, err
 	}
@@ -1065,10 +1220,10 @@ func (r *Repository) ApproveSubmission(ctx context.Context, submissionID, review
 
 	var documentID int64
 	if err := tx.QueryRowContext(ctx, `
-		INSERT INTO documents(title, author, year, type, department_id, description, file_path, file_name, file_size_bytes, mime_type, cover_path, is_visible)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		INSERT INTO documents(title, author, executor, scientific_advisor, year, type, place_of_publication, publisher, periodical_name, volume, description, file_path, file_name, file_size_bytes, mime_type, cover_path)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		RETURNING id
-	`, input.Title, input.Author, input.Year, input.Type, input.DepartmentID, input.Description, filePath, fileName, fileSize, mimeType, coverPath, input.IsVisible).Scan(&documentID); err != nil {
+	`, input.Title, input.Author, input.Executor, input.ScientificAdvisor, input.Year, input.Type, input.PlaceOfPublication, input.Publisher, input.PeriodicalName, input.Volume, input.Description, filePath, fileName, fileSize, mimeType, coverPath).Scan(&documentID); err != nil {
 		return domain.Document{}, err
 	}
 
@@ -1208,16 +1363,248 @@ func (r *Repository) DeleteDocument(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (r *Repository) ImportDocument(ctx context.Context, title, author, docType, description, relativePath, fileName string, size int64, departmentID int64, coverPath string) error {
+func (r *Repository) ImportDocument(ctx context.Context, title, author, docType, description, relativePath, fileName string, size int64, coverPath string) error {
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO documents(title, author, year, type, department_id, description, file_path, file_name, file_size_bytes, mime_type, cover_path, is_visible)
-		VALUES ($1, $2, EXTRACT(YEAR FROM NOW())::INT, $3, $4, $5, $6, $7, $8, 'application/pdf', $9, TRUE)
-	`, title, author, docType, departmentID, description, relativePath, fileName, size, coverPath)
+		INSERT INTO documents(title, author, year, type, description, file_path, file_name, file_size_bytes, mime_type, cover_path)
+
+		VALUES ($1, $2, EXTRACT(YEAR FROM NOW())::INT, $3, $4, $5, $6, $7, 'application/pdf', $8)
+
+	`, title, author, docType, description, relativePath, fileName, size, coverPath)
 	return err
 }
 
-func (r *Repository) Stats(ctx context.Context) (domain.Stats, error) {
+func (r *Repository) ListDocumentTypes(ctx context.Context) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT DISTINCT type
+		FROM documents
+		WHERE TRIM(type) <> ''
+		ORDER BY type
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []string{}
+	for rows.Next() {
+		var item string
+		if err := rows.Scan(&item); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) CreateAuditEvent(ctx context.Context, input domain.CreateAuditEventInput) error {
+	details := input.Details
+	if details == nil {
+		details = map[string]any{}
+	}
+	rawDetails, err := json.Marshal(details)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO document_audit_events(
+			action,
+			actor_id,
+			document_id,
+			submission_id,
+			document_title,
+			file_name,
+			details
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+	`,
+		strings.TrimSpace(input.Action),
+		nullableInt64(input.ActorID),
+		nullableInt64(input.DocumentID),
+		nullableInt64(input.SubmissionID),
+		strings.TrimSpace(input.DocumentTitle),
+		strings.TrimSpace(input.FileName),
+		string(rawDetails),
+	)
+	return err
+}
+
+func scanAuditEvent(row rowScanner) (domain.DocumentAuditEvent, error) {
+	var item domain.DocumentAuditEvent
+	var rawDetails []byte
+	err := row.Scan(
+		&item.ID,
+		&item.Action,
+		&item.ActorID,
+		&item.ActorName,
+		&item.ActorUsername,
+		&item.DocumentID,
+		&item.SubmissionID,
+		&item.DocumentTitle,
+		&item.FileName,
+		&rawDetails,
+		&item.CreatedAt,
+	)
+	if err != nil {
+		return domain.DocumentAuditEvent{}, err
+	}
+	if len(rawDetails) > 0 {
+		if err := json.Unmarshal(rawDetails, &item.Details); err != nil {
+			return domain.DocumentAuditEvent{}, err
+		}
+	}
+	if item.Details == nil {
+		item.Details = map[string]any{}
+	}
+	return item, nil
+}
+
+func (r *Repository) ListDocumentAuditEvents(ctx context.Context, documentID int64) ([]domain.DocumentAuditEvent, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			e.id,
+			e.action,
+			COALESCE(e.actor_id, 0),
+			COALESCE(u.full_name, ''),
+			COALESCE(u.username, ''),
+			COALESCE(e.document_id, 0),
+			COALESCE(e.submission_id, 0),
+			e.document_title,
+			e.file_name,
+			e.details,
+			e.created_at
+		FROM document_audit_events e
+		LEFT JOIN users u ON u.id = e.actor_id
+		WHERE e.document_id = $1
+			OR e.submission_id IN (
+				SELECT id
+				FROM document_submissions
+				WHERE approved_document_id = $1
+			)
+		ORDER BY e.created_at DESC, e.id DESC
+	`, documentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []domain.DocumentAuditEvent{}
+	for rows.Next() {
+		item, err := scanAuditEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) ListAuditEvents(ctx context.Context, filters domain.AuditFilters) (domain.PagedAuditEvents, error) {
+	page := filters.Page
+	if page <= 0 {
+		page = 1
+	}
+	pageSize := filters.PageSize
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 50
+	}
+
+	args := []any{}
+	conditions := []string{"1=1"}
+	argIndex := 1
+	if filters.Query != "" {
+		conditions = append(conditions, fmt.Sprintf("(e.document_title ILIKE $%d OR e.file_name ILIKE $%d OR u.full_name ILIKE $%d OR u.username ILIKE $%d)", argIndex, argIndex, argIndex, argIndex))
+		args = append(args, "%"+strings.TrimSpace(filters.Query)+"%")
+		argIndex++
+	}
+	if filters.Action != "" {
+		conditions = append(conditions, fmt.Sprintf("e.action = $%d", argIndex))
+		args = append(args, strings.TrimSpace(filters.Action))
+		argIndex++
+	}
+	if !filters.DateFrom.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("e.created_at >= $%d", argIndex))
+		args = append(args, filters.DateFrom)
+		argIndex++
+	}
+	if !filters.DateTo.IsZero() {
+		conditions = append(conditions, fmt.Sprintf("e.created_at < $%d", argIndex))
+		args = append(args, filters.DateTo)
+		argIndex++
+	}
+
+	where := strings.Join(conditions, " AND ")
+	var total int
+	if err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM document_audit_events e
+		LEFT JOIN users u ON u.id = e.actor_id
+		WHERE `+where, args...).Scan(&total); err != nil {
+		return domain.PagedAuditEvents{}, err
+	}
+
+	args = append(args, pageSize, (page-1)*pageSize)
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			e.id,
+			e.action,
+			COALESCE(e.actor_id, 0),
+			COALESCE(u.full_name, ''),
+			COALESCE(u.username, ''),
+			COALESCE(e.document_id, 0),
+			COALESCE(e.submission_id, 0),
+			e.document_title,
+			e.file_name,
+			e.details,
+			e.created_at
+		FROM document_audit_events e
+		LEFT JOIN users u ON u.id = e.actor_id
+		WHERE `+where+`
+		ORDER BY e.created_at DESC, e.id DESC
+		LIMIT $`+fmt.Sprint(argIndex)+` OFFSET $`+fmt.Sprint(argIndex+1), args...)
+	if err != nil {
+		return domain.PagedAuditEvents{}, err
+	}
+	defer rows.Close()
+
+	items := []domain.DocumentAuditEvent{}
+	for rows.Next() {
+		item, err := scanAuditEvent(rows)
+		if err != nil {
+			return domain.PagedAuditEvents{}, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return domain.PagedAuditEvents{}, err
+	}
+
+	return domain.PagedAuditEvents{
+		Items: items,
+		Pagination: domain.Pagination{
+			Page:     page,
+			PageSize: pageSize,
+			Total:    total,
+		},
+	}, nil
+}
+
+func (r *Repository) Stats(ctx context.Context, filters domain.StatsFilters) (domain.Stats, error) {
 	stats := domain.Stats{}
+	now := time.Now()
+	dateFrom := filters.DateFrom
+	if dateFrom.IsZero() {
+		dateFrom = now.AddDate(0, -1, 0)
+	}
+	dateTo := filters.DateTo
+	if dateTo.IsZero() {
+		dateTo = now
+	}
+	if !dateTo.After(dateFrom) {
+		dateTo = dateFrom.AddDate(0, 0, 1)
+	}
+	stats.UploadPeriodFrom = dateFrom
+	stats.UploadPeriodTo = dateTo
 
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM documents`).Scan(&stats.DocumentsCount); err != nil {
 		return stats, err
@@ -1230,6 +1617,32 @@ func (r *Repository) Stats(ctx context.Context) (domain.Stats, error) {
 	}
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM search_history WHERE created_at >= CURRENT_DATE`).Scan(&stats.SearchesToday); err != nil {
 		return stats, err
+	}
+	if err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM documents
+		WHERE created_at >= $1 AND created_at < $2
+	`, dateFrom, dateTo).Scan(&stats.UploadedInPeriod); err != nil {
+		return stats, err
+	}
+
+	uploadRows, err := r.db.QueryContext(ctx, `
+		SELECT TO_CHAR(created_at::date, 'YYYY-MM-DD') AS day, COUNT(*) AS count
+		FROM documents
+		WHERE created_at >= $1 AND created_at < $2
+		GROUP BY created_at::date
+		ORDER BY created_at::date ASC
+	`, dateFrom, dateTo)
+	if err != nil {
+		return stats, err
+	}
+	defer uploadRows.Close()
+	for uploadRows.Next() {
+		var item domain.NamedStat
+		if err := uploadRows.Scan(&item.Name, &item.Count); err != nil {
+			return stats, err
+		}
+		stats.DocumentsUploadedByDay = append(stats.DocumentsUploadedByDay, item)
 	}
 
 	queryRows, err := r.db.QueryContext(ctx, `
@@ -1271,24 +1684,22 @@ func (r *Repository) Stats(ctx context.Context) (domain.Stats, error) {
 		stats.TopDocuments = append(stats.TopDocuments, item)
 	}
 
-	facultyRows, err := r.db.QueryContext(ctx, `
-		SELECT f.name, COUNT(d.id)
-		FROM faculties f
-		LEFT JOIN departments dep ON dep.faculty_id = f.id
-		LEFT JOIN documents d ON d.department_id = dep.id
-		GROUP BY f.name
-		ORDER BY f.name
+	typeRows, err := r.db.QueryContext(ctx, `
+		SELECT type, COUNT(*) AS count
+		FROM documents
+		GROUP BY type
+		ORDER BY count DESC, type ASC
 	`)
 	if err != nil {
 		return stats, err
 	}
-	defer facultyRows.Close()
-	for facultyRows.Next() {
-		var item domain.FacultyDocStat
-		if err := facultyRows.Scan(&item.Faculty, &item.Count); err != nil {
+	defer typeRows.Close()
+	for typeRows.Next() {
+		var item domain.NamedStat
+		if err := typeRows.Scan(&item.Name, &item.Count); err != nil {
 			return stats, err
 		}
-		stats.DocumentsByFaculty = append(stats.DocumentsByFaculty, item)
+		stats.DocumentsByType = append(stats.DocumentsByType, item)
 	}
 
 	return stats, nil

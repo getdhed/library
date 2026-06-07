@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Badge,
   Box,
@@ -9,9 +9,8 @@ import {
 } from "@mui/material";
 import { useSearchParams } from "react-router-dom";
 import {
-  getDepartments,
   getDocuments,
-  getFaculties,
+  getDocumentTypes,
   markOpened,
   toggleDocumentFavorite,
 } from "../api/library";
@@ -20,70 +19,66 @@ import CatalogFiltersDialog from "../components/CatalogFiltersDialog";
 import DocumentCardActions from "../components/DocumentCardActions";
 import DocumentListItem from "../components/DocumentListItem";
 import { ContentCard, PageHeader, PageShell } from "../components/mui-primitives";
-import type { Department, Faculty, PagedDocuments } from "../types";
+import type { PagedDocuments } from "../types";
 
 type FilterDraft = {
-  facultyId: string;
-  departmentId: string;
   type: string;
+  author: string;
+  yearFrom: string;
+  yearTo: string;
+  tags: string;
   sort: string;
 };
 
 const emptyDraft: FilterDraft = {
-  facultyId: "",
-  departmentId: "",
   type: "",
+  author: "",
+  yearFrom: "",
+  yearTo: "",
+  tags: "",
   sort: "date_desc",
 };
 
 const BrowsePage: React.FC = () => {
   const { token } = useAuth();
   const [params, setParams] = useSearchParams();
-  const [faculties, setFaculties] = useState<Faculty[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
   const [payload, setPayload] = useState<PagedDocuments | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [documentTypes, setDocumentTypes] = useState<string[]>([]);
 
-  const facultyId = Number(params.get("facultyId") ?? 0);
-  const departmentId = Number(params.get("departmentId") ?? 0);
   const type = params.get("type") ?? "";
+  const author = params.get("author") ?? "";
+  const yearFrom = params.get("yearFrom") ?? "";
+  const yearTo = params.get("yearTo") ?? "";
+  const tags = params.get("tags") ?? "";
   const sort = params.get("sort") ?? "date_desc";
   const page = Number(params.get("page") ?? 1);
 
   const [draftFilters, setDraftFilters] = useState<FilterDraft>({
-    facultyId: facultyId ? String(facultyId) : "",
-    departmentId: departmentId ? String(departmentId) : "",
     type,
+    author,
+    yearFrom,
+    yearTo,
+    tags,
     sort,
   });
 
   useEffect(() => {
-    getFaculties()
-      .then((response) => setFaculties(response.items))
-      .catch(console.error);
-  }, []);
-
-  useEffect(() => {
     setDraftFilters({
-      facultyId: facultyId ? String(facultyId) : "",
-      departmentId: departmentId ? String(departmentId) : "",
       type,
+      author,
+      yearFrom,
+      yearTo,
+      tags,
       sort,
     });
-  }, [departmentId, facultyId, sort, type]);
-
-  const effectiveFacultyId = Number(draftFilters.facultyId || 0);
+  }, [author, sort, tags, type, yearFrom, yearTo]);
 
   useEffect(() => {
-    if (!effectiveFacultyId) {
-      setDepartments([]);
-      return;
-    }
-
-    getDepartments(effectiveFacultyId)
-      .then((response) => setDepartments(response.items))
+    getDocumentTypes()
+      .then((response) => setDocumentTypes(response.items))
       .catch(console.error);
-  }, [effectiveFacultyId]);
+  }, []);
 
   const loadDocuments = useCallback(async () => {
     if (!token) {
@@ -92,27 +87,26 @@ const BrowsePage: React.FC = () => {
 
     const response = await getDocuments(token, {
       sort,
-      facultyId,
-      departmentId,
       type,
+      author,
+      yearFrom,
+      yearTo,
+      tags,
       page,
     });
     setPayload(response);
-  }, [departmentId, facultyId, page, sort, token, type]);
+  }, [author, page, sort, tags, token, type, yearFrom, yearTo]);
 
   useEffect(() => {
     loadDocuments().catch(console.error);
   }, [loadDocuments]);
 
-  const documentTypes = useMemo(() => {
-    const items = payload?.items ?? [];
-    return Array.from(new Set(items.map((item) => item.type)));
-  }, [payload?.items]);
-
   const activeFiltersCount = [
-    facultyId,
-    departmentId,
     type,
+    author,
+    yearFrom,
+    yearTo,
+    tags,
     sort !== "date_desc" ? sort : "",
   ].filter(Boolean).length;
 
@@ -156,9 +150,11 @@ const BrowsePage: React.FC = () => {
   function applyFilters() {
     setFiltersOpen(false);
     updateParam({
-      facultyId: draftFilters.facultyId,
-      departmentId: draftFilters.departmentId,
       type: draftFilters.type,
+      author: draftFilters.author.trim(),
+      yearFrom: draftFilters.yearFrom,
+      yearTo: draftFilters.yearTo,
+      tags: draftFilters.tags.trim(),
       sort: draftFilters.sort,
       page: "1",
     });
@@ -168,9 +164,11 @@ const BrowsePage: React.FC = () => {
     setFiltersOpen(false);
     setDraftFilters(emptyDraft);
     updateParam({
-      facultyId: "",
-      departmentId: "",
       type: "",
+      author: "",
+      yearFrom: "",
+      yearTo: "",
+      tags: "",
       sort: "date_desc",
       page: "1",
     });
@@ -248,29 +246,40 @@ const BrowsePage: React.FC = () => {
         onApply={applyFilters}
         onReset={resetFilters}
         idPrefix="browse"
-        faculties={faculties}
-        departments={departments}
         documentTypes={documentTypes}
-        facultyValue={draftFilters.facultyId}
-        departmentValue={draftFilters.departmentId}
         typeValue={draftFilters.type}
-        onFacultyChange={(value) =>
-          setDraftFilters((current) => ({
-            ...current,
-            facultyId: value,
-            departmentId: "",
-          }))
-        }
-        onDepartmentChange={(value) =>
-          setDraftFilters((current) => ({
-            ...current,
-            departmentId: value,
-          }))
-        }
         onTypeChange={(value) =>
           setDraftFilters((current) => ({
             ...current,
             type: value,
+          }))
+        }
+        authorValue={draftFilters.author}
+        onAuthorChange={(value) =>
+          setDraftFilters((current) => ({
+            ...current,
+            author: value,
+          }))
+        }
+        yearFromValue={draftFilters.yearFrom}
+        onYearFromChange={(value) =>
+          setDraftFilters((current) => ({
+            ...current,
+            yearFrom: value,
+          }))
+        }
+        yearToValue={draftFilters.yearTo}
+        onYearToChange={(value) =>
+          setDraftFilters((current) => ({
+            ...current,
+            yearTo: value,
+          }))
+        }
+        tagsValue={draftFilters.tags}
+        onTagsChange={(value) =>
+          setDraftFilters((current) => ({
+            ...current,
+            tags: value,
           }))
         }
         includeSort

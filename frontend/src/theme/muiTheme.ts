@@ -2,42 +2,40 @@ import { alpha, createTheme, type CSSObject, type PaletteMode } from "@mui/mater
 
 const tokens = {
   light: {
-    bg: "#f2efe8",
-    panel: "#fbf8f2",
-    surface: "#fffdf8",
-    surfaceMuted: "#f6f1e7",
-    ink: "#1c2430",
-    muted: "#62707d",
-    line: "#d4cfc3",
-    accent: "#0a6c74",
-    accentStrong: "#07444a",
-    warm: "#c7824c",
-    danger: "#b54c37",
-    bodyRadial: "rgba(199, 130, 76, 0.22)",
-    bodyStart: "#f6f2ea",
-    bodyEnd: "#ece7dd",
-    sidebarStart: "#17363c",
-    sidebarEnd: "#0f2227",
-    sidebarInk: "#f8f5f0",
+    bg: "#f0ede4",
+    panel: "#f3efe3",
+    surface: "#e8e3d5",
+    surfaceMuted: "#d9cfad",
+    ink: "#1a2e1a",
+    muted: "#4a5c3a",
+    line: "#c8bf9e",
+    accent: "#4a5c3a",
+    accentStrong: "#1a2e1a",
+    accentGlow: "#6b7c52",
+    warm: "#b8972a",
+    danger: "#8b2020",
+    headerBg: "#1a2e1a",
+    headerInk: "#f0ede4",
+    headerBorder: "#b8972a",
+    footerBg: "#0f1a0f",
   },
   dark: {
-    bg: "#10161d",
-    panel: "#161e27",
-    surface: "#17212b",
-    surfaceMuted: "#1d2732",
-    ink: "#eef3f7",
-    muted: "#9caab7",
-    line: "#2e3a48",
-    accent: "#3db6bf",
-    accentStrong: "#7ad8e0",
-    warm: "#e3a36d",
-    danger: "#ff8d72",
-    bodyRadial: "rgba(61, 182, 191, 0.12)",
-    bodyStart: "#0f151d",
-    bodyEnd: "#18222d",
-    sidebarStart: "#0a1118",
-    sidebarEnd: "#121d27",
-    sidebarInk: "#f0f5f7",
+    bg: "#f0ede4",
+    panel: "#f3efe3",
+    surface: "#e8e3d5",
+    surfaceMuted: "#d9cfad",
+    ink: "#1a2e1a",
+    muted: "#4a5c3a",
+    line: "#c8bf9e",
+    accent: "#4a5c3a",
+    accentStrong: "#1a2e1a",
+    accentGlow: "#6b7c52",
+    warm: "#b8972a",
+    danger: "#8b2020",
+    headerBg: "#1a2e1a",
+    headerInk: "#f0ede4",
+    headerBorder: "#b8972a",
+    footerBg: "#0f1a0f",
   },
 } as const;
 
@@ -50,12 +48,11 @@ export function createAppTheme(mode: PaletteMode) {
       primary: {
         main: t.accent,
         dark: t.accentStrong,
-        light: alpha(t.accent, 0.82),
-        contrastText: mode === "light" ? "#ffffff" : "#081318",
+        light: t.accentGlow,
+        contrastText: t.headerInk,
       },
       secondary: {
         main: t.warm,
-        dark: alpha(t.warm, 0.8),
       },
       error: {
         main: t.danger,
@@ -71,28 +68,64 @@ export function createAppTheme(mode: PaletteMode) {
       divider: t.line,
     },
     shape: {
-      borderRadius: 16,
+      borderRadius: 0,
     },
     typography: {
-      fontFamily: '"Segoe UI", "Trebuchet MS", sans-serif',
-      h1: { fontWeight: 700, letterSpacing: "-0.03em" },
-      h2: { fontWeight: 700, letterSpacing: "-0.02em" },
-      h3: { fontWeight: 700 },
-      overline: {
+      fontFamily: '"IBM Plex Sans", "Segoe UI", sans-serif',
+      h1: {
+        fontFamily: '"IBM Plex Sans", "Segoe UI", sans-serif',
         fontWeight: 700,
-        letterSpacing: "0.12em",
+        letterSpacing: "0.01em",
+        lineHeight: 1.06,
+      },
+      h2: {
+        fontFamily: '"Bebas Neue", "Arial Narrow", sans-serif',
+        fontWeight: 400,
+        letterSpacing: "0.04em",
+      },
+      h3: {
+        fontFamily: '"Bebas Neue", "Arial Narrow", sans-serif',
+        fontWeight: 400,
+        letterSpacing: "0.035em",
+      },
+      h4: {
+        fontFamily: '"Bebas Neue", "Arial Narrow", sans-serif',
+        fontWeight: 400,
+        letterSpacing: "0.03em",
+      },
+      h5: {
+        fontFamily: '"Bebas Neue", "Arial Narrow", sans-serif',
+        fontWeight: 400,
+        letterSpacing: "0.03em",
+      },
+      h6: {
+        fontFamily: '"IBM Plex Sans", "Segoe UI", sans-serif',
+        fontWeight: 600,
+      },
+      caption: {
+        fontFamily: '"IBM Plex Mono", monospace',
+        letterSpacing: "0.08em",
+      },
+      overline: {
+        fontFamily: '"IBM Plex Mono", monospace',
+        letterSpacing: "0.14em",
+        textTransform: "uppercase",
+        fontWeight: 500,
+      },
+      button: {
+        fontFamily: '"IBM Plex Mono", monospace',
+        fontWeight: 500,
+        letterSpacing: "0.08em",
         textTransform: "uppercase",
       },
-      button: { fontWeight: 700, textTransform: "none" },
     },
     components: {
       MuiCssBaseline: {
         styleOverrides: {
           body: {
-            background:
-              `radial-gradient(circle at top left, ${t.bodyRadial}, transparent 30%), ` +
-              `linear-gradient(135deg, ${t.bodyStart}, ${t.bodyEnd})`,
+            backgroundColor: t.bg,
             color: t.ink,
+            position: "relative",
           },
           a: {
             color: "inherit",
@@ -107,20 +140,20 @@ export function createAppTheme(mode: PaletteMode) {
         },
         styleOverrides: {
           root: {
-            borderColor: alpha(t.line, 0.8),
+            borderRadius: 0,
+            borderColor: t.line,
             backgroundColor: t.panel,
-            boxShadow:
-              mode === "light"
-                ? "0 18px 40px rgba(28, 36, 48, 0.12)"
-                : "0 20px 44px rgba(0, 0, 0, 0.34)",
+            boxShadow: "none",
           },
         },
       },
       MuiCard: {
         styleOverrides: {
           root: {
-            borderColor: alpha(t.line, 0.84),
+            borderRadius: 0,
+            borderColor: t.line,
             backgroundColor: t.surface,
+            boxShadow: "none",
           },
         },
       },
@@ -130,59 +163,96 @@ export function createAppTheme(mode: PaletteMode) {
         },
         styleOverrides: {
           root: {
-            borderRadius: 14,
-            minHeight: 42,
+            borderRadius: 0,
+            minHeight: 40,
+            paddingInline: 16,
           },
           containedPrimary: {
-            background: `linear-gradient(180deg, ${alpha(t.accent, 0.82)}, ${t.accent})`,
+            border: `1px solid ${alpha(t.warm, 0.8)}`,
+            backgroundColor: t.warm,
+            color: t.accentStrong,
             "&:hover": {
-              background: `linear-gradient(180deg, ${alpha(t.accentStrong, 0.84)}, ${t.accentStrong})`,
+              backgroundColor: "#cba830",
             },
           },
           outlined: {
-            borderColor: alpha(t.accent, 0.3),
+            borderColor: alpha(t.line, 0.95),
+            color: t.ink,
+            backgroundColor: alpha(t.panel, 0.9),
+            "&:hover": {
+              borderColor: t.accent,
+              backgroundColor: alpha(t.accent, 0.08),
+            },
           },
         },
       },
       MuiIconButton: {
         styleOverrides: {
           root: {
-            borderRadius: 10,
-            transition: "background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease",
+            borderRadius: 0,
+            border: `1px solid ${alpha(t.line, 0.9)}`,
+            backgroundColor: alpha(t.panel, 0.92),
+            "&:hover": {
+              borderColor: t.accent,
+              backgroundColor: alpha(t.accent, 0.12),
+            },
           },
         },
       },
       MuiOutlinedInput: {
         styleOverrides: {
           root: {
-            borderRadius: 14,
-            backgroundColor: t.surface,
+            borderRadius: 0,
+            backgroundColor: alpha(t.panel, 0.95),
             "& .MuiOutlinedInput-notchedOutline": {
-              borderColor: alpha(t.line, 0.95),
+              borderColor: alpha(t.line, 0.96),
             },
+            "&:hover .MuiOutlinedInput-notchedOutline": {
+              borderColor: t.accent,
+            },
+            "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+              borderColor: t.accentStrong,
+            },
+          },
+        },
+      },
+      MuiSelect: {
+        styleOverrides: {
+          select: {
+            borderRadius: 0,
           },
         },
       },
       MuiTab: {
         styleOverrides: {
           root: {
-            minHeight: 44,
-            borderRadius: 10,
-            textTransform: "none",
-            fontWeight: 700,
+            minHeight: 40,
+            borderRadius: 0,
             "&.Mui-selected": {
-              backgroundColor: alpha(t.accent, 0.12),
+              color: t.accentStrong,
+              backgroundColor: alpha(t.warm, 0.14),
             },
+          },
+        },
+      },
+      MuiTabs: {
+        styleOverrides: {
+          indicator: {
+            height: 2,
+            backgroundColor: t.warm,
           },
         },
       },
       MuiChip: {
         styleOverrides: {
           root: {
-            borderRadius: 999,
-            border: `1px solid ${alpha(t.accent, 0.2)}`,
-            backgroundColor: alpha(t.accent, 0.1),
-            color: t.accentStrong,
+            borderRadius: 0,
+            border: `1px solid ${alpha(t.accent, 0.3)}`,
+            backgroundColor: alpha(t.accent, 0.08),
+            color: t.accent,
+            fontFamily: '"IBM Plex Mono", monospace',
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
           },
         },
       },
@@ -190,40 +260,61 @@ export function createAppTheme(mode: PaletteMode) {
         styleOverrides: {
           tooltip: {
             fontSize: 12,
-            borderRadius: 10,
-            backgroundColor: alpha(mode === "light" ? "#243238" : "#0c141a", 0.92),
+            borderRadius: 0,
+            fontFamily: '"IBM Plex Mono", monospace',
+            backgroundColor: alpha(t.accentStrong, 0.97),
+            border: `1px solid ${alpha(t.line, 0.9)}`,
           },
           arrow: {
-            color: alpha(mode === "light" ? "#243238" : "#0c141a", 0.92),
+            color: alpha(t.accentStrong, 0.97),
           },
         },
       },
       MuiDrawer: {
         styleOverrides: {
           paper: {
-            borderColor: alpha(t.line, 0.85),
-            backgroundColor: alpha(t.panel, 0.98),
+            borderRadius: 0,
+            borderColor: alpha(t.line, 0.95),
+            backgroundColor: t.panel,
+          },
+        },
+      },
+      MuiMenuItem: {
+        styleOverrides: {
+          root: {
+            borderRadius: 0,
+            fontFamily: '"IBM Plex Sans", "Segoe UI", sans-serif',
+          },
+        },
+      },
+      MuiAvatar: {
+        styleOverrides: {
+          root: {
+            borderRadius: 0,
           },
         },
       },
       MuiTableContainer: {
         styleOverrides: {
           root: {
-            borderRadius: 20,
-            border: `1px solid ${alpha(t.line, 0.75)}`,
-            backgroundColor: alpha(t.panel, 0.9),
+            borderRadius: 0,
+            border: `1px solid ${alpha(t.line, 0.95)}`,
+            backgroundColor: t.panel,
           },
         },
       },
       MuiTableCell: {
         styleOverrides: {
           root: {
-            borderBottomColor: alpha(t.line, 0.6),
+            borderBottomColor: alpha(t.line, 0.8),
           },
           head: {
-            fontWeight: 700,
+            fontFamily: '"IBM Plex Mono", monospace',
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            fontWeight: 500,
             color: t.ink,
-            backgroundColor: alpha(t.surfaceMuted, 0.9),
+            backgroundColor: alpha(t.surface, 0.8),
           },
         },
       },
@@ -243,18 +334,26 @@ export function getGlobalStyles(mode: PaletteMode): CSSObject {
     },
     "#root": {
       minHeight: "100vh",
+      position: "relative",
+      zIndex: 1,
+    },
+    "::selection": {
+      backgroundColor: alpha(t.warm, 0.35),
+      color: t.accentStrong,
     },
     "::-webkit-scrollbar": {
-      width: 12,
-      height: 12,
-    },
-    "::-webkit-scrollbar-thumb": {
-      backgroundColor: alpha(t.accent, 0.28),
-      borderRadius: 999,
-      border: `3px solid ${t.bg}`,
+      width: 6,
+      height: 6,
     },
     "::-webkit-scrollbar-track": {
-      backgroundColor: alpha(t.bg, 0.9),
+      backgroundColor: t.surface,
+    },
+    "::-webkit-scrollbar-thumb": {
+      backgroundColor: t.line,
+      borderRadius: 0,
+    },
+    "::-webkit-scrollbar-thumb:hover": {
+      backgroundColor: t.accentGlow,
     },
   };
 }
@@ -264,4 +363,3 @@ export type ThemeTokens = (typeof tokens)["light"];
 export function getThemeTokens(mode: PaletteMode): ThemeTokens {
   return tokens[mode];
 }
-

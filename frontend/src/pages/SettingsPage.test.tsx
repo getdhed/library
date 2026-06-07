@@ -1,12 +1,12 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { ThemeProvider } from "../theme/ThemeContext";
 import SettingsPage from "./SettingsPage";
 
 describe("SettingsPage", () => {
-  it("switches between light and dark themes", () => {
+  it("shows fixed single-style mode without theme toggles", async () => {
     window.localStorage.clear();
 
     render(
@@ -17,14 +17,20 @@ describe("SettingsPage", () => {
       </ThemeProvider>
     );
 
-    expect(document.documentElement.dataset.theme).toBe("light");
+    await waitFor(() => {
+      expect(document.documentElement.dataset.theme).toBe("light");
+      expect(window.localStorage.getItem("library-theme")).toBe("light");
+    });
 
-    fireEvent.click(screen.getByRole("button", { name: "Тёмная тема" }));
-    expect(document.documentElement.dataset.theme).toBe("dark");
-    expect(window.localStorage.getItem("library-theme")).toBe("dark");
-
-    fireEvent.click(screen.getByRole("button", { name: "Светлая тема" }));
-    expect(document.documentElement.dataset.theme).toBe("light");
-    expect(window.localStorage.getItem("library-theme")).toBe("light");
+    expect(screen.getByText("Единый режим интерфейса")).toBeInTheDocument();
+    expect(
+      screen.getByText(/переключение темы временно отключено/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Тёмная тема" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Светлая тема" })
+    ).not.toBeInTheDocument();
   });
 });

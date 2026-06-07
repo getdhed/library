@@ -1,31 +1,20 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Alert,
   Box,
   Button,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  createSubmission,
-  getDepartments,
-  getFaculties,
-} from "../api/library";
+import { createSubmission } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
 import { ContentCard, PageHeader, PageShell } from "../components/mui-primitives";
-import type { Department, Faculty } from "../types";
 
 const emptyForm = {
   title: "",
   author: "",
-  facultyId: "",
-  departmentId: "",
   comment: "",
   file: null as File | null,
 };
@@ -33,28 +22,9 @@ const emptyForm = {
 const SubmitPage: React.FC = () => {
   const { token } = useAuth();
   const navigate = useNavigate();
-  const [faculties, setFaculties] = useState<Faculty[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    getFaculties()
-      .then((response) => setFaculties(response.items))
-      .catch(console.error);
-  }, []);
-
-  useEffect(() => {
-    if (!form.facultyId) {
-      setDepartments([]);
-      return;
-    }
-
-    getDepartments(Number(form.facultyId))
-      .then((response) => setDepartments(response.items))
-      .catch(console.error);
-  }, [form.facultyId]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -75,9 +45,6 @@ const SubmitPage: React.FC = () => {
     if (form.author.trim()) {
       formData.set("author", form.author.trim());
     }
-    if (form.departmentId) {
-      formData.set("departmentId", form.departmentId);
-    }
     if (form.comment.trim()) {
       formData.set("comment", form.comment.trim());
     }
@@ -86,7 +53,6 @@ const SubmitPage: React.FC = () => {
     try {
       await createSubmission(token, formData);
       setForm(emptyForm);
-      setDepartments([]);
       navigate("/account/pdfs", {
         state: { submissionCreated: true },
       });
@@ -138,53 +104,6 @@ const SubmitPage: React.FC = () => {
             disabled={isSubmitting}
             fullWidth
           />
-
-          <FormControl fullWidth>
-            <InputLabel id="submit-faculty-label">Факультет (необязательно)</InputLabel>
-            <Select
-              labelId="submit-faculty-label"
-              value={form.facultyId}
-              disabled={isSubmitting}
-              label="Факультет (необязательно)"
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  facultyId: event.target.value,
-                  departmentId: "",
-                }))
-              }
-            >
-              <MenuItem value="">Факультет (необязательно)</MenuItem>
-              {faculties.map((faculty) => (
-                <MenuItem key={faculty.id} value={String(faculty.id)}>
-                  {faculty.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
-          <FormControl fullWidth>
-            <InputLabel id="submit-department-label">Кафедра (необязательно)</InputLabel>
-            <Select
-              labelId="submit-department-label"
-              value={form.departmentId}
-              disabled={!form.facultyId || isSubmitting}
-              label="Кафедра (необязательно)"
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  departmentId: event.target.value,
-                }))
-              }
-            >
-              <MenuItem value="">Кафедра (необязательно)</MenuItem>
-              {departments.map((department) => (
-                <MenuItem key={department.id} value={String(department.id)}>
-                  {department.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
 
           <Box sx={{ display: "grid", gap: 0.8 }}>
             <Typography fontWeight={600}>

@@ -3,7 +3,7 @@ import FavoriteBorderRoundedIcon from "@mui/icons-material/FavoriteBorderRounded
 import FavoriteRoundedIcon from "@mui/icons-material/FavoriteRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import { IconButton, Stack, Tooltip } from "@mui/material";
-import { documentFileUrl } from "../api/library";
+import { Link } from "react-router-dom";
 import {
   cardActionIconButtonActiveSx,
   cardActionIconButtonSx,
@@ -28,34 +28,24 @@ const DocumentCardActions: React.FC<DocumentCardActionsProps> = ({
   onOpen,
   onToggleFavorite,
 }) => {
-  const openHref = documentFileUrl(
-    item.id,
-    token ?? "",
-    false,
-    `${item.updatedAt}-${Date.now()}`
-  );
   const favoriteLabel = item.isFavorite
     ? "Убрать из избранного"
     : "Добавить в избранное";
 
-  function handleQuickOpen(event: React.MouseEvent<HTMLAnchorElement>) {
-    event.preventDefault();
+  function handleQuickOpen() {
     if (!token) {
       return;
     }
 
     void onOpen(item.id);
-    window.open(openHref, "_blank", "noopener,noreferrer");
   }
 
   return (
     <Stack direction="row" spacing={0.8} alignItems="center">
       <Tooltip title="Открыть документ" arrow>
         <IconButton
-          component="a"
-          href={openHref}
-          target="_blank"
-          rel="noopener noreferrer"
+          component={Link}
+          to={`/documents/${item.id}`}
           onClick={handleQuickOpen}
           aria-label="Открыть документ"
           sx={cardActionIconButtonSx}
@@ -69,10 +59,7 @@ const DocumentCardActions: React.FC<DocumentCardActionsProps> = ({
           type="button"
           onClick={() => void onToggleFavorite(item.id, item.isFavorite)}
           aria-label={favoriteLabel}
-          sx={[
-            cardActionIconButtonSx,
-            item.isFavorite && cardActionIconButtonActiveSx,
-          ]}
+          sx={(item.isFavorite ? { ...cardActionIconButtonSx, ...cardActionIconButtonActiveSx } : cardActionIconButtonSx) as any}
         >
           {item.isFavorite ? <FavoriteRoundedIcon /> : <FavoriteBorderRoundedIcon />}
         </IconButton>

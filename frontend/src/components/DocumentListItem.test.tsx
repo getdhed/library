@@ -19,19 +19,14 @@ const item = {
   fileSizeBytes: 1024,
   mimeType: "application/pdf",
   coverPath: "covers/playbook.png",
-  isVisible: true,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
-  departmentId: 1,
-  department: "Кафедра программной инженерии",
-  facultyId: 1,
-  faculty: "ФКТИ",
   tags: [],
   isFavorite: false,
 };
 
 describe("DocumentListItem", () => {
-  it("shows only type, year, title, and department when the cover image fails to load", () => {
+  it("shows only type, year, and title when the cover image fails to load", () => {
     render(
       <MemoryRouter>
         <DocumentListItem item={item} token="token" />
@@ -41,8 +36,7 @@ describe("DocumentListItem", () => {
     fireEvent.error(screen.getByAltText("Обложка DevOps Playbook"));
 
     expect(screen.getByText("PDF")).toBeInTheDocument();
-    expect(screen.getAllByText("Учебник")).toHaveLength(2);
-    expect(screen.getByText("Кафедра программной инженерии")).toBeInTheDocument();
+    expect(screen.getAllByText("Учебник")).toHaveLength(1);
     expect(screen.queryByText("Demo Author")).not.toBeInTheDocument();
     expect(screen.queryByText("Generated demo PDF set")).not.toBeInTheDocument();
     expect(screen.queryByText(/Alias:/i)).not.toBeInTheDocument();

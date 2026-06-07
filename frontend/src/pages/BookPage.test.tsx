@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { AuthContext } from "../auth/AuthContext";
@@ -17,18 +17,14 @@ vi.mock("../api/library", () => ({
       author: "Demo Author",
       year: 2026,
       type: "Учебник",
+      publisher: "Demo Publisher",
       description: "Generated demo PDF set",
       fileName: "playbook.pdf",
       fileSizeBytes: 1024,
       mimeType: "application/pdf",
       coverPath: "covers/playbook.png",
-      isVisible: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      departmentId: 1,
-      department: "Кафедра программной инженерии",
-      facultyId: 1,
-      faculty: "ФКТИ",
       tags: ["devops"],
       isFavorite: true,
     })
@@ -65,15 +61,14 @@ describe("BookPage", () => {
     });
 
     expect(screen.getByAltText("Обложка DevOps Playbook")).toBeInTheDocument();
-    expect(screen.getByLabelText("Открыть документ")).toBeInTheDocument();
-    expect(screen.getByLabelText("Скачать документ")).toBeInTheDocument();
-    expect(screen.getByLabelText("Убрать из избранного")).toBeInTheDocument();
-    expect(screen.getByText("Открыть PDF")).toBeInTheDocument();
     expect(screen.getByText("Скачать")).toBeInTheDocument();
     expect(screen.getByText("В избранном")).toBeInTheDocument();
-    expect(screen.getByText("Кафедра программной инженерии")).toBeInTheDocument();
-    expect(screen.queryByText("Demo Author")).not.toBeInTheDocument();
-    expect(screen.queryByText("Generated demo PDF set")).not.toBeInTheDocument();
+    expect(screen.getByText("Demo Author")).toBeInTheDocument();
+    expect(screen.getByText("Generated demo PDF set")).toBeInTheDocument();
+    expect(screen.queryByText("Demo Publisher")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Подробнее" }));
+    expect(screen.getByText("Demo Publisher")).toBeInTheDocument();
+    expect(screen.getByText("playbook.pdf")).toBeInTheDocument();
     expect(screen.queryByText(/Alias:/i)).not.toBeInTheDocument();
   });
 });

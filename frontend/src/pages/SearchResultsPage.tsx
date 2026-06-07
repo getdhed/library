@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Box,
   Button,
@@ -15,15 +15,13 @@ import {
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  getDepartments,
   getDocuments,
-  getFaculties,
+  getDocumentTypes,
   getSuggestions,
   markOpened,
   toggleDocumentFavorite,
 } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
-import CatalogFiltersDialog from "../components/CatalogFiltersDialog";
 import DocumentCardActions from "../components/DocumentCardActions";
 import DocumentListItem from "../components/DocumentListItem";
 import { searchSortOptions } from "../constants/documentFilters";
@@ -32,76 +30,74 @@ import {
   PageHeader,
   PageShell,
 } from "../components/mui-primitives";
-import type { Department, DocumentItem, Faculty, PagedDocuments } from "../types";
+import type { DocumentItem, PagedDocuments } from "../types";
 
 type FilterDraft = {
-  facultyId: string;
-  departmentId: string;
   type: string;
+  author: string;
+  yearFrom: string;
+  yearTo: string;
+  tags: string;
 };
 
 const emptyDraft: FilterDraft = {
-  facultyId: "",
-  departmentId: "",
   type: "",
+  author: "",
+  yearFrom: "",
+  yearTo: "",
+  tags: "",
 };
 
 const SearchResultsPage: React.FC = () => {
   const { token } = useAuth();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const [faculties, setFaculties] = useState<Faculty[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
   const [payload, setPayload] = useState<PagedDocuments | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [searchInput, setSearchInput] = useState(params.get("q") ?? "");
   const [suggestions, setSuggestions] = useState<DocumentItem[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [documentTypes, setDocumentTypes] = useState<string[]>([]);
   const blurTimeoutRef = useRef<number | null>(null);
 
   const query = params.get("q") ?? "";
   const sort = params.get("sort") ?? "relevance";
-  const facultyId = Number(params.get("facultyId") ?? 0);
-  const departmentId = Number(params.get("departmentId") ?? 0);
   const type = params.get("type") ?? "";
+  const author = params.get("author") ?? "";
+  const yearFrom = params.get("yearFrom") ?? "";
+  const yearTo = params.get("yearTo") ?? "";
+  const tags = params.get("tags") ?? "";
   const page = Number(params.get("page") ?? 1);
 
   const [draftFilters, setDraftFilters] = useState<FilterDraft>({
-    facultyId: facultyId ? String(facultyId) : "",
-    departmentId: departmentId ? String(departmentId) : "",
     type,
+    author,
+    yearFrom,
+    yearTo,
+    tags,
   });
+
+  const [draftSort, setDraftSort] = useState(sort);
 
   useEffect(() => {
     setSearchInput(query);
   }, [query]);
 
   useEffect(() => {
-    getFaculties()
-      .then((response) => setFaculties(response.items))
+    setDraftFilters({
+      type,
+      author,
+      yearFrom,
+      yearTo,
+      tags,
+    });
+    setDraftSort(sort);
+  }, [author, sort, tags, type, yearFrom, yearTo]);
+
+  useEffect(() => {
+    getDocumentTypes()
+      .then((response) => setDocumentTypes(response.items))
       .catch(console.error);
   }, []);
-
-  useEffect(() => {
-    setDraftFilters({
-      facultyId: facultyId ? String(facultyId) : "",
-      departmentId: departmentId ? String(departmentId) : "",
-      type,
-    });
-  }, [departmentId, facultyId, type]);
-
-  const effectiveFacultyId = Number(draftFilters.facultyId || 0);
-
-  useEffect(() => {
-    if (!effectiveFacultyId) {
-      setDepartments([]);
-      return;
-    }
-
-    getDepartments(effectiveFacultyId)
-      .then((response) => setDepartments(response.items))
-      .catch(console.error);
-  }, [effectiveFacultyId]);
 
   const loadDocuments = useCallback(async () => {
     if (!token) {
@@ -111,29 +107,32 @@ const SearchResultsPage: React.FC = () => {
     const response = await getDocuments(token, {
       q: query,
       sort,
-      facultyId,
-      departmentId,
       type,
+      author,
+      yearFrom,
+      yearTo,
+      tags,
       page,
     });
     setPayload(response);
-  }, [departmentId, facultyId, page, query, sort, token, type]);
+  }, [author, page, query, sort, tags, token, type, yearFrom, yearTo]);
 
   useEffect(() => {
     loadDocuments().catch(console.error);
   }, [loadDocuments]);
 
   useEffect(() => {
-    if (!token || !searchInput.trim()) {
+    const trimmed = searchInput.trim();
+    if (!token || trimmed.length < 2) {
       setSuggestions([]);
       return;
     }
 
     const timeout = window.setTimeout(() => {
-      getSuggestions(token, searchInput.trim())
-        .then((response) => setSuggestions(response.items))
+      getSuggestions(token, trimmed)
+        .then((response) => setSuggestions(response.items.slice(0, 5)))
         .catch(console.error);
-    }, 250);
+    }, 300);
 
     return () => window.clearTimeout(timeout);
   }, [searchInput, token]);
@@ -146,12 +145,6 @@ const SearchResultsPage: React.FC = () => {
     };
   }, []);
 
-  const documentTypes = useMemo(() => {
-    const items = payload?.items ?? [];
-    return Array.from(new Set(items.map((item) => item.type)));
-  }, [payload?.items]);
-
-  const activeFiltersCount = [facultyId, departmentId, type].filter(Boolean).length;
   const showDropdown = showSuggestions && suggestions.length > 0;
 
   function updateParam(next: Record<string, string>) {
@@ -173,8 +166,12 @@ const SearchResultsPage: React.FC = () => {
 
   function submitSearch(event: React.FormEvent) {
     event.preventDefault();
-    updateParam({ q: searchInput.trim(), page: "1" });
-    setShowSuggestions(false);
+    if (showDropdown && suggestions.length > 0) {
+      void openSuggestedDocument(suggestions[0]);
+    } else {
+      updateParam({ q: searchInput.trim(), page: "1" });
+      setShowSuggestions(false);
+    }
   }
 
   async function openSuggestedDocument(item: DocumentItem) {
@@ -205,21 +202,26 @@ const SearchResultsPage: React.FC = () => {
 
   function applyFilters() {
     updateParam({
-      facultyId: draftFilters.facultyId,
-      departmentId: draftFilters.departmentId,
       type: draftFilters.type,
+      author: draftFilters.author.trim(),
+      yearFrom: draftFilters.yearFrom,
+      yearTo: draftFilters.yearTo,
+      tags: draftFilters.tags.trim(),
+      sort: draftSort,
     });
-    setFiltersOpen(false);
   }
 
   function resetFilters() {
     setDraftFilters(emptyDraft);
+    setDraftSort("relevance");
     updateParam({
-      facultyId: "",
-      departmentId: "",
       type: "",
+      author: "",
+      yearFrom: "",
+      yearTo: "",
+      tags: "",
+      sort: "relevance",
     });
-    setFiltersOpen(false);
   }
 
   return (
@@ -230,208 +232,299 @@ const SearchResultsPage: React.FC = () => {
         side={<Typography fontWeight={700}>{payload?.total ?? 0} документов</Typography>}
       />
 
-      <ContentCard>
-        <Box component="form" onSubmit={submitSearch} sx={{ position: "relative", mb: 1.8 }}>
-          <Stack direction="row" spacing={1.1}>
-            <TextField
-              label="Поиск документов"
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              onFocus={() => setShowSuggestions(true)}
-              onBlur={() => {
-                if (blurTimeoutRef.current) {
-                  window.clearTimeout(blurTimeoutRef.current);
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", md: "minmax(260px, 1fr) 2fr" },
+          gap: 1.5,
+          alignItems: "start",
+        }}
+      >
+        {/* Фильтры */}
+        <ContentCard sx={{ position: "sticky", top: 75 }}>
+          <Stack spacing={1.5}>
+            <Typography variant="h6">Фильтры</Typography>
+
+            <FormControl fullWidth>
+              <InputLabel id="filter-type-label">Тип документа</InputLabel>
+              <Select
+                labelId="filter-type-label"
+                value={draftFilters.type}
+                label="Тип документа"
+                onChange={(e) =>
+                  setDraftFilters((current) => ({
+                    ...current,
+                    type: e.target.value,
+                  }))
                 }
-                blurTimeoutRef.current = window.setTimeout(
-                  () => setShowSuggestions(false),
-                  150
-                );
-              }}
-              placeholder="Название, автор, кафедра"
-              fullWidth
-            />
-            <IconButton
-              type="submit"
-              aria-label="Поиск"
-              title="Поиск"
-              sx={{
-                width: 54,
-                height: 54,
-                borderRadius: 2,
-                bgcolor: "primary.main",
-                color: "primary.contrastText",
-                "&:hover": {
-                  bgcolor: "primary.dark",
-                },
-              }}
-            >
-              <SearchRoundedIcon />
-            </IconButton>
-          </Stack>
-
-          {showDropdown && (
-            <Paper
-              sx={{
-                position: "absolute",
-                top: "calc(100% + 10px)",
-                left: 0,
-                right: 78,
-                zIndex: 20,
-                borderRadius: 2.25,
-              }}
-            >
-              <Typography
-                sx={{
-                  px: 1.6,
-                  py: 1,
-                  borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
-                  color: "text.secondary",
-                  fontSize: 12,
-                }}
               >
-                Подходящие документы
-              </Typography>
-              {suggestions.map((item) => (
-                <Button
-                  key={item.id}
-                  type="button"
-                  color="inherit"
-                  fullWidth
-                  sx={{ justifyContent: "flex-start", borderRadius: 0, px: 1.6, py: 1.1 }}
-                  onClick={() => void openSuggestedDocument(item)}
-                >
-                  {item.title}
-                </Button>
-              ))}
-            </Paper>
-          )}
-        </Box>
+                <MenuItem value="">Все типы</MenuItem>
+                {documentTypes.map((item) => (
+                  <MenuItem key={item} value={item}>
+                    {item}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
-        <Stack
-          direction={{ xs: "column", md: "row" }}
-          spacing={1.2}
-          alignItems={{ xs: "stretch", md: "center" }}
-          justifyContent="space-between"
-          sx={{ mb: 1.8 }}
-        >
-          <Button type="button" variant="outlined" onClick={() => setFiltersOpen(true)}>
-            Фильтры{activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ""}
-          </Button>
+            <TextField
+              label="Автор"
+              value={draftFilters.author}
+              onChange={(e) =>
+                setDraftFilters((current) => ({
+                  ...current,
+                  author: e.target.value,
+                }))
+              }
+              placeholder="Введите автора"
+              fullWidth
+              inputProps={{ "aria-label": "Автор" }}
+            />
 
-          <FormControl sx={{ minWidth: 230 }}>
-            <InputLabel id="search-sort-label">Сортировка</InputLabel>
-            <Select
-              labelId="search-sort-label"
-              id="search-sort"
-              value={sort}
-              label="Сортировка"
-              onChange={(event) => updateParam({ sort: event.target.value })}
-            >
-              {searchSortOptions.map((item) => (
-                <MenuItem key={item.value} value={item.value}>
-                  {item.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Stack>
+            <Stack direction="row" spacing={1.2}>
+              <TextField
+                label="Год с"
+                value={draftFilters.yearFrom}
+                onChange={(e) =>
+                  setDraftFilters((current) => ({
+                    ...current,
+                    yearFrom: e.target.value,
+                  }))
+                }
+                type="number"
+                placeholder="2010"
+                fullWidth
+                inputProps={{ "aria-label": "Год с", min: 1900, max: 2100 }}
+              />
+              <TextField
+                label="Год по"
+                value={draftFilters.yearTo}
+                onChange={(e) =>
+                  setDraftFilters((current) => ({
+                    ...current,
+                    yearTo: e.target.value,
+                  }))
+                }
+                type="number"
+                placeholder="2025"
+                fullWidth
+                inputProps={{ "aria-label": "Год по", min: 1900, max: 2100 }}
+              />
+            </Stack>
 
-        <Paper sx={{ p: 2, borderRadius: 3, mb: 1.8 }}>
-          <Stack
-            direction={{ xs: "column", md: "row" }}
-            spacing={1.2}
-            alignItems={{ xs: "flex-start", md: "center" }}
-            justifyContent="space-between"
-          >
-            <Box>
-              <Typography fontWeight={700}>Не нашли нужный PDF?</Typography>
-              <Typography color="text.secondary">
-                Отправьте файл на модерацию, и после проверки он появится в каталоге.
-              </Typography>
-            </Box>
-            <Button component={Link} to="/submit" variant="contained">
-              Предложить документ
-            </Button>
+            <TextField
+              label="Ключевые слова"
+              value={draftFilters.tags}
+              onChange={(e) =>
+                setDraftFilters((current) => ({
+                  ...current,
+                  tags: e.target.value,
+                }))
+              }
+              placeholder="Теги через пробел или запятую"
+              fullWidth
+              inputProps={{ "aria-label": "Ключевые слова" }}
+            />
+
+            <FormControl fullWidth>
+              <InputLabel id="filter-sort-label">Сортировка</InputLabel>
+              <Select
+                labelId="filter-sort-label"
+                value={draftSort}
+                label="Сортировка"
+                onChange={(e) => setDraftSort(e.target.value)}
+              >
+                {searchSortOptions.map((item) => (
+                  <MenuItem key={item.value} value={item.value}>
+                    {item.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Stack direction="row" spacing={1.2}>
+              <Button variant="contained" onClick={applyFilters} fullWidth sx={{ borderRadius: 0 }}>
+                Применить
+              </Button>
+              <Button variant="outlined" onClick={resetFilters} fullWidth sx={{ borderRadius: 0 }}>
+                Сбросить
+              </Button>
+            </Stack>
           </Stack>
-        </Paper>
+        </ContentCard>
 
-        <Stack spacing={1.4}>
-          {(payload?.items ?? []).map((item) => (
-            <DocumentListItem
-              key={item.id}
-              item={item}
-              token={token}
-              actions={
-                <DocumentCardActions
+        {/* Результаты */}
+        <Box>
+          <ContentCard>
+            <Box component="form" onSubmit={submitSearch} sx={{ position: "relative", mb: 1.8 }}>
+              <Stack direction="row" spacing={1.1}>
+                <TextField
+                  label="Поиск документов"
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => {
+                    if (blurTimeoutRef.current) {
+                      window.clearTimeout(blurTimeoutRef.current);
+                    }
+                    blurTimeoutRef.current = window.setTimeout(
+                      () => setShowSuggestions(false),
+                      150
+                    );
+                  }}
+                  placeholder="Название, автор, кафедра"
+                  fullWidth
+                />
+                <IconButton
+                  type="submit"
+                  aria-label="Поиск"
+                  title="Поиск"
+                  sx={{
+                    width: 54,
+                    height: 54,
+                    borderRadius: 2,
+                    bgcolor: "primary.main",
+                    color: "primary.contrastText",
+                    "&:hover": {
+                      bgcolor: "primary.dark",
+                    },
+                  }}
+                >
+                  <SearchRoundedIcon />
+                </IconButton>
+              </Stack>
+
+              {showDropdown && (
+                <Paper
+                  sx={{
+                    position: "absolute",
+                    top: "calc(100% + 10px)",
+                    left: 0,
+                    right: 78,
+                    zIndex: 20,
+                    borderRadius: 2.25,
+                    maxHeight: 320,
+                    overflowY: "auto",
+                  }}
+                >
+                  {suggestions.map((item) => (
+                    <Button
+                      key={item.id}
+                      type="button"
+                      color="inherit"
+                      fullWidth
+                      sx={{
+                        justifyContent: "flex-start",
+                        borderRadius: 0,
+                        px: 1.6,
+                        py: 1.1,
+                        textAlign: "left",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-start",
+                        borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+                        "&:last-child": { borderBottom: "none" },
+                      }}
+                      onClick={() => void openSuggestedDocument(item)}
+                    >
+                      <Typography
+                        component="span"
+                        sx={{
+                          fontSize: 14,
+                          fontWeight: 500,
+                          lineHeight: 1.3,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          width: "100%",
+                        }}
+                      >
+                        {item.title}
+                      </Typography>
+                      {item.type && (
+                        <Typography
+                          component="span"
+                          sx={{
+                            fontSize: 11,
+                            color: "text.secondary",
+                            lineHeight: 1.2,
+                            mt: 0.2,
+                          }}
+                        >
+                          {item.type}
+                        </Typography>
+                      )}
+                    </Button>
+                  ))}
+                </Paper>
+              )}
+            </Box>
+
+            <Paper sx={{ p: 2, borderRadius: 3, mb: 1.8 }}>
+              <Stack
+                direction={{ xs: "column", md: "row" }}
+                spacing={1.2}
+                alignItems={{ xs: "flex-start", md: "center" }}
+                justifyContent="space-between"
+              >
+                <Box>
+                  <Typography fontWeight={700}>Не нашли нужный PDF?</Typography>
+                  <Typography color="text.secondary">
+                    Отправьте файл на модерацию, и после проверки он появится в каталоге.
+                  </Typography>
+                </Box>
+                <Button component={Link} to="/submit" variant="contained">
+                  Предложить документ
+                </Button>
+              </Stack>
+            </Paper>
+
+            <Stack spacing={1.4}>
+              {(payload?.items ?? []).map((item) => (
+                <DocumentListItem
+                  key={item.id}
                   item={item}
                   token={token}
-                  onOpen={handleQuickOpen}
-                  onToggleFavorite={toggleFavorite}
+                  actions={
+                    <DocumentCardActions
+                      item={item}
+                      token={token}
+                      onOpen={handleQuickOpen}
+                      onToggleFavorite={toggleFavorite}
+                    />
+                  }
                 />
-              }
-            />
-          ))}
-        </Stack>
+              ))}
+            </Stack>
 
-        {payload && payload.total > payload.pageSize && (
-          <Stack
-            direction="row"
-            spacing={1.2}
-            alignItems="center"
-            justifyContent="center"
-            sx={{ mt: 2.2 }}
-          >
-            <Button
-              variant="outlined"
-              disabled={page <= 1}
-              onClick={() => updateParam({ page: String(page - 1) })}
-            >
-              Назад
-            </Button>
-            <Typography>Страница {page}</Typography>
-            <Button
-              variant="outlined"
-              disabled={page * payload.pageSize >= payload.total}
-              onClick={() => updateParam({ page: String(page + 1) })}
-            >
-              Вперёд
-            </Button>
-          </Stack>
-        )}
-      </ContentCard>
-
-      <CatalogFiltersDialog
-        open={filtersOpen}
-        onClose={() => setFiltersOpen(false)}
-        onApply={applyFilters}
-        onReset={resetFilters}
-        idPrefix="search"
-        faculties={faculties}
-        departments={departments}
-        documentTypes={documentTypes}
-        facultyValue={draftFilters.facultyId}
-        departmentValue={draftFilters.departmentId}
-        typeValue={draftFilters.type}
-        onFacultyChange={(value) =>
-          setDraftFilters((current) => ({
-            ...current,
-            facultyId: value,
-            departmentId: "",
-          }))
-        }
-        onDepartmentChange={(value) =>
-          setDraftFilters((current) => ({
-            ...current,
-            departmentId: value,
-          }))
-        }
-        onTypeChange={(value) =>
-          setDraftFilters((current) => ({
-            ...current,
-            type: value,
-          }))
-        }
-      />
+            {payload && payload.total > payload.pageSize && (
+              <Stack
+                direction="row"
+                spacing={1.2}
+                alignItems="center"
+                justifyContent="center"
+                sx={{ mt: 2.2 }}
+              >
+                <Button
+                  variant="outlined"
+                  disabled={page <= 1}
+                  onClick={() => updateParam({ page: String(page - 1) })}
+                >
+                  Назад
+                </Button>
+                <Typography>Страница {page}</Typography>
+                <Button
+                  variant="outlined"
+                  disabled={page * payload.pageSize >= payload.total}
+                  onClick={() => updateParam({ page: String(page + 1) })}
+                >
+                  Вперёд
+                </Button>
+              </Stack>
+            )}
+          </ContentCard>
+        </Box>
+      </Box>
     </PageShell>
   );
 };

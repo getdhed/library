@@ -1,0 +1,367 @@
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Alert,
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  MenuItem,
+  Stack,
+  TextField,
+  Typography,
+  useMediaQuery,
+  useTheme,
+} from "@mui/material";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import {
+  getDocumentTypes,
+  updateDocument,
+} from "../api/library";
+import type { DocumentItem } from "../types";
+
+// ─── types ────────────────────────────────────────────────────────────────────
+
+type EditForm = {
+  title: string;
+  author: string;
+  executor: string;
+  scientificAdvisor: string;
+  year: number;
+  type: string;
+  placeOfPublication: string;
+  publisher: string;
+  periodicalName: string;
+  volume: string;
+  description: string;
+  tags: string;
+  file: File | null;
+};
+
+type Props = {
+  token: string;
+  document: DocumentItem;
+  onSaved: (updated: DocumentItem) => void;
+};
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+function fromDocument(item: DocumentItem): EditForm {
+  return {
+    title: item.title,
+    author: item.author,
+    executor: item.executor ?? "",
+    scientificAdvisor: item.scientificAdvisor ?? "",
+    year: item.year,
+    type: item.type,
+    placeOfPublication: item.placeOfPublication ?? "",
+    publisher: item.publisher ?? "",
+    periodicalName: item.periodicalName ?? "",
+    volume: item.volume ?? "",
+    description: item.description,
+    tags: item.tags.join(", "),
+    file: null,
+  };
+}
+
+function validate(form: EditForm) {
+  const missing: string[] = [];
+  if (!form.title.trim()) missing.push("название");
+  if (!Number.isFinite(form.year) || form.year <= 0) missing.push("год");
+  if (!form.type.trim()) missing.push("тип документа");
+  return missing;
+}
+
+function buildFormData(form: EditForm) {
+  const fd = new FormData();
+  fd.set("title", form.title.trim());
+  fd.set("author", form.author.trim());
+  fd.set("executor", form.executor.trim());
+  fd.set("scientificAdvisor", form.scientificAdvisor.trim());
+  fd.set("year", String(form.year));
+  fd.set("type", form.type.trim());
+  fd.set("placeOfPublication", form.placeOfPublication.trim());
+  fd.set("publisher", form.publisher.trim());
+  fd.set("periodicalName", form.periodicalName.trim());
+  fd.set("volume", form.volume.trim());
+  fd.set("description", form.description.trim());
+  fd.set("tags", form.tags);
+  if (form.file) fd.set("file", form.file);
+  return fd;
+}
+
+// ─── component ────────────────────────────────────────────────────────────────
+
+const EditDocumentDialog: React.FC<Props> = ({ token, document, onSaved }) => {
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down("md"));
+
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState<EditForm>(() => fromDocument(document));
+  const [documentTypes, setDocumentTypes] = useState<string[]>([]);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // Load reference data on first open
+  useEffect(() => {
+    if (!open) return;
+    setForm(fromDocument(document));
+    setError("");
+    getDocumentTypes()
+      .then((r) => setDocumentTypes(r.items))
+      .catch(console.error);
+  }, [open, token, document]);
+
+  const availableTypes = useMemo(
+    () =>
+      form.type && !documentTypes.includes(form.type)
+        ? [form.type, ...documentTypes]
+        : documentTypes,
+    [documentTypes, form.type],
+  );
+
+  function set<K extends keyof EditForm>(key: K, value: EditForm[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    const missing = validate(form);
+    if (missing.length > 0) {
+      setError(`Заполните обязательные поля: ${missing.join(", ")}.`);
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await updateDocument(token, document.id, buildFormData(form));
+      onSaved(updated);
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось сохранить изменения.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <Button
+        id="edit-document-btn"
+        type="button"
+        fullWidth
+        variant="outlined"
+        startIcon={<EditRoundedIcon />}
+        onClick={() => setOpen(true)}
+        sx={{ borderRadius: 0 }}
+      >
+        Редактировать
+      </Button>
+
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        fullScreen={fullScreen}
+        maxWidth="md"
+        fullWidth
+        aria-labelledby="edit-doc-dialog-title"
+        scroll="paper"
+      >
+        <DialogTitle id="edit-doc-dialog-title">
+          <Typography variant="caption" color="text.secondary" display="block">
+            Редактирование документа
+          </Typography>
+          <Typography variant="h6" fontWeight={700}>
+            {document.title}
+          </Typography>
+        </DialogTitle>
+
+        <DialogContent dividers>
+          <Box
+            component="form"
+            id="edit-doc-form"
+            onSubmit={handleSubmit}
+            sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" },
+              gap: 2,
+              "& > .full": { gridColumn: "1 / -1" },
+            }}
+          >
+            {/* Основные поля */}
+            <TextField
+              className="full"
+              label="Заглавие *"
+              value={form.title}
+              onChange={(e) => set("title", e.target.value)}
+              required
+              fullWidth
+              inputProps={{ "aria-label": "Заглавие" }}
+            />
+
+            <TextField
+              label="Автор"
+              value={form.author}
+              onChange={(e) => set("author", e.target.value)}
+              fullWidth
+              inputProps={{ "aria-label": "Автор" }}
+            />
+
+            <TextField
+              label="Исполнитель"
+              value={form.executor}
+              onChange={(e) => set("executor", e.target.value)}
+              fullWidth
+              inputProps={{ "aria-label": "Исполнитель" }}
+            />
+
+            <TextField
+              label="Научный руководитель"
+              value={form.scientificAdvisor}
+              onChange={(e) => set("scientificAdvisor", e.target.value)}
+              fullWidth
+              inputProps={{ "aria-label": "Научный руководитель" }}
+            />
+
+            <TextField
+              select
+              label="Тип документа *"
+              value={form.type}
+              onChange={(e) => set("type", e.target.value)}
+              required
+              fullWidth
+              inputProps={{ "aria-label": "Тип документа" }}
+            >
+              {availableTypes.map((t) => (
+                <MenuItem key={t} value={t}>
+                  {t}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
+              label="Год издания *"
+              type="number"
+              value={String(form.year || "")}
+              onChange={(e) => set("year", Number(e.target.value))}
+              required
+              fullWidth
+              inputProps={{ "aria-label": "Год издания" }}
+            />
+
+            <TextField
+              label="Место издания"
+              value={form.placeOfPublication}
+              onChange={(e) => set("placeOfPublication", e.target.value)}
+              fullWidth
+              inputProps={{ "aria-label": "Место издания" }}
+            />
+
+            <TextField
+              label="Издательство"
+              value={form.publisher}
+              onChange={(e) => set("publisher", e.target.value)}
+              fullWidth
+              inputProps={{ "aria-label": "Издательство" }}
+            />
+
+            <TextField
+              label="Объём"
+              value={form.volume}
+              onChange={(e) => set("volume", e.target.value)}
+              placeholder="Например: 208 с."
+              fullWidth
+              inputProps={{ "aria-label": "Объём" }}
+            />
+
+            <TextField
+              className="full"
+              label="Название периодического издания"
+              value={form.periodicalName}
+              onChange={(e) => set("periodicalName", e.target.value)}
+              fullWidth
+              inputProps={{ "aria-label": "Название периодического издания" }}
+            />
+
+            {/* Теги и аннотация */}
+            <TextField
+              className="full"
+              label="Ключевые слова"
+              value={form.tags}
+              onChange={(e) => set("tags", e.target.value)}
+              placeholder="Через запятую"
+              fullWidth
+              inputProps={{ "aria-label": "Ключевые слова" }}
+            />
+
+            <TextField
+              className="full"
+              label="Аннотация"
+              value={form.description}
+              onChange={(e) => set("description", e.target.value)}
+              multiline
+              minRows={3}
+              fullWidth
+              inputProps={{ "aria-label": "Аннотация" }}
+            />
+
+            {/* PDF замена */}
+            <Box className="full">
+              <Stack direction="row" spacing={1.2} alignItems="center" sx={{ mb: 1 }}>
+                <Button component="label" variant="outlined" size="small">
+                  {form.file ? "Заменить PDF" : "Заменить файл PDF"}
+                  <Box
+                    component="input"
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    aria-label="Заменить PDF"
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      set("file", e.target.files?.[0] ?? null)
+                    }
+                    sx={{
+                      position: "absolute",
+                      width: 1,
+                      height: 1,
+                      p: 0,
+                      m: -1,
+                      overflow: "hidden",
+                      clip: "rect(0 0 0 0)",
+                      whiteSpace: "nowrap",
+                      border: 0,
+                    }}
+                  />
+                </Button>
+                <Typography variant="body2" color="text.secondary">
+                  {form.file ? form.file.name : "Файл не выбран (оставить текущий)"}
+                </Typography>
+              </Stack>
+            </Box>
+
+            {error && (
+              <Alert className="full" severity="error">
+                {error}
+              </Alert>
+            )}
+          </Box>
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, py: 1.5 }}>
+          <Button onClick={() => setOpen(false)} color="inherit">
+            Отмена
+          </Button>
+          <Button
+            type="submit"
+            form="edit-doc-form"
+            variant="contained"
+            disabled={saving}
+          >
+            {saving ? "Сохранение…" : "Сохранить"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+};
+
+export default EditDocumentDialog;

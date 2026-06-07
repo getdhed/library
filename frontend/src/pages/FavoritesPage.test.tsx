@@ -52,13 +52,8 @@ describe("FavoritesPage", () => {
           fileSizeBytes: 1024,
           mimeType: "application/pdf",
           coverPath: "covers/playbook.png",
-          isVisible: true,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          departmentId: 1,
-          department: "Кафедра программной инженерии",
-          facultyId: 1,
-          faculty: "ФКТИ",
           tags: [],
           isFavorite: true,
         },
@@ -85,8 +80,5 @@ describe("FavoritesPage", () => {
     await waitFor(() => {
       expect(screen.getByText("DevOps Playbook")).toBeInTheDocument();
     });
-
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(screen.queryByText(/alias/i)).not.toBeInTheDocument();
   });
 });

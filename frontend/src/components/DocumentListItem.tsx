@@ -1,5 +1,5 @@
-﻿import React from "react";
-import { Chip, Paper, Stack, Typography } from "@mui/material";
+import React from "react";
+import { Chip, Paper, Stack, Typography, alpha } from "@mui/material";
 import { Link } from "react-router-dom";
 import DocumentCover from "./DocumentCover";
 import type { DocumentItem } from "../types";
@@ -8,6 +8,7 @@ type Props = {
   item: DocumentItem;
   token?: string | null;
   actions?: React.ReactNode;
+  priorityCover?: boolean;
 };
 
 const linkSx = {
@@ -20,20 +21,19 @@ const DocumentListItem: React.FC<Props> = ({
   item,
   token,
   actions,
+  priorityCover = false,
 }) => {
   return (
     <Paper
       component="article"
       sx={{
-        p: 2.25,
-        borderRadius: 3,
+        p: 1.8,
+        borderRadius: 0,
+        borderColor: (theme) => alpha(theme.palette.divider, 0.95),
         display: "grid",
-        gridTemplateColumns: { xs: "1fr", sm: "minmax(132px, 164px) minmax(0, 1fr)" },
-        gap: 2.25,
-        background: (theme) =>
-          theme.palette.mode === "light"
-            ? "linear-gradient(180deg, rgba(255,253,248,0.98), rgba(246,241,231,0.74))"
-            : "linear-gradient(180deg, rgba(23,33,43,0.96), rgba(29,39,50,0.88))",
+        gridTemplateColumns: "minmax(132px, 164px) minmax(0, 1fr)",
+        gap: 1.6,
+        backgroundColor: (theme) => alpha(theme.palette.background.paper, 0.98),
       }}
     >
       <Link
@@ -41,18 +41,14 @@ const DocumentListItem: React.FC<Props> = ({
         style={linkSx}
         aria-label={`Открыть карточку ${item.title}`}
       >
-        <DocumentCover item={item} token={token} />
+        <DocumentCover item={item} token={token} variant="card" priority={priorityCover} />
       </Link>
 
-      <Stack
-        direction={{ xs: "column", md: actions ? "row" : "column" }}
-        justifyContent="space-between"
-        spacing={2}
-      >
+      <Stack direction={actions ? "row" : "column"} justifyContent="space-between" spacing={1.5}>
         <Stack spacing={0.75} minWidth={0}>
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
             <Chip size="small" label={item.type} />
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="caption" color="text.secondary">
               {item.year}
             </Typography>
           </Stack>
@@ -65,6 +61,7 @@ const DocumentListItem: React.FC<Props> = ({
             sx={{
               ...linkSx,
               lineHeight: 1.2,
+              letterSpacing: "0.01em",
               "&:hover": {
                 color: "primary.main",
               },
@@ -79,19 +76,11 @@ const DocumentListItem: React.FC<Props> = ({
             </Typography>
           )}
 
-          <Typography color="text.secondary">
-            {item.department}
-          </Typography>
 
-          {item.faculty && (
-            <Typography variant="body2" color="text.secondary">
-              {item.faculty}
-            </Typography>
-          )}
         </Stack>
 
         {actions && (
-          <Stack justifyContent="center" alignItems={{ xs: "flex-start", md: "flex-end" }}>
+          <Stack justifyContent="center" alignItems="flex-end">
             {actions}
           </Stack>
         )}
@@ -101,4 +90,3 @@ const DocumentListItem: React.FC<Props> = ({
 };
 
 export default DocumentListItem;
-

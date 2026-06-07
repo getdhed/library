@@ -1,5 +1,5 @@
-﻿import React, { useEffect, useState } from "react";
-import { Box, Grid, Paper, Stack, Typography } from "@mui/material";
+import React, { useCallback, useEffect, useState } from "react";
+import { Box, Button, Grid, Paper, Stack, Typography } from "@mui/material";
 import { getAdminStats } from "../../api/library";
 import { useAuth } from "../../auth/AuthContext";
 import AdminFrame from "../../components/AdminFrame";
@@ -9,41 +9,59 @@ import type { AdminStats } from "../../types";
 type MetricCardProps = {
   value: number;
   label: string;
-  hint: string;
 };
 
-const MetricCard: React.FC<MetricCardProps> = ({ value, label, hint }) => (
-  <Paper sx={{ p: 2, borderRadius: 3, display: "grid", gap: 0.5 }}>
+const MetricCard: React.FC<MetricCardProps> = ({ value, label }) => (
+  <Paper sx={{ p: 2, borderRadius: 0, display: "grid", gap: 0.5 }}>
     <Typography variant="h4" fontWeight={800} lineHeight={1.05}>
       {value}
     </Typography>
     <Typography fontWeight={700}>{label}</Typography>
-    <Typography color="text.secondary" variant="body2">
-      {hint}
-    </Typography>
   </Paper>
 );
+
+function formatDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function daysAgo(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return formatDate(date);
+}
 
 const AdminStatsPage: React.FC = () => {
   const { token } = useAuth();
   const [stats, setStats] = useState<AdminStats | null>(null);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!token) {
       return;
     }
 
-    getAdminStats(token).then(setStats).catch(console.error);
-  }, [token]);
+    const response = await getAdminStats(token, {
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+    });
+    setStats(response);
+  }, [token, dateFrom, dateTo]);
+
+  useEffect(() => {
+    load().catch(console.error);
+  }, [load]);
+
+  function setPeriod(days: number) {
+    setDateFrom(daysAgo(days));
+    setDateTo(formatDate(new Date()));
+  }
 
   if (!stats) {
     return (
-      <AdminFrame
-        title="Статистика"
-        description="Сводка по каталогу, просмотрам, скачиваниям и поисковой активности."
-      >
+      <AdminFrame title="Статистика">
         <ContentCard>
-          <Typography>Загрузка статистики...</Typography>
+          <Typography>Загрузка...</Typography>
         </ContentCard>
       </AdminFrame>
     );
@@ -52,9 +70,9 @@ const AdminStatsPage: React.FC = () => {
   return (
     <AdminFrame
       title="Статистика"
-      description="Сводка по каталогу, просмотрам, скачиваниям и поисковой активности."
       chips={[
         { label: `Документы: ${stats.documentsCount}` },
+        { label: `Типы: ${stats.documentsByType.length}` },
         { label: `Открытия: ${stats.viewsToday}` },
         { label: `Скачивания: ${stats.downloadsToday}` },
       ]}
@@ -62,34 +80,113 @@ const AdminStatsPage: React.FC = () => {
       <Box
         sx={{
           display: "grid",
-          gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", xl: "repeat(4, minmax(0, 1fr))" },
+          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
           gap: 1.5,
         }}
       >
         <MetricCard
           value={stats.documentsCount}
           label="Всего документов"
-          hint="Общий размер каталога"
         />
         <MetricCard
           value={stats.viewsToday}
           label="Открытий сегодня"
-          hint="Переходы к просмотру PDF"
         />
         <MetricCard
           value={stats.downloadsToday}
           label="Скачиваний сегодня"
-          hint="Выгрузки файлов пользователями"
         />
         <MetricCard
           value={stats.searchesToday}
           label="Поисков сегодня"
-          hint="Запросы по библиотеке"
         />
       </Box>
 
+      <ContentCard>
+        <Typography variant="h6" sx={{ mb: 1.2 }}>
+          Загрузки за период
+        </Typography>
+
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          spacing={1.2}
+          alignItems={{ xs: "stretch", md: "center" }}
+          sx={{ mb: 1.5 }}
+        >
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => setPeriod(7)}
+            sx={{ borderRadius: 0 }}
+          >
+            Неделя
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => setPeriod(30)}
+            sx={{ borderRadius: 0 }}
+          >
+            Месяц
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => setPeriod(365)}
+            sx={{ borderRadius: 0 }}
+          >
+            Год
+          </Button>
+
+          <Box
+            component="input"
+            type="date"
+            value={dateFrom}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDateFrom(e.target.value)}
+            sx={{
+              px: 1,
+              py: 0.75,
+              border: (theme: any) => `1px solid ${theme.palette.divider}`,
+              borderRadius: 0,
+              fontSize: 14,
+            }}
+          />
+          <Typography color="text.secondary">—</Typography>
+          <Box
+            component="input"
+            type="date"
+            value={dateTo}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDateTo(e.target.value)}
+            sx={{
+              px: 1,
+              py: 0.75,
+              border: (theme: any) => `1px solid ${theme.palette.divider}`,
+              borderRadius: 0,
+              fontSize: 14,
+            }}
+          />
+        </Stack>
+
+        <MetricCard
+          value={stats.uploadedInPeriod ?? 0}
+          label="Загружено за период"
+        />
+
+        {(stats.documentsUploadedByDay ?? []).length > 0 && (
+          <Stack spacing={0.8} sx={{ mt: 1.5 }}>
+            <Typography fontWeight={700}>По дням</Typography>
+            {stats.documentsUploadedByDay.map((item) => (
+              <Stack key={item.name} direction="row" justifyContent="space-between">
+                <Typography>{item.name}</Typography>
+                <Typography fontWeight={700}>{item.count}</Typography>
+              </Stack>
+            ))}
+          </Stack>
+        )}
+      </ContentCard>
+
       <Grid container spacing={1.5}>
-        <Grid size={{ xs: 12, md: 6, xl: 4 }}>
+        <Grid size={4}>
           <ContentCard>
             <Typography variant="h6" sx={{ mb: 1.2 }}>
               Популярные запросы
@@ -105,7 +202,7 @@ const AdminStatsPage: React.FC = () => {
           </ContentCard>
         </Grid>
 
-        <Grid size={{ xs: 12, md: 6, xl: 4 }}>
+        <Grid size={4}>
           <ContentCard>
             <Typography variant="h6" sx={{ mb: 1.2 }}>
               Популярные документы
@@ -121,15 +218,15 @@ const AdminStatsPage: React.FC = () => {
           </ContentCard>
         </Grid>
 
-        <Grid size={{ xs: 12, xl: 4 }}>
+        <Grid size={4}>
           <ContentCard>
             <Typography variant="h6" sx={{ mb: 1.2 }}>
-              Документы по факультетам
+              Документы по типам
             </Typography>
             <Stack spacing={1}>
-              {stats.documentsByFaculty.map((item) => (
-                <Stack key={item.faculty} direction="row" justifyContent="space-between">
-                  <Typography>{item.faculty}</Typography>
+              {stats.documentsByType.map((item) => (
+                <Stack key={item.name} direction="row" justifyContent="space-between">
+                  <Typography>{item.name}</Typography>
                   <Typography fontWeight={700}>{item.count}</Typography>
                 </Stack>
               ))}

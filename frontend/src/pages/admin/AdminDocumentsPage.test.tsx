@@ -1,123 +1,103 @@
-﻿import React from "react";
+import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthContext } from "../../auth/AuthContext";
 import AdminDocumentsPage from "./AdminDocumentsPage";
 
-const approveSubmissionMock = vi.fn(() => Promise.resolve({ id: 1 }));
-const createDocumentMock = vi.fn(() => Promise.resolve({ id: 1 }));
-const deleteDocumentMock = vi.fn(() => Promise.resolve());
-const getAdminDepartmentsMock = vi.fn(() =>
-  Promise.resolve({
-    items: [
-      {
-        id: 10,
-        facultyId: 1,
-        name: "Кафедра информационных систем",
-        slug: "information-systems",
-        faculty: "ФКТИ",
-      },
-    ],
-  })
-);
-const getAdminDocumentsMock = vi.fn(() =>
-  Promise.resolve({
-    items: [
-      {
-        id: 5,
-        title: "Документ каталога",
-        author: "Иванов",
-        year: 2026,
-        type: "Методичка",
-        description: "Описание документа",
-        fileName: "catalog.pdf",
-        fileSizeBytes: 1024,
-        mimeType: "application/pdf",
-        isVisible: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        departmentId: 10,
-        department: "Кафедра информационных систем",
-        facultyId: 1,
-        faculty: "ФКТИ",
-        tags: ["tag"],
-        isFavorite: false,
-      },
-    ],
-    page: 1,
-    pageSize: 20,
-    total: 1,
-  })
-);
-const getAdminFacultiesMock = vi.fn(() =>
-  Promise.resolve({
-    items: [{ id: 1, name: "ФКТИ", slug: "fkti" }],
-  })
-);
-const getAdminSubmissionsMock = vi.fn(() =>
-  Promise.resolve({
-    items: [
-      {
-        id: 7,
-        userId: 2,
-        title: "Legacy Notes",
-        author: "Иванов",
-        departmentId: 10,
-        department: "Кафедра информационных систем",
-        facultyId: 1,
-        faculty: "ФКТИ",
-        source: "user_upload",
-        status: "pending",
-        fileName: "legacy.pdf",
-        fileSizeBytes: 1024,
-        mimeType: "application/pdf",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        uploaderName: "Студент",
-        uploaderEmail: "student@example.com",
-      },
-      {
-        id: 8,
-        userId: 1,
-        title: "Inbox Draft",
-        source: "admin_import",
-        status: "pending",
-        fileName: "inbox.pdf",
-        fileSizeBytes: 2048,
-        mimeType: "application/pdf",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        uploaderName: "Системный импорт",
-        uploaderEmail: "import@example.com",
-      },
-    ],
-  })
-);
-const queueImportFolderSubmissionsMock = vi.fn(() =>
-  Promise.resolve({
-    queued: 2,
-    errors: [{ fileName: "broken.pdf", error: "invalid pdf header" }],
-  })
-);
-const rejectSubmissionMock = vi.fn(() => Promise.resolve({}));
-const submissionFileUrlMock = vi.fn((id: number) => `/api/submissions/${id}/file`);
-const updateDocumentMock = vi.fn(() => Promise.resolve({ id: 5 }));
+const mocks = vi.hoisted(() => ({
+  approveSubmissionMock: vi.fn(() => Promise.resolve({ id: 1 })),
+  createDocumentMock: vi.fn(() => Promise.resolve({ id: 1 })),
+  deleteDocumentMock: vi.fn(() => Promise.resolve()),
+  getAdminDocumentsMock: vi.fn(() =>
+    Promise.resolve({
+      items: [
+        {
+          id: 5,
+          title: "Документ каталога",
+          author: "Иванов",
+          year: 2026,
+          type: "Методичка",
+          description: "Описание документа",
+          fileName: "catalog.pdf",
+          fileSizeBytes: 1024,
+          mimeType: "application/pdf",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          tags: ["tag"],
+          isFavorite: false,
+        },
+      ],
+      page: 1,
+      pageSize: 20,
+      total: 1,
+    })
+  ),
+  getAdminDocumentAuditMock: vi.fn(() => Promise.resolve({ items: [] })),
+  getAdminSubmissionsMock: vi.fn(() =>
+    Promise.resolve({
+      items: [
+        {
+          id: 7,
+          userId: 2,
+          title: "Legacy Notes",
+          author: "Иванов",
+          source: "user_upload",
+          status: "pending",
+          fileName: "legacy.pdf",
+          fileSizeBytes: 1024,
+          mimeType: "application/pdf",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          uploaderName: "Студент",
+        },
+        {
+          id: 8,
+          userId: 1,
+          title: "Inbox Draft",
+          source: "admin_import",
+          status: "pending",
+          fileName: "inbox.pdf",
+          fileSizeBytes: 2048,
+          mimeType: "application/pdf",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          uploaderName: "Системный импорт",
+        },
+      ],
+    })
+  ),
+  rejectSubmissionMock: vi.fn(() => Promise.resolve({})),
+  submissionFileUrlMock: vi.fn((id: number) => `/api/submissions/${id}/file`),
+  getDocumentTypesMock: vi.fn(() =>
+    Promise.resolve({ items: ["Учебник", "Методичка"] })
+  ),
+  updateDocumentMock: vi.fn(() => Promise.resolve({ id: 5 })),
+  documentFileUrlMock: vi.fn((id: number) => `/api/documents/${id}/file`),
+}));
 
 vi.mock("../../api/library", () => ({
-  approveSubmission: (...args: unknown[]) => approveSubmissionMock(...args),
-  createDocument: (...args: unknown[]) => createDocumentMock(...args),
-  deleteDocument: (...args: unknown[]) => deleteDocumentMock(...args),
-  getAdminDepartments: (...args: unknown[]) => getAdminDepartmentsMock(...args),
-  getAdminDocuments: (...args: unknown[]) => getAdminDocumentsMock(...args),
-  getAdminFaculties: (...args: unknown[]) => getAdminFacultiesMock(...args),
-  getAdminSubmissions: (...args: unknown[]) => getAdminSubmissionsMock(...args),
-  queueImportFolderSubmissions: (...args: unknown[]) =>
-    queueImportFolderSubmissionsMock(...args),
-  rejectSubmission: (...args: unknown[]) => rejectSubmissionMock(...args),
-  submissionFileUrl: (...args: unknown[]) => submissionFileUrlMock(...args),
-  updateDocument: (...args: unknown[]) => updateDocumentMock(...args),
+  approveSubmission: mocks.approveSubmissionMock,
+  createDocument: mocks.createDocumentMock,
+  deleteDocument: mocks.deleteDocumentMock,
+  getAdminDocumentAudit: (...args: any[]) =>
+    mocks.getAdminDocumentAuditMock(...args),
+  getAdminDocuments: mocks.getAdminDocumentsMock,
+  getAdminSubmissions: mocks.getAdminSubmissionsMock,
+  getDocumentTypes: mocks.getDocumentTypesMock,
+  rejectSubmission: mocks.rejectSubmissionMock,
+  submissionFileUrl: mocks.submissionFileUrlMock,
+  documentFileUrl: mocks.documentFileUrlMock,
+  updateDocument: mocks.updateDocumentMock,
 }));
+
+// Export mocks for tests to use
+const {
+  approveSubmissionMock,
+  createDocumentMock,
+  updateDocumentMock,
+  getAdminDocumentsMock,
+} = mocks;
 
 const LocationDisplay: React.FC = () => {
   const location = useLocation();
@@ -131,10 +111,12 @@ function renderPage(route = "/admin/documents") {
         token: "token",
         user: {
           id: 1,
-          fullName: "Admin",
-          email: "admin@example.com",
+          fullName: "Admin", username: "mockuser",
+          
           role: "admin",
+          isActive: true,
           createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         },
         ready: true,
         login: async () => undefined,
@@ -153,6 +135,7 @@ function renderPage(route = "/admin/documents") {
               </>
             }
           />
+          <Route path="/submissions/:id/read" element={<div>Reader page</div>} />
         </Routes>
       </MemoryRouter>
     </AuthContext.Provider>
@@ -181,7 +164,7 @@ describe("AdminDocumentsPage", () => {
     const tabs = await screen.findAllByRole("tab");
     expect(tabs).toHaveLength(3);
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("Одобрить заявку")).not.toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
       "/admin/documents?tab=moderation"
     );
@@ -192,11 +175,11 @@ describe("AdminDocumentsPage", () => {
 
     await screen.findByText("Legacy Notes");
     fireEvent.click(screen.getAllByRole("button", { name: "Оформить" })[0]);
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByText("Одобрить заявку")).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("tab")[1]);
 
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("Одобрить заявку")).not.toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(
       "/admin/documents?tab=catalog"
     );
@@ -207,14 +190,16 @@ describe("AdminDocumentsPage", () => {
 
     await screen.findByText("Legacy Notes");
     fireEvent.click(screen.getAllByRole("button", { name: "Оформить" })[0]);
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByText("Одобрить заявку")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Описание *"), {
+    const titleInputs = screen.getAllByLabelText("Название *");
+    fireEvent.change(titleInputs[titleInputs.length - 1], {
       target: { value: "" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Одобрить заявку" }));
+    const submitButtons = screen.getAllByRole("button", { name: "Одобрить и опубликовать" });
+    fireEvent.click(submitButtons[submitButtons.length - 1]);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("описание");
+    expect(await screen.findByRole("alert")).toHaveTextContent("название");
     expect(approveSubmissionMock).not.toHaveBeenCalled();
   });
 
@@ -223,18 +208,57 @@ describe("AdminDocumentsPage", () => {
 
     await screen.findByRole("button", { name: "Редактировать" });
     fireEvent.click(screen.getByRole("button", { name: "Редактировать" }));
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByText("Редактировать документ")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Описание *"), {
+    fireEvent.change(screen.getByLabelText("Аннотация"), {
       target: { value: "Обновленное описание" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    const saveButtons = screen.getAllByRole("button", { name: "Сохранить изменения" });
+    fireEvent.click(saveButtons[saveButtons.length - 1]);
 
     await waitFor(() => {
       expect(updateDocumentMock).toHaveBeenCalledTimes(1);
     });
     await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.queryByText("Редактировать документ")).not.toBeInTheDocument();
+    });
+  });
+
+  it("passes advanced catalog filters to admin documents request", async () => {
+    renderPage("/admin/documents?tab=catalog");
+
+    await screen.findByText("Документ каталога");
+    fireEvent.change(screen.getByPlaceholderText("Поиск по названию"), {
+      target: { value: "каталог" },
+    });
+    await selectMuiOption(screen.getAllByLabelText("Тип документа")[0], 2);
+    fireEvent.change(screen.getByLabelText("Автор"), {
+      target: { value: "Иванов" },
+    });
+    fireEvent.change(screen.getByLabelText("Год с"), {
+      target: { value: "2020" },
+    });
+    fireEvent.change(screen.getByLabelText("Год по"), {
+      target: { value: "2026" },
+    });
+    fireEvent.change(screen.getByLabelText("Ключевые слова"), {
+      target: { value: "tag pdf" },
+    });
+
+    await waitFor(() => {
+      expect(getAdminDocumentsMock).toHaveBeenLastCalledWith(
+        "token",
+        expect.objectContaining({
+          q: "каталог",
+          type: "Методичка",
+          author: "Иванов",
+          yearFrom: "2020",
+          yearTo: "2026",
+          tags: "tag pdf",
+          sort: "date_desc",
+          pageSize: 20,
+        })
+      );
     });
   });
 
@@ -246,21 +270,16 @@ describe("AdminDocumentsPage", () => {
     fireEvent.change(screen.getByLabelText("Название *"), {
       target: { value: "Новая методичка" },
     });
-    fireEvent.change(screen.getByLabelText("Автор *"), {
+    fireEvent.change(screen.getByLabelText("Автор"), {
       target: { value: "Иванов" },
     });
     fireEvent.change(screen.getByLabelText("Год *"), {
       target: { value: "2026" },
     });
-    fireEvent.change(screen.getByLabelText("Тип *"), {
-      target: { value: "Методичка" },
-    });
-
     const comboboxes = screen.getAllByRole("combobox");
     await selectMuiOption(comboboxes[0], 1);
-    await selectMuiOption(comboboxes[1], 1);
 
-    fireEvent.change(screen.getByLabelText("Описание *"), {
+    fireEvent.change(screen.getByLabelText("Аннотация"), {
       target: { value: "Описание документа" },
     });
 
@@ -281,15 +300,5 @@ describe("AdminDocumentsPage", () => {
     });
   });
 
-  it("runs import folder queue flow on upload tab", async () => {
-    renderPage("/admin/documents?tab=upload");
 
-    fireEvent.click(screen.getByRole("button", { name: "Проверить папку сейчас" }));
-
-    await waitFor(() => {
-      expect(queueImportFolderSubmissionsMock).toHaveBeenCalledWith("token");
-    });
-    expect(await screen.findByText("Добавлено в очередь: 2")).toBeInTheDocument();
-    expect(screen.getByText(/broken\.pdf: invalid pdf header/)).toBeInTheDocument();
-  });
 });

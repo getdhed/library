@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
@@ -10,7 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
+	"time"
 
 	"library-backend/internal/apperror"
 	"library-backend/internal/auth"
@@ -25,15 +27,44 @@ type Service struct {
 	tokens   *auth.TokenManager
 	files    *storage.FileStorage
 	covers   *preview.Renderer
-	importMu sync.Mutex
 }
 
 func New(repo *repository.Repository, tokens *auth.TokenManager, files *storage.FileStorage, covers *preview.Renderer) *Service {
 	return &Service{repo: repo, tokens: tokens, files: files, covers: covers}
 }
 
+var defaultDocumentTypes = []string{
+	"Автореферат диссертации",
+	"Альбом",
+	"Диссертация",
+	"Информационный бюллетень",
+	"Курс лекций",
+	"Материалы обобщения опыта",
+	"Методические рекомендации",
+	"Методическое пособие",
+	"Монография",
+	"НИР",
+	"Пособие",
+	"Правила",
+	"Практикум",
+	"Приложение к пособию",
+	"Разговорник",
+	"Руководство",
+	"Сборник",
+	"Сборник нормативов",
+	"Сборник текстов для перевода",
+	"Статья",
+	"УМК",
+	"Учебник",
+	"Учебное пособие",
+	"Учебно-методические рекомендации",
+	"Учебно-методический комплекс",
+	"Учебно-методическое пособие",
+	"Учебно-наглядное пособие",
+}
+
 func (s *Service) Register(ctx context.Context, input domain.RegisterInput) (domain.AuthPayload, error) {
-	if strings.TrimSpace(input.Email) == "" || strings.TrimSpace(input.Password) == "" || strings.TrimSpace(input.FullName) == "" {
+	if strings.TrimSpace(input.Username) == "" || strings.TrimSpace(input.Password) == "" || strings.TrimSpace(input.FullName) == "" {
 		return domain.AuthPayload{}, apperror.ErrInvalidInput
 	}
 
@@ -56,8 +87,11 @@ func (s *Service) Register(ctx context.Context, input domain.RegisterInput) (dom
 }
 
 func (s *Service) Login(ctx context.Context, input domain.LoginInput) (domain.AuthPayload, error) {
-	user, err := s.repo.GetUserByEmail(ctx, input.Email)
+	user, err := s.repo.GetUserByUsername(ctx, input.Username)
 	if err != nil {
+		return domain.AuthPayload{}, apperror.ErrUnauthorized
+	}
+	if !user.IsActive {
 		return domain.AuthPayload{}, apperror.ErrUnauthorized
 	}
 	if err := auth.ComparePassword(user.PasswordHash, input.Password); err != nil {
@@ -81,16 +115,106 @@ func (s *Service) Me(ctx context.Context, userID int64) (domain.User, error) {
 	return s.repo.GetUserByID(ctx, userID)
 }
 
-func (s *Service) GetUserByEmail(ctx context.Context, email string) (domain.User, error) {
-	return s.repo.GetUserByEmail(ctx, email)
+func (s *Service) GetUserByUsername(ctx context.Context, username string) (domain.User, error) {
+	return s.repo.GetUserByUsername(ctx, username)
+}
+
+func validUserRole(role domain.UserRole) bool {
+	return role == domain.RoleUser || role == domain.RoleAdmin
+}
+
+func validateAdminUserInput(input domain.AdminUserInput, requirePassword bool) error {
+	if strings.TrimSpace(input.Username) == "" || strings.TrimSpace(input.FullName) == "" || !validUserRole(input.Role) {
+		return apperror.ErrInvalidInput
+	}
+	if requirePassword && strings.TrimSpace(input.Password) == "" {
+		return apperror.ErrInvalidInput
+	}
+	return nil
+}
+
+func generateTemporaryPassword() (string, error) {
+	raw := make([]byte, 18)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw), nil
+}
+
+func (s *Service) Users(ctx context.Context, filters domain.UserFilters) (domain.PagedUsers, error) {
+	if filters.Role != "" && !validUserRole(filters.Role) {
+		return domain.PagedUsers{}, apperror.ErrInvalidInput
+	}
+	if filters.Status != "" && filters.Status != "active" && filters.Status != "inactive" {
+		return domain.PagedUsers{}, apperror.ErrInvalidInput
+	}
+	return s.repo.ListUsers(ctx, filters)
+}
+
+func (s *Service) CreateAdminUser(ctx context.Context, input domain.AdminUserInput) (domain.User, string, error) {
+	if input.Role == "" {
+		input.Role = domain.RoleUser
+	}
+
+	password := strings.TrimSpace(input.Password)
+	requirePassword := password != ""
+	if err := validateAdminUserInput(input, requirePassword); err != nil {
+		return domain.User{}, "", err
+	}
+	if password == "" {
+		generated, err := generateTemporaryPassword()
+		if err != nil {
+			return domain.User{}, "", err
+		}
+		password = generated
+	}
+
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		return domain.User{}, "", err
+	}
+	user, err := s.repo.CreateAdminUser(ctx, input, hash)
+	if err != nil {
+		return domain.User{}, "", err
+	}
+	return user, password, nil
+}
+
+func (s *Service) UpdateUser(ctx context.Context, actorID, id int64, input domain.AdminUserInput) (domain.User, error) {
+	if err := validateAdminUserInput(input, false); err != nil {
+		return domain.User{}, err
+	}
+	if actorID == id && input.Role != domain.RoleAdmin {
+		return domain.User{}, apperror.ErrForbidden
+	}
+	return s.repo.UpdateUser(ctx, id, input)
+}
+
+func (s *Service) SetUserActive(ctx context.Context, actorID, id int64, isActive bool) (domain.User, error) {
+	if actorID == id && !isActive {
+		return domain.User{}, apperror.ErrForbidden
+	}
+	return s.repo.SetUserActive(ctx, id, isActive)
+}
+
+func (s *Service) ResetUserPassword(ctx context.Context, id int64) (domain.User, string, error) {
+	password, err := generateTemporaryPassword()
+	if err != nil {
+		return domain.User{}, "", err
+	}
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		return domain.User{}, "", err
+	}
+	user, err := s.repo.ResetUserPassword(ctx, id, hash)
+	if err != nil {
+		return domain.User{}, "", err
+	}
+	return user, password, nil
 }
 
 func (s *Service) Home(ctx context.Context, userID int64) (domain.HomePayload, error) {
-	recent, err := s.repo.ListRecent(ctx, userID, 8)
-	if err != nil {
-		return domain.HomePayload{}, err
-	}
-	favorites, err := s.repo.ListFavorites(ctx, userID, 8)
+	recent, err := s.repo.ListRecent(ctx, userID, 4)
 	if err != nil {
 		return domain.HomePayload{}, err
 	}
@@ -100,7 +224,7 @@ func (s *Service) Home(ctx context.Context, userID int64) (domain.HomePayload, e
 	}
 	return domain.HomePayload{
 		Recent:        recent,
-		Favorites:     favorites,
+		Favorites:     []domain.Document{},
 		SearchHistory: history,
 	}, nil
 }
@@ -115,10 +239,14 @@ func (s *Service) ListDocuments(ctx context.Context, userID int64, filters domai
 }
 
 func (s *Service) Suggest(ctx context.Context, userID int64, query string) ([]domain.Document, error) {
+	query = strings.TrimSpace(query)
+	if len([]rune(query)) < 2 {
+		return []domain.Document{}, nil
+	}
 	items, err := s.repo.ListDocuments(ctx, userID, domain.DocumentFilters{
 		Query:    query,
 		Page:     1,
-		PageSize: 6,
+		PageSize: 5,
 		Sort:     "relevance",
 	}, false)
 	if err != nil {
@@ -155,29 +283,47 @@ func (s *Service) SearchHistory(ctx context.Context, userID int64) ([]domain.Sea
 	return s.repo.ListSearchHistory(ctx, userID, 20)
 }
 
-func (s *Service) Faculties(ctx context.Context) ([]domain.Faculty, error) {
-	return s.repo.ListFaculties(ctx)
-}
+func (s *Service) DocumentTypes(ctx context.Context) ([]string, error) {
+	existing, err := s.repo.ListDocumentTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
 
-func (s *Service) Departments(ctx context.Context, facultyID int64) ([]domain.Department, error) {
-	return s.repo.ListDepartments(ctx, facultyID)
+	seen := map[string]struct{}{}
+	types := make([]string, 0, len(defaultDocumentTypes)+len(existing))
+	for _, item := range defaultDocumentTypes {
+		key := strings.ToLower(strings.TrimSpace(item))
+		if key == "" {
+			continue
+		}
+		seen[key] = struct{}{}
+		types = append(types, strings.TrimSpace(item))
+	}
+	for _, item := range existing {
+		key := strings.ToLower(strings.TrimSpace(item))
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		types = append(types, strings.TrimSpace(item))
+	}
+	return types, nil
 }
 
 func (s *Service) ParseSubmissionInput(formValue func(string) string) (domain.CreateSubmissionInput, error) {
-	var departmentID int64
-	if value := strings.TrimSpace(formValue("departmentId")); value != "" {
-		parsed, err := strconv.ParseInt(value, 10, 64)
-		if err != nil {
-			return domain.CreateSubmissionInput{}, apperror.ErrInvalidInput
-		}
-		departmentID = parsed
-	}
-
 	input := domain.CreateSubmissionInput{
-		Title:        strings.TrimSpace(formValue("title")),
-		Author:       strings.TrimSpace(formValue("author")),
-		Comment:      strings.TrimSpace(formValue("comment")),
-		DepartmentID: departmentID,
+		Title:              strings.TrimSpace(formValue("title")),
+		Author:             strings.TrimSpace(formValue("author")),
+		Executor:           strings.TrimSpace(formValue("executor")),
+		ScientificAdvisor:  strings.TrimSpace(formValue("scientificAdvisor")),
+		PlaceOfPublication: strings.TrimSpace(formValue("placeOfPublication")),
+		Publisher:          strings.TrimSpace(formValue("publisher")),
+		PeriodicalName:     strings.TrimSpace(formValue("periodicalName")),
+		Volume:             strings.TrimSpace(formValue("volume")),
+		Comment:            strings.TrimSpace(formValue("comment")),
 	}
 	if input.Title == "" {
 		return domain.CreateSubmissionInput{}, apperror.ErrInvalidInput
@@ -186,32 +332,32 @@ func (s *Service) ParseSubmissionInput(formValue func(string) string) (domain.Cr
 }
 
 func (s *Service) ParseDocumentInput(formValue func(string) string) (domain.UpsertDocumentInput, error) {
-	year, err := strconv.Atoi(strings.TrimSpace(formValue("year")))
-	if err != nil {
-		return domain.UpsertDocumentInput{}, apperror.ErrInvalidInput
-	}
-
-	departmentID, err := strconv.ParseInt(strings.TrimSpace(formValue("departmentId")), 10, 64)
-	if err != nil {
-		return domain.UpsertDocumentInput{}, apperror.ErrInvalidInput
-	}
-
-	isVisible := true
-	if value := strings.TrimSpace(formValue("isVisible")); value != "" {
-		isVisible = value == "true" || value == "1"
+	year := time.Now().Year()
+	if value := strings.TrimSpace(formValue("year")); value != "" {
+		parsedYear, err := strconv.Atoi(value)
+		if err != nil {
+			return domain.UpsertDocumentInput{}, apperror.ErrInvalidInput
+		}
+		if parsedYear > 0 {
+			year = parsedYear
+		}
 	}
 
 	input := domain.UpsertDocumentInput{
-		Title:        strings.TrimSpace(formValue("title")),
-		Author:       strings.TrimSpace(formValue("author")),
-		Year:         year,
-		Type:         strings.TrimSpace(formValue("type")),
-		Description:  strings.TrimSpace(formValue("description")),
-		DepartmentID: departmentID,
-		Tags:         splitCSV(formValue("tags")),
-		IsVisible:    isVisible,
+		Title:              strings.TrimSpace(formValue("title")),
+		Author:             strings.TrimSpace(formValue("author")),
+		Executor:           strings.TrimSpace(formValue("executor")),
+		ScientificAdvisor:  strings.TrimSpace(formValue("scientificAdvisor")),
+		Year:               year,
+		Type:               strings.TrimSpace(formValue("type")),
+		PlaceOfPublication: strings.TrimSpace(formValue("placeOfPublication")),
+		Publisher:          strings.TrimSpace(formValue("publisher")),
+		PeriodicalName:     strings.TrimSpace(formValue("periodicalName")),
+		Volume:             strings.TrimSpace(formValue("volume")),
+		Description:        strings.TrimSpace(formValue("description")),
+		Tags:               splitCSV(formValue("tags")),
 	}
-	if input.Title == "" || input.Author == "" || input.Type == "" || input.Description == "" || input.DepartmentID == 0 {
+	if input.Title == "" {
 		return domain.UpsertDocumentInput{}, apperror.ErrInvalidInput
 	}
 	return input, nil
@@ -233,13 +379,77 @@ func (s *Service) SaveMultipartFile(file multipart.File, header *multipart.FileH
 	return relative, size, contentType, nil
 }
 
-func (s *Service) CreateDocument(ctx context.Context, input domain.UpsertDocumentInput) (domain.Document, error) {
+func (s *Service) logAudit(ctx context.Context, input domain.CreateAuditEventInput) error {
+	if strings.TrimSpace(input.Action) == "" {
+		return nil
+	}
+	return s.repo.CreateAuditEvent(ctx, input)
+}
+
+func changedDocumentFields(before, after domain.Document) []string {
+	changed := []string{}
+	if before.Title != after.Title {
+		changed = append(changed, "title")
+	}
+	if before.Author != after.Author {
+		changed = append(changed, "author")
+	}
+	if before.Executor != after.Executor {
+		changed = append(changed, "executor")
+	}
+	if before.ScientificAdvisor != after.ScientificAdvisor {
+		changed = append(changed, "scientificAdvisor")
+	}
+	if before.Year != after.Year {
+		changed = append(changed, "year")
+	}
+	if before.Type != after.Type {
+		changed = append(changed, "type")
+	}
+	if before.PlaceOfPublication != after.PlaceOfPublication {
+		changed = append(changed, "placeOfPublication")
+	}
+	if before.Publisher != after.Publisher {
+		changed = append(changed, "publisher")
+	}
+	if before.PeriodicalName != after.PeriodicalName {
+		changed = append(changed, "periodicalName")
+	}
+	if before.Volume != after.Volume {
+		changed = append(changed, "volume")
+	}
+	if before.Description != after.Description {
+		changed = append(changed, "description")
+	}
+	if strings.Join(before.Tags, ",") != strings.Join(after.Tags, ",") {
+		changed = append(changed, "tags")
+	}
+	return changed
+}
+
+func (s *Service) CreateDocument(ctx context.Context, input domain.UpsertDocumentInput, actorID int64) (domain.Document, error) {
 	coverPath, err := s.generateCover(ctx, input.FilePath)
 	if err != nil {
 		return domain.Document{}, err
 	}
 	input.CoverPath = coverPath
-	return s.repo.CreateDocument(ctx, input)
+	document, err := s.repo.CreateDocument(ctx, input)
+	if err != nil {
+		return domain.Document{}, err
+	}
+	if err := s.logAudit(ctx, domain.CreateAuditEventInput{
+		Action:        "create",
+		ActorID:       actorID,
+		DocumentID:    document.ID,
+		DocumentTitle: document.Title,
+		FileName:      document.FileName,
+		Details: map[string]any{
+			"type": document.Type,
+		},
+	}); err != nil {
+		return domain.Document{}, err
+	}
+	return document, nil
 }
 
 func (s *Service) CreateSubmission(ctx context.Context, userID int64, input domain.CreateSubmissionInput) (domain.DocumentSubmission, error) {
@@ -261,10 +471,23 @@ func (s *Service) CreateSubmission(ctx context.Context, userID int64, input doma
 		return domain.DocumentSubmission{}, err
 	}
 
+	if err := s.logAudit(ctx, domain.CreateAuditEventInput{
+		Action:        "submit",
+		ActorID:       userID,
+		SubmissionID:  submission.ID,
+		DocumentTitle: submission.Title,
+		FileName:      submission.FileName,
+		Details: map[string]any{
+			"source": submission.Source,
+		},
+	}); err != nil {
+		return domain.DocumentSubmission{}, err
+	}
+
 	return submission, nil
 }
 
-func (s *Service) UpdateDocument(ctx context.Context, id int64, input domain.UpsertDocumentInput) (domain.Document, error) {
+func (s *Service) UpdateDocument(ctx context.Context, id int64, input domain.UpsertDocumentInput, actorID int64) (domain.Document, error) {
 	current, err := s.repo.GetDocumentByID(ctx, 0, id, true)
 	if err != nil {
 		return domain.Document{}, err
@@ -281,6 +504,36 @@ func (s *Service) UpdateDocument(ctx context.Context, id int64, input domain.Ups
 	updated, err := s.repo.UpdateDocument(ctx, id, input)
 	if err != nil {
 		return domain.Document{}, err
+	}
+
+	if err := s.logAudit(ctx, domain.CreateAuditEventInput{
+		Action:        "update",
+		ActorID:       actorID,
+		DocumentID:    updated.ID,
+		DocumentTitle: updated.Title,
+		FileName:      updated.FileName,
+		Details: map[string]any{
+			"changedFields": changedDocumentFields(current, updated),
+		},
+	}); err != nil {
+		return domain.Document{}, err
+	}
+
+	fileReplaced := strings.TrimSpace(input.FilePath) != "" && input.FilePath != current.FilePath
+	if fileReplaced {
+		if err := s.logAudit(ctx, domain.CreateAuditEventInput{
+			Action:        "file_replace",
+			ActorID:       actorID,
+			DocumentID:    updated.ID,
+			DocumentTitle: updated.Title,
+			FileName:      updated.FileName,
+			Details: map[string]any{
+				"oldFileName": current.FileName,
+				"newFileName": updated.FileName,
+			},
+		}); err != nil {
+			return domain.Document{}, err
+		}
 	}
 
 	if strings.TrimSpace(input.FilePath) != "" && input.FilePath != current.FilePath {
@@ -323,7 +576,29 @@ func (s *Service) AdminSubmissions(ctx context.Context, status string) ([]domain
 }
 
 func (s *Service) ApproveSubmission(ctx context.Context, submissionID, reviewerID int64, input domain.UpsertDocumentInput) (domain.Document, error) {
-	return s.repo.ApproveSubmission(ctx, submissionID, reviewerID, input)
+	submission, err := s.repo.GetSubmissionByID(ctx, submissionID)
+	if err != nil {
+		return domain.Document{}, err
+	}
+	document, err := s.repo.ApproveSubmission(ctx, submissionID, reviewerID, input)
+	if err != nil {
+		return domain.Document{}, err
+	}
+	if err := s.logAudit(ctx, domain.CreateAuditEventInput{
+		Action:        "approve",
+		ActorID:       reviewerID,
+		DocumentID:    document.ID,
+		SubmissionID:  submissionID,
+		DocumentTitle: document.Title,
+		FileName:      document.FileName,
+		Details: map[string]any{
+			"source":        submission.Source,
+			"submittedName": submission.Title,
+		},
+	}); err != nil {
+		return domain.Document{}, err
+	}
+	return document, nil
 }
 
 func (s *Service) RejectSubmission(ctx context.Context, submissionID, reviewerID int64, moderationNote string) (domain.DocumentSubmission, error) {
@@ -332,12 +607,41 @@ func (s *Service) RejectSubmission(ctx context.Context, submissionID, reviewerID
 		return domain.DocumentSubmission{}, apperror.ErrInvalidInput
 	}
 
-	return s.repo.RejectSubmission(ctx, submissionID, reviewerID, moderationNote)
+	submission, err := s.repo.RejectSubmission(ctx, submissionID, reviewerID, moderationNote)
+	if err != nil {
+		return domain.DocumentSubmission{}, err
+	}
+	if err := s.logAudit(ctx, domain.CreateAuditEventInput{
+		Action:        "reject",
+		ActorID:       reviewerID,
+		SubmissionID:  submission.ID,
+		DocumentTitle: submission.Title,
+		FileName:      submission.FileName,
+		Details: map[string]any{
+			"moderationNote": submission.ModerationNote,
+			"source":         submission.Source,
+		},
+	}); err != nil {
+		return domain.DocumentSubmission{}, err
+	}
+	return submission, nil
 }
 
-func (s *Service) DeleteDocument(ctx context.Context, id int64) error {
+func (s *Service) DeleteDocument(ctx context.Context, id int64, actorID int64) error {
 	document, err := s.repo.GetDocumentByID(ctx, 0, id, true)
 	if err != nil {
+		return err
+	}
+	if err := s.logAudit(ctx, domain.CreateAuditEventInput{
+		Action:        "delete",
+		ActorID:       actorID,
+		DocumentID:    document.ID,
+		DocumentTitle: document.Title,
+		FileName:      document.FileName,
+		Details: map[string]any{
+			"type": document.Type,
+		},
+	}); err != nil {
 		return err
 	}
 	if err := s.repo.DeleteDocument(ctx, id); err != nil {
@@ -349,109 +653,22 @@ func (s *Service) DeleteDocument(ctx context.Context, id int64) error {
 	return s.files.Delete(document.CoverPath)
 }
 
-func (s *Service) ImportFolderSubmissions(ctx context.Context, userID int64, importPath string) (domain.ImportSubmissionsResult, error) {
-	s.importMu.Lock()
-	defer s.importMu.Unlock()
-
-	files, err := s.files.ListImportPDFs(importPath)
-	if err != nil {
-		return domain.ImportSubmissionsResult{}, err
-	}
-
-	result := domain.ImportSubmissionsResult{}
-	for _, sourcePath := range files {
-		fileName := filepath.Base(sourcePath)
-		if exists, err := s.repo.HasPendingSubmissionByFileName(ctx, fileName); err != nil {
-			result.Errors = append(result.Errors, domain.ImportSubmissionError{
-				FileName: fileName,
-				Error:    err.Error(),
-			})
-			continue
-		} else if exists {
-			result.Errors = append(result.Errors, domain.ImportSubmissionError{
-				FileName: fileName,
-				Error:    "skipped duplicate pending file",
-			})
-			s.moveImportFileToSkipped(sourcePath, fileName, &result, "skipped duplicate pending file")
-			continue
-		}
-
-		if exists, err := s.repo.HasDocumentByFileName(ctx, fileName); err != nil {
-			result.Errors = append(result.Errors, domain.ImportSubmissionError{
-				FileName: fileName,
-				Error:    err.Error(),
-			})
-			continue
-		} else if exists {
-			result.Errors = append(result.Errors, domain.ImportSubmissionError{
-				FileName: fileName,
-				Error:    "skipped duplicate catalog file",
-			})
-			s.moveImportFileToSkipped(sourcePath, fileName, &result, "skipped duplicate catalog file")
-			continue
-		}
-
-		if err := s.validatePDFPath(sourcePath, sourcePath); err != nil {
-			result.Errors = append(result.Errors, domain.ImportSubmissionError{
-				FileName: fileName,
-				Error:    err.Error(),
-			})
-			s.moveImportFileToSkipped(sourcePath, fileName, &result, err.Error())
-			continue
-		}
-
-		targetRelative, size, mimeType, err := s.files.IngestPDF(sourcePath)
-		if err != nil {
-			result.Errors = append(result.Errors, domain.ImportSubmissionError{
-				FileName: fileName,
-				Error:    err.Error(),
-			})
-			s.moveImportFileToSkipped(sourcePath, fileName, &result, err.Error())
-			continue
-		}
-
-		_, err = s.CreateSubmission(ctx, userID, domain.CreateSubmissionInput{
-			Title:    strings.TrimSuffix(fileName, filepath.Ext(fileName)),
-			FileName: fileName,
-			FilePath: targetRelative,
-			FileSize: size,
-			MimeType: mimeType,
-			Source:   domain.SubmissionSourceAdminImport,
-		})
-		if err != nil {
-			result.Errors = append(result.Errors, domain.ImportSubmissionError{
-				FileName: fileName,
-				Error:    err.Error(),
-			})
-			_ = s.files.Delete(targetRelative)
-			s.moveImportFileToSkipped(sourcePath, fileName, &result, err.Error())
-			continue
-		}
-
-		if err := os.Remove(sourcePath); err != nil {
-			result.Errors = append(result.Errors, domain.ImportSubmissionError{
-				FileName: fileName,
-				Error:    fmt.Sprintf("queued, but failed to remove source file: %v", err),
-			})
-		}
-
-		result.Queued++
-	}
-
-	return result, nil
+func (s *Service) Stats(ctx context.Context, filters domain.StatsFilters) (domain.Stats, error) {
+	return s.repo.Stats(ctx, filters)
 }
 
-func (s *Service) moveImportFileToSkipped(sourcePath, fileName string, result *domain.ImportSubmissionsResult, reason string) {
-	if _, err := s.files.MoveImportFileToSkipped(sourcePath); err != nil {
-		result.Errors = append(result.Errors, domain.ImportSubmissionError{
-			FileName: fileName,
-			Error:    fmt.Sprintf("%s; failed to move source file to skipped: %v", reason, err),
-		})
+func (s *Service) DocumentAuditEvents(ctx context.Context, documentID int64) ([]domain.DocumentAuditEvent, error) {
+	if documentID <= 0 {
+		return nil, apperror.ErrInvalidInput
 	}
+	if _, err := s.repo.GetDocumentByID(ctx, 0, documentID, true); err != nil {
+		return nil, err
+	}
+	return s.repo.ListDocumentAuditEvents(ctx, documentID)
 }
 
-func (s *Service) Stats(ctx context.Context) (domain.Stats, error) {
-	return s.repo.Stats(ctx)
+func (s *Service) AuditEvents(ctx context.Context, filters domain.AuditFilters) (domain.PagedAuditEvents, error) {
+	return s.repo.ListAuditEvents(ctx, filters)
 }
 
 func (s *Service) StoragePath(relative string) string {

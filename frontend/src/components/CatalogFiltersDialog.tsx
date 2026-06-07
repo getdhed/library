@@ -9,9 +9,10 @@ import {
   InputLabel,
   MenuItem,
   Select,
+  Stack,
+  TextField,
 } from "@mui/material";
 import { catalogSortOptions } from "../constants/documentFilters";
-import type { Department, Faculty } from "../types";
 
 type CatalogFiltersDialogProps = {
   open: boolean;
@@ -19,18 +20,20 @@ type CatalogFiltersDialogProps = {
   onApply: () => void;
   onReset: () => void;
   idPrefix: string;
-  faculties: Faculty[];
-  departments: Department[];
   documentTypes: string[];
-  facultyValue: string;
-  departmentValue: string;
   typeValue: string;
-  onFacultyChange: (value: string) => void;
-  onDepartmentChange: (value: string) => void;
   onTypeChange: (value: string) => void;
+  authorValue?: string;
+  onAuthorChange?: (value: string) => void;
+  tagsValue?: string;
+  onTagsChange?: (value: string) => void;
   includeSort?: boolean;
   sortValue?: string;
   onSortChange?: (value: string) => void;
+  yearFromValue?: string;
+  yearToValue?: string;
+  onYearFromChange?: (value: string) => void;
+  onYearToChange?: (value: string) => void;
 };
 
 const CatalogFiltersDialog: React.FC<CatalogFiltersDialogProps> = ({
@@ -39,58 +42,31 @@ const CatalogFiltersDialog: React.FC<CatalogFiltersDialogProps> = ({
   onApply,
   onReset,
   idPrefix,
-  faculties,
-  departments,
   documentTypes,
-  facultyValue,
-  departmentValue,
   typeValue,
-  onFacultyChange,
-  onDepartmentChange,
   onTypeChange,
+  authorValue = "",
+  onAuthorChange,
+  tagsValue = "",
+  onTagsChange,
   includeSort = false,
   sortValue = "date_desc",
   onSortChange,
+  yearFromValue = "",
+  yearToValue = "",
+  onYearFromChange,
+  onYearToChange,
 }) => {
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth={false}
+      maxWidth={false}
+      PaperProps={{ sx: { width: 560, maxWidth: "none" } }}
+    >
       <DialogTitle>Фильтры</DialogTitle>
       <DialogContent sx={{ display: "grid", gap: 1.5, pt: "8px !important" }}>
-        <FormControl fullWidth>
-          <InputLabel id={`${idPrefix}-faculty-label`}>Факультет</InputLabel>
-          <Select
-            labelId={`${idPrefix}-faculty-label`}
-            value={facultyValue}
-            label="Факультет"
-            onChange={(event) => onFacultyChange(event.target.value)}
-          >
-            <MenuItem value="">Все факультеты</MenuItem>
-            {faculties.map((item) => (
-              <MenuItem key={item.id} value={String(item.id)}>
-                {item.name}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
-        <FormControl fullWidth>
-          <InputLabel id={`${idPrefix}-department-label`}>Кафедра</InputLabel>
-          <Select
-            labelId={`${idPrefix}-department-label`}
-            value={departmentValue}
-            disabled={!facultyValue}
-            label="Кафедра"
-            onChange={(event) => onDepartmentChange(event.target.value)}
-          >
-            <MenuItem value="">Все кафедры</MenuItem>
-            {departments.map((item) => (
-              <MenuItem key={item.id} value={String(item.id)}>
-                {item.name}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
         <FormControl fullWidth>
           <InputLabel id={`${idPrefix}-type-label`}>Тип документа</InputLabel>
           <Select
@@ -107,6 +83,45 @@ const CatalogFiltersDialog: React.FC<CatalogFiltersDialogProps> = ({
             ))}
           </Select>
         </FormControl>
+
+        <TextField
+          label="Автор"
+          value={authorValue}
+          onChange={(event) => onAuthorChange?.(event.target.value)}
+          placeholder="Введите автора"
+          fullWidth
+          inputProps={{ "aria-label": "Автор" }}
+        />
+
+        <Stack direction="row" spacing={1.5}>
+          <TextField
+            label="Год с"
+            value={yearFromValue}
+            onChange={(event) => onYearFromChange?.(event.target.value)}
+            type="number"
+            placeholder="например, 2010"
+            fullWidth
+            inputProps={{ "aria-label": "Год с", min: 1900, max: 2100 }}
+          />
+          <TextField
+            label="Год по"
+            value={yearToValue}
+            onChange={(event) => onYearToChange?.(event.target.value)}
+            type="number"
+            placeholder="например, 2025"
+            fullWidth
+            inputProps={{ "aria-label": "Год по", min: 1900, max: 2100 }}
+          />
+        </Stack>
+
+        <TextField
+          label="Ключевые слова"
+          value={tagsValue}
+          onChange={(event) => onTagsChange?.(event.target.value)}
+          placeholder="Теги через пробел или запятую"
+          fullWidth
+          inputProps={{ "aria-label": "Ключевые слова" }}
+        />
 
         {includeSort && (
           <FormControl fullWidth>

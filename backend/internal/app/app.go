@@ -28,7 +28,7 @@ type App struct {
 }
 
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
-	appCtx, cancel := context.WithCancel(ctx)
+	_, cancel := context.WithCancel(ctx)
 	db, err := database.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		cancel()
@@ -57,17 +57,11 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		cancel()
 		return nil, err
 	}
-	logger.Info("ensuring seed admin user", "email", cfg.SeedAdminEmail)
-	if err := repo.EnsureSeedData(ctx, cfg.SeedAdminEmail, cfg.SeedAdminName, passwordHash); err != nil {
+	logger.Info("ensuring seed admin user", "username", cfg.SeedAdminUsername)
+	if err := repo.EnsureSeedData(ctx, cfg.SeedAdminUsername, cfg.SeedAdminName, passwordHash); err != nil {
 		cancel()
 		return nil, err
 	}
-	systemUser, err := repo.EnsureSystemUser(ctx, cfg.SystemImportEmail, cfg.SystemImportName, passwordHash)
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-
 	tokens := auth.NewTokenManager(cfg.JWTSecret, cfg.TokenTTL)
 	svc := service.New(repo, tokens, files, renderer)
 	router := httpapi.NewRouter(cfg, svc, logger)
@@ -79,7 +73,6 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		logger: logger,
 		cancel: cancel,
 	}
-	application.startImportWatcher(appCtx, svc, systemUser.ID)
 
 	return application, nil
 }

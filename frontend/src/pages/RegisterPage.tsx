@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import {
   Alert,
   Button,
-  Chip,
   Stack,
   TextField,
   Typography,
@@ -10,28 +9,12 @@ import {
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import AuthPageFrame from "../components/AuthPageFrame";
-import { eyebrowSx } from "../components/mui-primitives";
-
-const registerHighlights = [
-  {
-    label: "Личный раздел PDF",
-    value: "Заявки, статусы модерации и итоговые документы доступны из аккаунта.",
-  },
-  {
-    label: "Удобный каталог",
-    value: "Поиск, избранное, карточки документов и быстрый просмотр в едином стиле.",
-  },
-  {
-    label: "Зелёная тема",
-    value: "Светлый режим с Material-палитрой и тёмная зелёная тема для работы вечером.",
-  },
-];
 
 const RegisterPage: React.FC = () => {
   const auth = useAuth();
   const navigate = useNavigate();
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
@@ -43,55 +26,34 @@ const RegisterPage: React.FC = () => {
     event.preventDefault();
     setError("");
     try {
-      await auth.register({ fullName, email, password });
+      await auth.register({ fullName, username, password });
       navigate("/");
     } catch {
-      setError("Не удалось зарегистрироваться. Возможно, email уже занят.");
+      setError("Не удалось зарегистрироваться. Возможно, логин уже занят.");
     }
   }
 
   return (
     <AuthPageFrame
-      heroBadge="Create Account"
-      heroEyebrow="Регистрация"
-      heroTitle="Создайте аккаунт библиотеки и отправляйте свои PDF"
-      heroDescription="Новый интерфейс делает каталог, избранное и пользовательскую модерацию заметно чище и удобнее."
-      highlights={registerHighlights}
+      title="Регистрация"
+      subtitle="Создайте учетную запись для работы с библиотекой."
       formContent={
         <Stack component="form" spacing={2} onSubmit={handleSubmit}>
-          <Stack spacing={0}>
-            <Chip
-              label="Новый аккаунт"
-              color="primary"
-              variant="outlined"
-              size="small"
-              sx={{ width: "fit-content" }}
-            />
-            <Typography variant="caption" sx={[eyebrowSx, { display: "block", mt: 1.2 }] }>
-              Регистрация
-            </Typography>
-            <Typography variant="h4" sx={{ mt: 0.8 }}>
-              Создайте профиль
-            </Typography>
-            <Typography color="text.secondary" sx={{ mt: 1 }}>
-              После регистрации вы сразу попадёте в каталог и сможете
-              предлагать новые PDF на модерацию.
-            </Typography>
-          </Stack>
-
           <TextField
-            label="Имя"
+            label="Имя (как к вам обращаться)"
             value={fullName}
             onChange={(event) => setFullName(event.target.value)}
             placeholder="Ваше имя"
+            inputProps={{ maxLength: 30 }}
             fullWidth
           />
 
           <TextField
-            label="Email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="user@library.local"
+            label="Логин"
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+            placeholder="Придумайте логин"
+            inputProps={{ maxLength: 30 }}
             fullWidth
           />
 
@@ -101,6 +63,7 @@ const RegisterPage: React.FC = () => {
             onChange={(event) => setPassword(event.target.value)}
             placeholder="Создайте пароль"
             type="password"
+            inputProps={{ maxLength: 30 }}
             fullWidth
           />
 

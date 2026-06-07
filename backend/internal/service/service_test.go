@@ -12,14 +12,12 @@ func TestParseDocumentInputValid(t *testing.T) {
 
 	input, err := svc.ParseDocumentInput(func(key string) string {
 		values := map[string]string{
-			"title":        " Distributed Systems ",
-			"author":       " Tanenbaum ",
-			"year":         "2024",
-			"type":         "manual",
-			"description":  " Reference book ",
-			"departmentId": "5",
-			"tags":         " os, distributed , networks ",
-			"isVisible":    "0",
+			"title":       " Distributed Systems ",
+			"author":      " Tanenbaum ",
+			"year":        "2024",
+			"type":        "manual",
+			"description": " Reference book ",
+			"tags":        " os, distributed , networks ",
 		}
 		return values[key]
 	})
@@ -30,15 +28,32 @@ func TestParseDocumentInputValid(t *testing.T) {
 	if input.Title != "Distributed Systems" || input.Author != "Tanenbaum" {
 		t.Fatalf("unexpected parsed strings: %#v", input)
 	}
-	if input.Year != 2024 || input.DepartmentID != 5 {
+	if input.Year != 2024 {
 		t.Fatalf("unexpected numeric fields: %#v", input)
-	}
-	if input.IsVisible {
-		t.Fatalf("expected isVisible to be false")
 	}
 	expectedTags := []string{"os", "distributed", "networks"}
 	if !reflect.DeepEqual(input.Tags, expectedTags) {
 		t.Fatalf("unexpected tags: %#v", input.Tags)
+	}
+}
+
+func TestParseDocumentInputAcceptsOnlyTitle(t *testing.T) {
+	svc := &Service{}
+
+	input, err := svc.ParseDocumentInput(func(key string) string {
+		if key == "title" {
+			return "Only title"
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatalf("ParseDocumentInput() error = %v", err)
+	}
+	if input.Title != "Only title" || input.Author != "" || input.Type != "" || input.Description != "" {
+		t.Fatalf("unexpected parsed input: %#v", input)
+	}
+	if input.Year == 0 {
+		t.Fatal("expected default year")
 	}
 }
 
@@ -48,22 +63,6 @@ func TestParseDocumentInputRejectsInvalidNumbers(t *testing.T) {
 	_, err := svc.ParseDocumentInput(func(key string) string {
 		if key == "year" {
 			return "nope"
-		}
-		if key == "departmentId" {
-			return "2"
-		}
-		return "x"
-	})
-	if err != apperror.ErrInvalidInput {
-		t.Fatalf("expected invalid input error, got %v", err)
-	}
-
-	_, err = svc.ParseDocumentInput(func(key string) string {
-		if key == "year" {
-			return "2024"
-		}
-		if key == "departmentId" {
-			return "oops"
 		}
 		return "x"
 	})
@@ -77,12 +76,11 @@ func TestParseDocumentInputRejectsMissingFields(t *testing.T) {
 
 	_, err := svc.ParseDocumentInput(func(key string) string {
 		values := map[string]string{
-			"year":         "2024",
-			"departmentId": "2",
-			"title":        "",
-			"author":       "Author",
-			"type":         "book",
-			"description":  "Desc",
+			"year":        "2024",
+			"title":       "",
+			"author":      "Author",
+			"type":        "book",
+			"description": "Desc",
 		}
 		return values[key]
 	})
@@ -109,10 +107,9 @@ func TestParseSubmissionInputValid(t *testing.T) {
 
 	input, err := svc.ParseSubmissionInput(func(key string) string {
 		values := map[string]string{
-			"title":        " Distributed Systems ",
-			"author":       " Tanenbaum ",
-			"departmentId": "5",
-			"comment":      " Please review ",
+			"title":   " Distributed Systems ",
+			"author":  " Tanenbaum ",
+			"comment": " Please review ",
 		}
 		return values[key]
 	})
@@ -125,9 +122,6 @@ func TestParseSubmissionInputValid(t *testing.T) {
 	}
 	if input.Author != "Tanenbaum" || input.Comment != "Please review" {
 		t.Fatalf("unexpected optional fields: %#v", input)
-	}
-	if input.DepartmentID != 5 {
-		t.Fatalf("unexpected department id: %#v", input)
 	}
 }
 
@@ -143,8 +137,8 @@ func TestParseSubmissionInputAllowsEmptyDepartment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseSubmissionInput() error = %v", err)
 	}
-	if input.DepartmentID != 0 {
-		t.Fatalf("expected empty department id, got %#v", input)
+	if input.Title != "Algorithms" {
+		t.Fatalf("unexpected submission input: %#v", input)
 	}
 }
 
@@ -152,17 +146,6 @@ func TestParseSubmissionInputRejectsInvalidData(t *testing.T) {
 	svc := &Service{}
 
 	_, err := svc.ParseSubmissionInput(func(key string) string {
-		values := map[string]string{
-			"title":        "Algorithms",
-			"departmentId": "oops",
-		}
-		return values[key]
-	})
-	if err != apperror.ErrInvalidInput {
-		t.Fatalf("expected invalid input error, got %v", err)
-	}
-
-	_, err = svc.ParseSubmissionInput(func(key string) string {
 		return ""
 	})
 	if err != apperror.ErrInvalidInput {

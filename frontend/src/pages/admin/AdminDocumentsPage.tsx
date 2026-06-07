@@ -7,17 +7,14 @@ import {
   CardActions,
   CardContent,
   Button,
-  Checkbox,
   Chip,
   Divider,
   Drawer,
   FormControl,
-  FormControlLabel,
+
   IconButton,
   InputLabel,
-  List,
-  ListItem,
-  ListItemText,
+
   MenuItem,
   Paper,
   Select,
@@ -35,24 +32,33 @@ import {
   Typography,
   alpha,
   useMediaQuery,
+  AppBar,
+  Toolbar,
 } from "@mui/material";
+import {
+  DocumentFormFields,
+  type AdminForm,
+  createEmptyForm,
+} from "../../components/DocumentFormFields";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import RemoveCircleOutlineRoundedIcon from "@mui/icons-material/RemoveCircleOutlineRounded";
 import {
   approveSubmission,
   createDocument,
   deleteDocument,
-  getAdminDepartments,
   getAdminDocuments,
-  getAdminFaculties,
   getAdminSubmissions,
-  queueImportFolderSubmissions,
+  getDocumentTypes,
+
   rejectSubmission,
   submissionFileUrl,
+  documentFileUrl,
   updateDocument,
 } from "../../api/library";
 import { useAuth } from "../../auth/AuthContext";
@@ -68,48 +74,33 @@ import {
   tableSurfaceSx,
 } from "../../components/mui-primitives";
 import type {
-  Department,
   DocumentItem,
-  Faculty,
-  ImportFolderResult,
   PagedDocuments,
   SubmissionItem,
-  SubmissionSource,
   SubmissionStatus,
 } from "../../types";
 
 type AdminTab = "moderation" | "catalog" | "upload";
 type ModerationFilterValue = SubmissionStatus | "";
 
-type AdminForm = {
-  title: string;
-  author: string;
-  year: number;
-  type: string;
-  description: string;
-  facultyId: number;
-  departmentId: number;
-  tags: string;
-  isVisible: boolean;
-  file: File | null;
-};
 
-type DocumentFormFieldsProps = {
+
+type ModerationFullViewProps = {
+  open: boolean;
+  title: string;
+  subtitle?: string;
+  pdfUrl: string;
+  onClose: () => void;
   form: AdminForm;
   setForm: React.Dispatch<React.SetStateAction<AdminForm>>;
-  faculties: Faculty[];
-  departments: Department[];
-  fileLabel?: string;
+  error?: string;
+  onSubmit: (e: React.FormEvent) => void;
+  submitLabel: string;
+  isSubmitting?: boolean;
+  secondaryActions?: React.ReactNode;
   idPrefix: string;
-};
-
-type AdminDrawerProps = {
-  open: boolean;
-  eyebrow: string;
-  title: string;
-  titleId: string;
-  onClose: () => void;
-  children: React.ReactNode;
+  fileLabel?: string;
+  documentTypes: string[];
 };
 
 const adminTabs: Array<{ id: AdminTab; label: string }> = [
@@ -118,32 +109,23 @@ const adminTabs: Array<{ id: AdminTab; label: string }> = [
   { id: "upload", label: "Загрузка" },
 ];
 
-function createEmptyForm(defaultType = "Учебник"): AdminForm {
-  return {
-    title: "",
-    author: "",
-    year: new Date().getFullYear(),
-    type: defaultType,
-    description: "",
-    facultyId: 0,
-    departmentId: 0,
-    tags: "",
-    isVisible: true,
-    file: null,
-  };
-}
+
 
 function createEditForm(item: DocumentItem): AdminForm {
   return {
     title: item.title,
     author: item.author,
+    executor: item.executor || "",
+    scientificAdvisor: item.scientificAdvisor || "",
     year: item.year,
     type: item.type,
+    placeOfPublication: item.placeOfPublication || "",
+    publisher: item.publisher || "",
+    periodicalName: item.periodicalName || "",
+    volume: item.volume || "",
     description: item.description,
-    facultyId: item.facultyId,
-    departmentId: item.departmentId,
     tags: item.tags.join(", "),
-    isVisible: item.isVisible,
+
     file: null,
   };
 }
@@ -151,14 +133,18 @@ function createEditForm(item: DocumentItem): AdminForm {
 function createApprovalForm(item: SubmissionItem): AdminForm {
   return {
     title: item.title,
-    author: item.author ?? "",
+    author: item.author || "",
+    executor: item.executor || "",
+    scientificAdvisor: item.scientificAdvisor || "",
     year: new Date().getFullYear(),
-    type: "Методичка",
+    type: "Учебник",
+    placeOfPublication: item.placeOfPublication || "",
+    publisher: item.publisher || "",
+    periodicalName: item.periodicalName || "",
+    volume: item.volume || "",
     description: "",
-    facultyId: item.facultyId ?? 0,
-    departmentId: item.departmentId ?? 0,
     tags: "",
-    isVisible: true,
+
     file: null,
   };
 }
@@ -178,9 +164,7 @@ function submissionStatusLabel(status: SubmissionStatus) {
   }
 }
 
-function submissionSourceLabel(source: SubmissionSource) {
-  return source === "admin_import" ? "Import-папка" : "Пользователь";
-}
+
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString("ru-RU", {
@@ -203,17 +187,12 @@ function validateDocumentForm(form: AdminForm, requireFile: boolean) {
   if (!form.title.trim()) {
     missing.push("название");
   }
-  if (!form.author.trim()) {
-    missing.push("автор");
-  }
+
   if (!Number.isFinite(form.year) || form.year <= 0) {
     missing.push("год");
   }
   if (!form.type.trim()) {
     missing.push("тип");
-  }
-  if (!form.departmentId) {
-    missing.push("кафедра");
   }
   if (!form.description.trim()) {
     missing.push("описание");
@@ -229,27 +208,23 @@ function buildDocumentFormData(form: AdminForm) {
   const formData = new FormData();
   formData.set("title", form.title.trim());
   formData.set("author", form.author.trim());
+  formData.set("executor", form.executor.trim());
+  formData.set("scientificAdvisor", form.scientificAdvisor.trim());
   formData.set("year", String(form.year));
   formData.set("type", form.type.trim());
+  formData.set("placeOfPublication", form.placeOfPublication.trim());
+  formData.set("publisher", form.publisher.trim());
+  formData.set("periodicalName", form.periodicalName.trim());
+  formData.set("volume", form.volume.trim());
   formData.set("description", form.description.trim());
-  formData.set("departmentId", String(form.departmentId));
   formData.set("tags", form.tags);
-  formData.set("isVisible", String(form.isVisible));
+
 
   if (form.file) {
     formData.set("file", form.file);
   }
 
   return formData;
-}
-
-function getDepartmentsForFaculty(
-  departments: Department[],
-  facultyId: number
-) {
-  return departments.filter(
-    (department) => !facultyId || department.facultyId === facultyId
-  );
 }
 
 function submissionStatusTone(status: SubmissionStatus) {
@@ -264,193 +239,143 @@ function submissionStatusTone(status: SubmissionStatus) {
   return "warning" as const;
 }
 
-const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
+
+
+const ModerationFullView: React.FC<ModerationFullViewProps> = ({
+  open,
+  title,
+  subtitle,
+  pdfUrl,
+  onClose,
   form,
   setForm,
-  faculties,
-  departments,
-  fileLabel,
+  error,
+  onSubmit,
+  submitLabel,
+  isSubmitting = false,
+  secondaryActions,
   idPrefix,
+  fileLabel,
+  documentTypes,
 }) => {
+  if (!open) return null;
+
   return (
-    <Stack spacing={1.4}>
-      <TextField
-        label="Название *"
-        value={form.title}
-        onChange={(event) =>
-          setForm((current) => ({ ...current, title: event.target.value }))
-        }
-        placeholder="Название"
-        required
-        fullWidth
-        inputProps={{ "aria-label": "Название *" }}
-      />
-
-      <TextField
-        label="Автор *"
-        value={form.author}
-        onChange={(event) =>
-          setForm((current) => ({ ...current, author: event.target.value }))
-        }
-        placeholder="Автор"
-        required
-        fullWidth
-        inputProps={{ "aria-label": "Автор *" }}
-      />
-
-      <TextField
-        label="Год *"
-        value={String(form.year || "")}
-        onChange={(event) =>
-          setForm((current) => ({
-            ...current,
-            year: Number(event.target.value),
-          }))
-        }
-        placeholder="Год"
-        type="number"
-        required
-        fullWidth
-        inputProps={{ "aria-label": "Год *" }}
-      />
-
-      <TextField
-        label="Тип *"
-        value={form.type}
-        onChange={(event) =>
-          setForm((current) => ({ ...current, type: event.target.value }))
-        }
-        placeholder="Тип"
-        required
-        fullWidth
-        inputProps={{ "aria-label": "Тип *" }}
-      />
-
-      <TextField
-        select
-        label="Факультет"
-        value={form.facultyId || ""}
-        onChange={(event) =>
-          setForm((current) => ({
-            ...current,
-            facultyId: Number(event.target.value) || 0,
-            departmentId: 0,
-          }))
-        }
-        fullWidth
-        inputProps={{ "aria-label": "Факультет" }}
+    <Box
+      sx={{
+        position: "fixed",
+        inset: 0,
+        zIndex: (theme) => theme.zIndex.modal + 100,
+        bgcolor: "background.default",
+        display: "grid",
+        gridTemplateRows: "auto 1fr",
+      }}
+    >
+      {/* Header */}
+      <AppBar
+        position="static"
+        color="default"
+        elevation={0}
+        sx={{
+          borderBottom: "1px solid",
+          borderColor: "divider",
+          bgcolor: "background.paper",
+        }}
       >
-        <MenuItem value="">Факультет</MenuItem>
-        {faculties.map((faculty) => (
-          <MenuItem key={faculty.id} value={faculty.id}>
-            {faculty.name}
-          </MenuItem>
-        ))}
-      </TextField>
+        <Toolbar sx={{ justifyContent: "space-between", gap: 2 }}>
+          <Stack direction="row" spacing={1.5} alignItems="center" minWidth={0}>
+            <IconButton onClick={onClose} edge="start" aria-label="Закрыть">
+              <ArrowBackRoundedIcon />
+            </IconButton>
+            <Box minWidth={0}>
+              <Typography variant="h6" noWrap>
+                {title}
+              </Typography>
+              {subtitle && (
+                <Typography variant="body2" color="text.secondary" noWrap>
+                  {subtitle}
+                </Typography>
+              )}
+            </Box>
+          </Stack>
 
-      <TextField
-        select
-        label="Кафедра *"
-        value={form.departmentId || ""}
-        onChange={(event) =>
-          setForm((current) => ({
-            ...current,
-            departmentId: Number(event.target.value) || 0,
-          }))
-        }
-        required
-        fullWidth
-        inputProps={{ "aria-label": "Кафедра *" }}
-      >
-        <MenuItem value="">Кафедра</MenuItem>
-        {departments.map((department) => (
-          <MenuItem key={department.id} value={department.id}>
-            {department.name}
-          </MenuItem>
-        ))}
-      </TextField>
-
-      <TextField
-        label="Теги"
-        value={form.tags}
-        onChange={(event) =>
-          setForm((current) => ({ ...current, tags: event.target.value }))
-        }
-        placeholder="Теги через запятую"
-        fullWidth
-      />
-
-      {fileLabel && (
-        <Box sx={{ display: "grid", gap: 0.8 }}>
-          <Typography fontWeight={600}>
-            {fileLabel}
-          </Typography>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "flex-start", sm: "center" }}>
-            <Button component="label" variant="outlined" type="button">
-              {form.file ? "Заменить PDF" : "Выбрать PDF"}
-              <Box
-                component="input"
-                type="file"
-                aria-label={fileLabel}
-                accept=".pdf,application/pdf"
-                onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                  setForm((current) => ({
-                    ...current,
-                    file: event.target.files?.[0] ?? null,
-                  }))
-                }
-                sx={{
-                  position: "absolute",
-                  width: 1,
-                  height: 1,
-                  p: 0,
-                  m: -1,
-                  overflow: "hidden",
-                  clip: "rect(0 0 0 0)",
-                  whiteSpace: "nowrap",
-                  border: 0,
-                }}
-              />
+          <Stack direction="row" spacing={1}>
+            <Button variant="outlined" onClick={onClose}>
+              Отмена
             </Button>
-            <Typography variant="body2" color="text.secondary">
-              {form.file ? form.file.name : "Файл не выбран"}
-            </Typography>
+            <Button variant="contained" onClick={(e) => onSubmit(e as any)} disabled={isSubmitting}>
+              {submitLabel}
+            </Button>
+          </Stack>
+        </Toolbar>
+      </AppBar>
+
+      {/* Main Content */}
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: {
+            xs: "1fr",
+            lg: "minmax(0, 2fr) minmax(360px, 1fr)",
+          },
+          minHeight: 0,
+        }}
+      >
+        {/* Left: Form */}
+        <Box
+          sx={{
+            borderRight: "1px solid",
+            borderColor: "divider",
+            bgcolor: "background.paper",
+            overflowY: "auto",
+            p: 3,
+          }}
+        >
+          <Stack spacing={3} component="form" onSubmit={onSubmit} noValidate>
+            <Box>
+              <Typography variant="h6" sx={{ mb: 0.5 }}>
+                Метаданные документа
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
+                Проверьте и заполните данные на основе содержимого PDF справа.
+              </Typography>
+
+              <DocumentFormFields
+                form={form}
+                setForm={setForm}
+                fileLabel={fileLabel}
+                idPrefix={idPrefix}
+                documentTypes={documentTypes}
+              />
+            </Box>
+
+            {error && <Alert severity="error">{error}</Alert>}
+
+            <Stack spacing={1}>
+              <Button variant="contained" size="large" type="submit" fullWidth disabled={isSubmitting}>
+                {submitLabel}
+              </Button>
+              {secondaryActions}
+            </Stack>
           </Stack>
         </Box>
-      )}
 
-      <TextField
-        label="Описание *"
-        value={form.description}
-        onChange={(event) =>
-          setForm((current) => ({
-            ...current,
-            description: event.target.value,
-          }))
-        }
-        placeholder="Описание"
-        required
-        multiline
-        minRows={4}
-        fullWidth
-        inputProps={{ "aria-label": "Описание *" }}
-      />
-
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={form.isVisible}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                isVisible: event.target.checked,
-              }))
-            }
+        {/* Right: PDF Reader */}
+        <Box sx={{ bgcolor: "grey.100", minHeight: 0, minWidth: 0, position: "relative" }}>
+          <Box
+            component="iframe"
+            src={pdfUrl}
+            title="PDF Preview"
+            sx={{
+              width: "100%",
+              height: "100%",
+              border: 0,
+              bgcolor: "common.white",
+            }}
           />
-        }
-        label="Документ видим пользователям"
-      />
-    </Stack>
+        </Box>
+      </Box>
+    </Box>
   );
 };
 
@@ -516,20 +441,19 @@ const AdminDocumentsPage: React.FC = () => {
 
   const [payload, setPayload] = useState<PagedDocuments | null>(null);
   const [submissions, setSubmissions] = useState<SubmissionItem[]>([]);
-  const [faculties, setFaculties] = useState<Faculty[]>([]);
-  const [allDepartments, setAllDepartments] = useState<Department[]>([]);
 
   const [search, setSearch] = useState("");
+  const [documentTypeFilter, setDocumentTypeFilter] = useState("");
+  const [authorFilter, setAuthorFilter] = useState("");
+  const [yearFromFilter, setYearFromFilter] = useState("");
+  const [yearToFilter, setYearToFilter] = useState("");
+  const [tagsFilter, setTagsFilter] = useState("");
   const [sort, setSort] = useState("date_desc");
-  const [visibility, setVisibility] = useState("");
-  const [filterFacultyId, setFilterFacultyId] = useState(0);
-  const [filterDepartmentId, setFilterDepartmentId] = useState(0);
 
-  const [moderationSource, setModerationSource] = useState<SubmissionSource | "">(
-    ""
-  );
   const [moderationStatus, setModerationStatus] =
     useState<ModerationFilterValue>("pending");
+
+  const [documentTypes, setDocumentTypes] = useState<string[]>([]);
 
   const [editingDocument, setEditingDocument] = useState<DocumentItem | null>(
     null
@@ -540,16 +464,13 @@ const AdminDocumentsPage: React.FC = () => {
   const [createForm, setCreateForm] = useState<AdminForm>(() => createEmptyForm());
   const [editForm, setEditForm] = useState<AdminForm>(() => createEmptyForm());
   const [approveForm, setApproveForm] = useState<AdminForm>(() =>
-    createEmptyForm("Методичка")
+    createEmptyForm()
   );
 
   const [createFormError, setCreateFormError] = useState("");
   const [editFormError, setEditFormError] = useState("");
   const [approveFormError, setApproveFormError] = useState("");
-  const [importError, setImportError] = useState("");
-  const [importResult, setImportResult] = useState<ImportFolderResult | null>(
-    null
-  );
+  const [isApprovingSubmission, setIsApprovingSubmission] = useState(false);
 
   const rawTab = searchParams.get("tab");
   const activeTab: AdminTab = isAdminTab(rawTab) ? rawTab : "moderation";
@@ -561,10 +482,12 @@ const AdminDocumentsPage: React.FC = () => {
 
     const response = await getAdminDocuments(token, {
       q: search,
+      type: documentTypeFilter,
+      author: authorFilter,
+      yearFrom: yearFromFilter,
+      yearTo: yearToFilter,
+      tags: tagsFilter,
       sort,
-      visibility,
-      facultyId: filterFacultyId,
-      departmentId: filterDepartmentId,
       pageSize: 20,
     });
     setPayload(response);
@@ -587,8 +510,9 @@ const AdminDocumentsPage: React.FC = () => {
 
   function resetApproving() {
     setApprovingSubmission(null);
-    setApproveForm(createEmptyForm("Методичка"));
+    setApproveForm(createEmptyForm());
     setApproveFormError("");
+    setIsApprovingSubmission(false);
   }
 
   function closeDrawer() {
@@ -611,15 +535,8 @@ const AdminDocumentsPage: React.FC = () => {
       return;
     }
 
-    getAdminFaculties(token)
-      .then((response) => setFaculties(response.items))
-      .catch(console.error);
-
-    getAdminDepartments(token)
-      .then((response) => setAllDepartments(response.items))
-      .catch(console.error);
-
     loadSubmissions().catch(console.error);
+    getDocumentTypes().then((res) => setDocumentTypes(res.items)).catch(console.error);
   }, [token]);
 
   useEffect(() => {
@@ -636,7 +553,7 @@ const AdminDocumentsPage: React.FC = () => {
 
   useEffect(() => {
     loadDocuments().catch(console.error);
-  }, [filterDepartmentId, filterFacultyId, search, sort, token, visibility]);
+  }, [authorFilter, documentTypeFilter, search, sort, tagsFilter, token, yearFromFilter, yearToFilter]);
 
   useEffect(() => {
     if (activeTab !== "moderation" && approvingSubmission) {
@@ -647,57 +564,26 @@ const AdminDocumentsPage: React.FC = () => {
     }
   }, [activeTab]);
 
-  const filterDepartments = useMemo(
-    () => getDepartmentsForFaculty(allDepartments, filterFacultyId),
-    [allDepartments, filterFacultyId]
-  );
-
-  const createDepartments = useMemo(
-    () => getDepartmentsForFaculty(allDepartments, createForm.facultyId),
-    [allDepartments, createForm.facultyId]
-  );
-
-  const editDepartments = useMemo(
-    () => getDepartmentsForFaculty(allDepartments, editForm.facultyId),
-    [allDepartments, editForm.facultyId]
-  );
-
-  const approveDepartments = useMemo(
-    () => getDepartmentsForFaculty(allDepartments, approveForm.facultyId),
-    [allDepartments, approveForm.facultyId]
-  );
-
   const filteredSubmissions = useMemo(
     () =>
       submissions.filter((item) => {
-        if (moderationSource && item.source !== moderationSource) {
-          return false;
-        }
         if (moderationStatus && item.status !== moderationStatus) {
           return false;
         }
         return true;
       }),
-    [moderationSource, moderationStatus, submissions]
+    [moderationStatus, submissions]
   );
 
   const pendingSummary = useMemo(() => {
     const pending = submissions.filter((item) => item.status === "pending");
     return {
       total: pending.length,
-      importCount: pending.filter((item) => item.source === "admin_import")
-        .length,
-      userCount: pending.filter((item) => item.source === "user_upload").length,
     };
   }, [submissions]);
 
   const catalogSummary = useMemo(() => {
-    const items = payload?.items ?? [];
-    const visibleCount = items.filter((item) => item.isVisible).length;
-    return {
-      visibleCount,
-      hiddenCount: items.length - visibleCount,
-    };
+    return {};
   }, [payload]);
 
   const isDesktop = useMediaQuery("(min-width:960px)", {
@@ -791,7 +677,7 @@ const AdminDocumentsPage: React.FC = () => {
 
   async function handleApproveSubmission(event: React.FormEvent) {
     event.preventDefault();
-    if (!token || !approvingSubmission) {
+    if (!token || !approvingSubmission || isApprovingSubmission) {
       return;
     }
 
@@ -806,6 +692,7 @@ const AdminDocumentsPage: React.FC = () => {
     }
 
     try {
+      setIsApprovingSubmission(true);
       await approveSubmission(
         token,
         approvingSubmission.id,
@@ -817,6 +704,7 @@ const AdminDocumentsPage: React.FC = () => {
       setApproveFormError(
         resolveErrorMessage(error, "Не удалось одобрить заявку.")
       );
+      setIsApprovingSubmission(false);
     }
   }
 
@@ -852,29 +740,12 @@ const AdminDocumentsPage: React.FC = () => {
     await loadSubmissions();
   }
 
-  async function handleImportFromFolder() {
-    if (!token) {
-      return;
-    }
 
-    setImportError("");
-    setImportResult(null);
-
-    try {
-      const result = await queueImportFolderSubmissions(token);
-      setImportResult(result);
-      await loadSubmissions();
-    } catch (error) {
-      setImportError(
-        resolveErrorMessage(error, "Не удалось проверить import-папку.")
-      );
-    }
-  }
 
   return (
     <AdminFrame
       title="Управление документами"
-      description="Каталог, очередь модерации и загрузка PDF собраны в единую рабочую панель."
+      
       chips={[
         { label: `На модерации: ${pendingSummary.total}` },
         { label: `В каталоге: ${payload?.total ?? 0}` },
@@ -906,8 +777,6 @@ const AdminDocumentsPage: React.FC = () => {
             </Box>
             <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap">
               <Chip label={`В очереди: ${pendingSummary.total}`} />
-              <Chip label={`Import: ${pendingSummary.importCount}`} />
-              <Chip label={`Пользователи: ${pendingSummary.userCount}`} />
             </Stack>
           </Stack>
 
@@ -960,18 +829,6 @@ const AdminDocumentsPage: React.FC = () => {
                 </Typography>
                 <Typography variant="h4">{pendingSummary.total}</Typography>
               </Paper>
-              <Paper sx={{ p: 1.8, borderRadius: 2.5 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Из import-папки
-                </Typography>
-                <Typography variant="h4">{pendingSummary.importCount}</Typography>
-              </Paper>
-              <Paper sx={{ p: 1.8, borderRadius: 2.5 }}>
-                <Typography variant="body2" color="text.secondary">
-                  От пользователей
-                </Typography>
-                <Typography variant="h4">{pendingSummary.userCount}</Typography>
-              </Paper>
             </Box>
 
             <Paper sx={filterPanelSx}>
@@ -980,25 +837,6 @@ const AdminDocumentsPage: React.FC = () => {
                   Фильтры очереди
                 </Typography>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={1.25}>
-                  <FormControl sx={{ minWidth: 240 }}>
-                    <InputLabel id="moderation-source-label">Фильтр по источнику</InputLabel>
-                    <Select
-                      labelId="moderation-source-label"
-                      aria-label="Фильтр по источнику"
-                      value={moderationSource}
-                      label="Фильтр по источнику"
-                      onChange={(event) =>
-                        setModerationSource(
-                          (event.target.value as SubmissionSource | "") ?? ""
-                        )
-                      }
-                    >
-                      <MenuItem value="">Все источники</MenuItem>
-                      <MenuItem value="user_upload">Пользователь</MenuItem>
-                      <MenuItem value="admin_import">Import-папка</MenuItem>
-                    </Select>
-                  </FormControl>
-
                   <FormControl sx={{ minWidth: 240 }}>
                     <InputLabel id="moderation-status-label">Фильтр по статусу</InputLabel>
                     <Select
@@ -1028,9 +866,8 @@ const AdminDocumentsPage: React.FC = () => {
                   <TableHead>
                     <TableRow>
                       <TableCell>Название</TableCell>
-                      <TableCell>Источник</TableCell>
                       <TableCell>Пользователь</TableCell>
-                      <TableCell>Кафедра</TableCell>
+                      
                       <TableCell>Статус</TableCell>
                       <TableCell>Создано</TableCell>
                       <TableCell align="right">Действия</TableCell>
@@ -1045,25 +882,10 @@ const AdminDocumentsPage: React.FC = () => {
                       >
                         <TableCell>{item.title}</TableCell>
                         <TableCell>
-                          <Chip
-                            size="small"
-                            label={submissionSourceLabel(item.source)}
-                            sx={{
-                              borderColor: "divider",
-                              backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.1),
-                              color: "primary.dark",
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell>
                           <Typography>{item.uploaderName || "Пользователь"}</Typography>
-                          {item.uploaderEmail && (
-                            <Typography variant="body2" color="text.secondary">
-                              {item.uploaderEmail}
-                            </Typography>
-                          )}
+                          
                         </TableCell>
-                        <TableCell>{item.department || "Не указана"}</TableCell>
+                        
                         <TableCell>
                           <Chip size="small" label={submissionStatusLabel(item.status)} sx={statusToneChipSx(submissionStatusTone(item.status))} />
                           {item.moderationNote && (
@@ -1102,7 +924,7 @@ const AdminDocumentsPage: React.FC = () => {
                                     size="small"
                                     type="button"
                                     onClick={() => startApprove(item)}
-                                    sx={[cardActionIconButtonSx, cardActionIconButtonPrimarySx]}
+                                    sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonPrimarySx } as any}
                                   >
                                     <CheckCircleRoundedIcon fontSize="small" />
                                   </IconButton>
@@ -1113,7 +935,7 @@ const AdminDocumentsPage: React.FC = () => {
                                     size="small"
                                     type="button"
                                     onClick={() => void handleRejectSubmission(item)}
-                                    sx={[cardActionIconButtonSx, cardActionIconButtonDangerSx]}
+                                    sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonDangerSx } as any}
                                   >
                                     <RemoveCircleOutlineRoundedIcon fontSize="small" />
                                   </IconButton>
@@ -1165,15 +987,6 @@ const AdminDocumentsPage: React.FC = () => {
                       </Stack>
 
                       <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap">
-                        <Chip
-                          size="small"
-                          label={submissionSourceLabel(item.source)}
-                          sx={{
-                            borderColor: "divider",
-                            backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.1),
-                            color: "primary.dark",
-                          }}
-                        />
                         <Chip size="small" label={formatDate(item.createdAt)} />
                       </Stack>
 
@@ -1182,9 +995,7 @@ const AdminDocumentsPage: React.FC = () => {
                           (item.uploaderEmail ? ` • ${item.uploaderEmail}` : "")}
                       </Typography>
 
-                      <Typography variant="body2" color="text.secondary">
-                        Кафедра: {item.department || "Не указана"}
-                      </Typography>
+                      
 
                       {item.moderationNote && (
                         <Typography variant="body2" color="text.secondary">
@@ -1222,7 +1033,7 @@ const AdminDocumentsPage: React.FC = () => {
                               size="small"
                               type="button"
                               onClick={() => startApprove(item)}
-                              sx={[cardActionIconButtonSx, cardActionIconButtonPrimarySx]}
+                              sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonPrimarySx } as any}
                             >
                               <CheckCircleRoundedIcon fontSize="small" />
                             </IconButton>
@@ -1233,7 +1044,7 @@ const AdminDocumentsPage: React.FC = () => {
                               size="small"
                               type="button"
                               onClick={() => void handleRejectSubmission(item)}
-                              sx={[cardActionIconButtonSx, cardActionIconButtonDangerSx]}
+                              sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonDangerSx } as any}
                             >
                               <RemoveCircleOutlineRoundedIcon fontSize="small" />
                             </IconButton>
@@ -1298,6 +1109,60 @@ const AdminDocumentsPage: React.FC = () => {
                     sx={{ minWidth: { xs: "100%", lg: 260 } }}
                   />
 
+                  <FormControl sx={{ minWidth: 220 }}>
+                    <InputLabel id="catalog-type-label">Тип документа</InputLabel>
+                    <Select
+                      labelId="catalog-type-label"
+                      value={documentTypeFilter}
+                      label="Тип документа"
+                      aria-label="Тип документа"
+                      onChange={(event) => setDocumentTypeFilter(event.target.value)}
+                    >
+                      <MenuItem value="">Все типы</MenuItem>
+                      {documentTypes.map((item) => (
+                        <MenuItem key={item} value={item}>
+                          {item}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <TextField
+                    value={authorFilter}
+                    onChange={(event) => setAuthorFilter(event.target.value)}
+                    label="Автор"
+                    placeholder="Введите автора"
+                    inputProps={{ "aria-label": "Автор" }}
+                    sx={{ minWidth: { xs: "100%", lg: 220 } }}
+                  />
+
+                  <TextField
+                    value={yearFromFilter}
+                    onChange={(event) => setYearFromFilter(event.target.value)}
+                    label="Год с"
+                    type="number"
+                    inputProps={{ "aria-label": "Год с", min: 1900, max: 2100 }}
+                    sx={{ width: { xs: "100%", lg: 130 } }}
+                  />
+
+                  <TextField
+                    value={yearToFilter}
+                    onChange={(event) => setYearToFilter(event.target.value)}
+                    label="Год по"
+                    type="number"
+                    inputProps={{ "aria-label": "Год по", min: 1900, max: 2100 }}
+                    sx={{ width: { xs: "100%", lg: 130 } }}
+                  />
+
+                  <TextField
+                    value={tagsFilter}
+                    onChange={(event) => setTagsFilter(event.target.value)}
+                    label="Ключевые слова"
+                    placeholder="Теги через пробел или запятую"
+                    inputProps={{ "aria-label": "Ключевые слова" }}
+                    sx={{ minWidth: { xs: "100%", lg: 240 } }}
+                  />
+
                   <FormControl sx={{ minWidth: 180 }}>
                     <InputLabel id="catalog-sort-label">Сортировка документов</InputLabel>
                     <Select
@@ -1313,70 +1178,11 @@ const AdminDocumentsPage: React.FC = () => {
                       <MenuItem value="size_desc">Большой размер</MenuItem>
                     </Select>
                   </FormControl>
-
-                  <FormControl sx={{ minWidth: 200 }}>
-                    <InputLabel id="catalog-visibility-label">Видимость документов</InputLabel>
-                    <Select
-                      labelId="catalog-visibility-label"
-                      value={visibility}
-                      label="Видимость документов"
-                      aria-label="Видимость документов"
-                      onChange={(event) => setVisibility(event.target.value)}
-                    >
-                      <MenuItem value="">Вся видимость</MenuItem>
-                      <MenuItem value="visible">Только видимые</MenuItem>
-                      <MenuItem value="hidden">Только скрытые</MenuItem>
-                    </Select>
-                  </FormControl>
-
-                  <FormControl sx={{ minWidth: 200 }}>
-                    <InputLabel id="catalog-faculty-filter-label">Фильтр по факультету</InputLabel>
-                    <Select
-                      labelId="catalog-faculty-filter-label"
-                      value={filterFacultyId || ""}
-                      label="Фильтр по факультету"
-                      aria-label="Фильтр по факультету"
-                      onChange={(event) => {
-                        setFilterFacultyId(Number(event.target.value) || 0);
-                        setFilterDepartmentId(0);
-                      }}
-                    >
-                      <MenuItem value="">Все факультеты</MenuItem>
-                      {faculties.map((faculty) => (
-                        <MenuItem key={faculty.id} value={faculty.id}>
-                          {faculty.name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  <FormControl sx={{ minWidth: 200 }}>
-                    <InputLabel id="catalog-department-filter-label">Фильтр по кафедре</InputLabel>
-                    <Select
-                      labelId="catalog-department-filter-label"
-                      value={filterDepartmentId || ""}
-                      label="Фильтр по кафедре"
-                      aria-label="Фильтр по кафедре"
-                      onChange={(event) =>
-                        setFilterDepartmentId(Number(event.target.value) || 0)
-                      }
-                    >
-                      <MenuItem value="">Все кафедры</MenuItem>
-                      {filterDepartments.map((department) => (
-                        <MenuItem key={department.id} value={department.id}>
-                          {department.name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
                 </Stack>
               </Stack>
             </Paper>
 
-            <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap">
-              <Chip label={`Видимых: ${catalogSummary.visibleCount}`} />
-              <Chip label={`Скрытых: ${catalogSummary.hiddenCount}`} />
-            </Stack>
+
 
             {isDesktop ? (
               <TableContainer component={Paper} sx={tableSurfaceSx}>
@@ -1385,9 +1191,8 @@ const AdminDocumentsPage: React.FC = () => {
                     <TableRow>
                       <TableCell>Название</TableCell>
                       <TableCell>Тип</TableCell>
-                      <TableCell>Кафедра</TableCell>
+                      
                       <TableCell>Год</TableCell>
-                      <TableCell>Видимость</TableCell>
                       <TableCell align="right">Действия</TableCell>
                     </TableRow>
                   </TableHead>
@@ -1396,15 +1201,8 @@ const AdminDocumentsPage: React.FC = () => {
                       <TableRow key={item.id} selected={editingDocument?.id === item.id} hover>
                         <TableCell>{item.title}</TableCell>
                         <TableCell>{item.type}</TableCell>
-                        <TableCell>{item.department}</TableCell>
+                        
                         <TableCell>{item.year}</TableCell>
-                        <TableCell>
-                          <Chip
-                            size="small"
-                            label={item.isVisible ? "Видим" : "Скрыт"}
-                            sx={statusToneChipSx(item.isVisible ? "success" : "danger")}
-                          />
-                        </TableCell>
                         <TableCell align="right">
                           <Stack direction="row" spacing={0.6} justifyContent="flex-end">
                             <Tooltip title="Редактировать">
@@ -1413,7 +1211,7 @@ const AdminDocumentsPage: React.FC = () => {
                                 size="small"
                                 type="button"
                                 onClick={() => startEdit(item)}
-                                sx={[cardActionIconButtonSx, cardActionIconButtonPrimarySx]}
+                                sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonPrimarySx } as any}
                               >
                                 <EditRoundedIcon fontSize="small" />
                               </IconButton>
@@ -1424,7 +1222,7 @@ const AdminDocumentsPage: React.FC = () => {
                                 size="small"
                                 type="button"
                                 onClick={() => void removeDocument(item.id)}
-                                sx={[cardActionIconButtonSx, cardActionIconButtonDangerSx]}
+                                sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonDangerSx } as any}
                               >
                                 <DeleteOutlineRoundedIcon fontSize="small" />
                               </IconButton>
@@ -1452,18 +1250,13 @@ const AdminDocumentsPage: React.FC = () => {
                     <CardContent sx={{ display: "grid", gap: 1 }}>
                       <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="flex-start">
                         <Typography fontWeight={700}>{item.title}</Typography>
-                        <Chip
-                          size="small"
-                          label={item.isVisible ? "Видим" : "Скрыт"}
-                          sx={statusToneChipSx(item.isVisible ? "success" : "danger")}
-                        />
                       </Stack>
 
                       <Typography variant="body2" color="text.secondary">
                         {item.type} • {item.year}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        {item.department}
+                        
                       </Typography>
                     </CardContent>
                     <Divider />
@@ -1474,7 +1267,7 @@ const AdminDocumentsPage: React.FC = () => {
                           size="small"
                           type="button"
                           onClick={() => startEdit(item)}
-                          sx={[cardActionIconButtonSx, cardActionIconButtonPrimarySx]}
+                          sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonPrimarySx } as any}
                         >
                           <EditRoundedIcon fontSize="small" />
                         </IconButton>
@@ -1485,7 +1278,7 @@ const AdminDocumentsPage: React.FC = () => {
                           size="small"
                           type="button"
                           onClick={() => void removeDocument(item.id)}
-                          sx={[cardActionIconButtonSx, cardActionIconButtonDangerSx]}
+                          sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonDangerSx } as any}
                         >
                           <DeleteOutlineRoundedIcon fontSize="small" />
                         </IconButton>
@@ -1510,7 +1303,7 @@ const AdminDocumentsPage: React.FC = () => {
         <Box
           sx={{
             display: "grid",
-            gridTemplateColumns: { xs: "1fr", xl: "1.05fr 0.95fr" },
+            gridTemplateColumns: "1fr",
             gap: 2,
           }}
         >
@@ -1537,8 +1330,7 @@ const AdminDocumentsPage: React.FC = () => {
                 <DocumentFormFields
                   form={createForm}
                   setForm={setCreateForm}
-                  faculties={faculties}
-                  departments={createDepartments}
+                  documentTypes={documentTypes}
                   fileLabel="PDF-файл *"
                   idPrefix="admin-create"
                 />
@@ -1553,196 +1345,60 @@ const AdminDocumentsPage: React.FC = () => {
               </Stack>
             </Stack>
           </ContentCard>
-
-          <ContentCard>
-            <Stack spacing={1.5}>
-              <Stack>
-                <Typography
-                  variant="caption"
-                  sx={eyebrowSx}
-                >
-                  Import-папка
-                </Typography>
-                <Typography component="h2" variant="h5">
-                  Папка автоматического импорта
-                </Typography>
-              </Stack>
-
-              <Typography color="text.secondary">
-                Кладите PDF в <code>backend/storage/import</code>. Новые файлы
-                автоматически попадают в очередь модерации и не появляются в
-                каталоге до одобрения.
-              </Typography>
-              <Typography color="text.secondary">
-                Если нужно, можно запустить проверку папки вручную и сразу
-                увидеть результат.
-              </Typography>
-
-              {importError && <Alert severity="error">{importError}</Alert>}
-
-              {importResult && (
-                <Paper sx={{ p: 1.8, borderRadius: 2.5 }}>
-                  <Typography fontWeight={700}>
-                    Добавлено в очередь: {importResult.queued}
-                  </Typography>
-                  {importResult.errors.length > 0 && (
-                    <List dense disablePadding sx={{ mt: 1 }}>
-                      {importResult.errors.map((item) => (
-                        <ListItem key={`${item.fileName}-${item.error}`} disablePadding sx={{ py: 0.15 }}>
-                          <ListItemText primary={`${item.fileName}: ${item.error}`} />
-                        </ListItem>
-                      ))}
-                    </List>
-                  )}
-                </Paper>
-              )}
-
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                <Button
-                  variant="outlined"
-                  type="button"
-                  onClick={() => void handleImportFromFolder()}
-                >
-                  Проверить папку сейчас
-                </Button>
-                <Button
-                  variant="outlined"
-                  type="button"
-                  onClick={() => switchTab("moderation")}
-                >
-                  Перейти к модерации
-                </Button>
-              </Stack>
-            </Stack>
-          </ContentCard>
         </Box>
       )}
 
-      {showModerationDrawer && approvingSubmission && (
-        <AdminDrawer
-          open={showModerationDrawer}
-          eyebrow="Модерация"
-          title="Одобрить заявку"
-          titleId="admin-approve-drawer-title"
-          onClose={closeDrawer}
-        >
-          <Stack spacing={1.5}>
-            <Typography color="text.secondary">
-              Заполните обязательные поля каталога. PDF уже загружен и будет
-              привязан к документу после одобрения.
-            </Typography>
+      <ModerationFullView
+        open={showModerationDrawer && !!approvingSubmission}
+        title="Одобрить заявку"
+        subtitle={approvingSubmission?.title}
+        pdfUrl={approvingSubmission ? submissionFileUrl(approvingSubmission.id, token ?? "", false, approvingSubmission.updatedAt) : ""}
+        onClose={closeDrawer}
+        form={approveForm}
+        setForm={setApproveForm}
+        error={approveFormError}
+        onSubmit={handleApproveSubmission}
+        submitLabel={isApprovingSubmission ? "Публикуем..." : "Одобрить и опубликовать"}
+        isSubmitting={isApprovingSubmission}
+        idPrefix="admin-approve"
+        documentTypes={documentTypes}
+        secondaryActions={
+          <Button
+            variant="outlined"
+            color="error"
+            size="large"
+            onClick={() => approvingSubmission && void handleRejectSubmission(approvingSubmission)}
+          >
+            Отклонить заявку
+          </Button>
+        }
+      />
 
-            <Paper sx={{ p: 1.8, borderRadius: 2.5 }}>
-              <Stack spacing={0.75}>
-                <Typography fontWeight={700}>{approvingSubmission.title}</Typography>
-                <Typography color="text.secondary">
-                  Источник: {submissionSourceLabel(approvingSubmission.source)}
-                </Typography>
-                {approvingSubmission.department && (
-                  <Typography variant="body2">
-                    Предложенная кафедра: {approvingSubmission.department}
-                  </Typography>
-                )}
-                {approvingSubmission.comment && (
-                  <Typography variant="body2">{approvingSubmission.comment}</Typography>
-                )}
-                <Box sx={{ pt: 0.5 }}>
-                  <Button
-                    component="a"
-                    variant="outlined"
-                    href={submissionFileUrl(
-                      approvingSubmission.id,
-                      token ?? "",
-                      false,
-                      approvingSubmission.updatedAt
-                    )}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Открыть PDF заявки
-                  </Button>
-                </Box>
-              </Stack>
-            </Paper>
-
-            <Stack component="form" spacing={1.5} onSubmit={handleApproveSubmission} noValidate>
-              <DocumentFormFields
-                form={approveForm}
-                setForm={setApproveForm}
-                faculties={faculties}
-                departments={approveDepartments}
-                idPrefix="admin-approve"
-              />
-
-              {approveFormError && <Alert severity="error">{approveFormError}</Alert>}
-
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                <Button variant="contained" type="submit">
-                  Одобрить заявку
-                </Button>
-                <Button
-                  variant="outlined"
-                  color="error"
-                  type="button"
-                  onClick={() => void handleRejectSubmission(approvingSubmission)}
-                >
-                  Отклонить
-                </Button>
-                <Button variant="outlined" type="button" onClick={closeDrawer}>
-                  Отменить
-                </Button>
-              </Stack>
-            </Stack>
-          </Stack>
-        </AdminDrawer>
-      )}
-
-      {showCatalogDrawer && editingDocument && (
-        <AdminDrawer
-          open={showCatalogDrawer}
-          eyebrow="Каталог"
-          title="Редактировать документ"
-          titleId="admin-edit-drawer-title"
-          onClose={closeDrawer}
-        >
-          <Stack spacing={1.5}>
-            <Typography color="text.secondary">
-              Меняйте метаданные здесь. Новый PDF добавляйте только если нужно
-              заменить файл документа.
-            </Typography>
-
-            <Stack component="form" spacing={1.5} onSubmit={handleUpdateDocument} noValidate>
-              <DocumentFormFields
-                form={editForm}
-                setForm={setEditForm}
-                faculties={faculties}
-                departments={editDepartments}
-                fileLabel="Новый PDF"
-                idPrefix="admin-edit"
-              />
-
-              {editFormError && <Alert severity="error">{editFormError}</Alert>}
-
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                <Button variant="contained" type="submit">
-                  Сохранить
-                </Button>
-                <Button
-                  variant="outlined"
-                  color="error"
-                  type="button"
-                  onClick={() => void removeDocument(editingDocument.id)}
-                >
-                  Удалить
-                </Button>
-                <Button variant="outlined" type="button" onClick={closeDrawer}>
-                  Отменить
-                </Button>
-              </Stack>
-            </Stack>
-          </Stack>
-        </AdminDrawer>
-      )}
+      <ModerationFullView
+        open={showCatalogDrawer && !!editingDocument}
+        title="Редактировать документ"
+        subtitle={editingDocument?.title}
+        pdfUrl={editingDocument ? documentFileUrl(editingDocument.id, token ?? "", false, editingDocument.updatedAt) : ""}
+        onClose={closeDrawer}
+        form={editForm}
+        setForm={setEditForm}
+        error={editFormError}
+        onSubmit={handleUpdateDocument}
+        submitLabel="Сохранить изменения"
+        fileLabel="Заменить PDF (необязательно)"
+        idPrefix="admin-edit"
+        documentTypes={documentTypes}
+        secondaryActions={
+          <Button
+            variant="outlined"
+            color="error"
+            size="large"
+            onClick={() => editingDocument && void removeDocument(editingDocument.id)}
+          >
+            Удалить документ
+          </Button>
+        }
+      />
     </AdminFrame>
   );
 };

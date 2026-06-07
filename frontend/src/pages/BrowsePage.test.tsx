@@ -14,19 +14,6 @@ import BrowsePage from "./BrowsePage";
 
 const documentFileUrlMock = vi.fn(() => "/api/documents/1/file");
 const favoriteDocumentMock = vi.fn();
-const getDepartmentsMock = vi.fn(() =>
-  Promise.resolve({
-    items: [
-      {
-        id: 10,
-        facultyId: 1,
-        name: "Information Systems",
-        slug: "information-systems",
-        faculty: "FKTI",
-      },
-    ],
-  })
-);
 const getDocumentsMock = vi.fn(() =>
   Promise.resolve({
     items: [
@@ -41,13 +28,8 @@ const getDocumentsMock = vi.fn(() =>
         fileSizeBytes: 1024,
         mimeType: "application/pdf",
         coverPath: "covers/playbook.png",
-        isVisible: true,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        departmentId: 10,
-        department: "Information Systems",
-        facultyId: 1,
-        faculty: "FKTI",
         tags: [],
         isFavorite: false,
       },
@@ -57,10 +39,8 @@ const getDocumentsMock = vi.fn(() =>
     total: 1,
   })
 );
-const getFacultiesMock = vi.fn(() =>
-  Promise.resolve({
-    items: [{ id: 1, name: "FKTI", slug: "fkti" }],
-  })
+const getDocumentTypesMock = vi.fn(() =>
+  Promise.resolve({ items: ["Textbook", "Manual"] })
 );
 const markOpenedMock = vi.fn(() => Promise.resolve());
 const unfavoriteDocumentMock = vi.fn();
@@ -75,9 +55,8 @@ vi.mock("../api/library", () => ({
   documentCoverUrl: vi.fn(() => "/api/documents/1/cover"),
   documentFileUrl: (...args: unknown[]) => documentFileUrlMock(...args),
   favoriteDocument: (...args: unknown[]) => favoriteDocumentMock(...args),
-  getDepartments: (...args: unknown[]) => getDepartmentsMock(...args),
   getDocuments: (...args: unknown[]) => getDocumentsMock(...args),
-  getFaculties: (...args: unknown[]) => getFacultiesMock(...args),
+  getDocumentTypes: (...args: unknown[]) => getDocumentTypesMock(...args),
   markOpened: (...args: unknown[]) => markOpenedMock(...args),
   toggleDocumentFavorite: (...args: unknown[]) =>
     toggleDocumentFavoriteMock(...args),
@@ -99,6 +78,8 @@ function renderPage(initialEntry = "/catalog") {
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/catalog" element={<BrowsePage />} />
+          <Route path="/documents/:id" element={<div>Document page</div>} />
+          <Route path="/documents/:id/read" element={<div>Reader page</div>} />
         </Routes>
       </MemoryRouter>
     </AuthContext.Provider>
@@ -132,9 +113,11 @@ describe("BrowsePage", () => {
       expect.objectContaining({
         sort: "date_desc",
         page: 1,
-        facultyId: 0,
-        departmentId: 0,
         type: "",
+        author: "",
+        yearFrom: "",
+        yearTo: "",
+        tags: "",
       })
     );
   });
@@ -148,18 +131,22 @@ describe("BrowsePage", () => {
 
     const dialog = screen.getByRole("dialog");
     const selects = within(dialog).getAllByRole("combobox");
-    expect(selects).toHaveLength(4);
+    expect(selects).toHaveLength(2);
 
     await selectMUIOption(selects[0], 1);
-
-    await waitFor(() => {
-      expect(getDepartmentsMock).toHaveBeenCalledWith(1);
+    await selectMUIOption(selects[1], 4);
+    fireEvent.change(within(dialog).getByLabelText("Автор"), {
+      target: { value: "Demo Author" },
     });
-
-    const selectsAfterFaculty = within(dialog).getAllByRole("combobox");
-    await selectMUIOption(selectsAfterFaculty[1], 1);
-    await selectMUIOption(selectsAfterFaculty[2], 1);
-    await selectMUIOption(selectsAfterFaculty[3], 4);
+    fireEvent.change(within(dialog).getByLabelText("Год с"), {
+      target: { value: "2020" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Год по"), {
+      target: { value: "2026" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Ключевые слова"), {
+      target: { value: "devops, pdf" },
+    });
 
     const dialogButtons = within(dialog).getAllByRole("button");
     fireEvent.click(dialogButtons[dialogButtons.length - 1]);
@@ -170,9 +157,11 @@ describe("BrowsePage", () => {
         expect.objectContaining({
           sort: "title_asc",
           page: 1,
-          facultyId: 1,
-          departmentId: 10,
           type: "Textbook",
+          author: "Demo Author",
+          yearFrom: "2020",
+          yearTo: "2026",
+          tags: "devops, pdf",
         })
       );
     });
@@ -192,35 +181,32 @@ describe("BrowsePage", () => {
         expect.objectContaining({
           sort: "date_desc",
           page: 1,
-          facultyId: 0,
-          departmentId: 0,
           type: "",
+          author: "",
+          yearFrom: "",
+          yearTo: "",
+          tags: "",
         })
       );
     });
   });
 
   it("uses icon actions and keeps open plus favorite behavior", async () => {
-    const windowOpenSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     renderPage();
 
     await screen.findByText("DevOps Playbook");
-
-    fireEvent.click(screen.getAllByLabelText("Открыть документ")[0]);
-    await waitFor(() => {
-      expect(markOpenedMock).toHaveBeenCalledWith("token", 1);
-    });
-    expect(windowOpenSpy).toHaveBeenCalledWith(
-      "/api/documents/1/file",
-      "_blank",
-      "noopener,noreferrer"
-    );
 
     fireEvent.click(screen.getAllByLabelText("Добавить в избранное")[0]);
     await waitFor(() => {
       expect(favoriteDocumentMock).toHaveBeenCalledWith("token", 1);
     });
 
-    windowOpenSpy.mockRestore();
+    fireEvent.click(screen.getAllByLabelText("Открыть документ")[0]);
+    await waitFor(() => {
+      expect(markOpenedMock).toHaveBeenCalledWith("token", 1);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Document page")).toBeInTheDocument();
+    });
   });
 });

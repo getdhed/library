@@ -25,9 +25,8 @@ services:
       DATABASE_URL: postgres://library:library@db:5432/library?sslmode=disable
       JWT_SECRET: super-secret-local-key
       STORAGE_PATH: /app/storage
-      IMPORT_PATH: /app/storage/import
       CORS_ORIGINS: http://localhost:5173
-      SEED_ADMIN_EMAIL: admin@library.local
+      SEED_ADMIN_USERNAME: admin
       SEED_ADMIN_NAME: Администратор
       SEED_ADMIN_PASSWORD: admin12345
     ports:

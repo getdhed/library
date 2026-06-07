@@ -8,13 +8,16 @@ const Layout = lazy(routeLoaders.layout);
 const HomePage = lazy(routeLoaders.home);
 const SearchResultsPage = lazy(routeLoaders.searchResults);
 const BookPage = lazy(routeLoaders.book);
-const BrowsePage = lazy(routeLoaders.browse);
+
 const FavoritesPage = lazy(routeLoaders.favorites);
 const SettingsPage = lazy(routeLoaders.settings);
 const SubmitPage = lazy(routeLoaders.submit);
 const MyPdfsPage = lazy(routeLoaders.myPdfs);
+const PdfReaderPage = lazy(routeLoaders.reader);
 const AdminDocumentsPage = lazy(routeLoaders.adminDocuments);
 const AdminStatsPage = lazy(routeLoaders.adminStats);
+const AdminUsersPage = lazy(routeLoaders.adminUsers);
+const AdminAuditPage = lazy(routeLoaders.adminAudit);
 const LoginPage = lazy(routeLoaders.login);
 const RegisterPage = lazy(routeLoaders.register);
 
@@ -91,15 +94,7 @@ const App: React.FC = () => {
               canonicalPath: "/search",
             })}
           />
-          <Route
-            path="/catalog"
-            element={withSeo(<BrowsePage />, {
-              title: "Каталог",
-              description: "Просмотр каталога PDF-документов.",
-              noIndex: true,
-              canonicalPath: "/catalog",
-            })}
-          />
+
           <Route
             path="/favorites"
             element={withSeo(<FavoritesPage />, {
@@ -145,6 +140,22 @@ const App: React.FC = () => {
             })}
           />
           <Route
+            path="/documents/:id/read"
+            element={withSeo(<PdfReaderPage kind="document" />, {
+              title: "Чтение PDF",
+              description: "Встроенный просмотр PDF-документа.",
+              noIndex: true,
+            })}
+          />
+          <Route
+            path="/submissions/:id/read"
+            element={withSeo(<PdfReaderPage kind="submission" />, {
+              title: "Чтение PDF заявки",
+              description: "Встроенный просмотр отправленного PDF.",
+              noIndex: true,
+            })}
+          />
+          <Route
             path="/admin/documents"
             element={withSeo(
               <AdminRoute>
@@ -169,6 +180,34 @@ const App: React.FC = () => {
                 description: "Статистика библиотеки и активности.",
                 noIndex: true,
                 canonicalPath: "/admin/stats",
+              }
+            )}
+          />
+          <Route
+            path="/admin/users"
+            element={withSeo(
+              <AdminRoute>
+                <AdminUsersPage />
+              </AdminRoute>,
+              {
+                title: "Админка: пользователи",
+                description: "Управление пользователями библиотеки.",
+                noIndex: true,
+                canonicalPath: "/admin/users",
+              }
+            )}
+          />
+          <Route
+            path="/admin/audit"
+            element={withSeo(
+              <AdminRoute>
+                <AdminAuditPage />
+              </AdminRoute>,
+              {
+                title: "Админка: журнал",
+                description: "Журнал действий в библиотеке.",
+                noIndex: true,
+                canonicalPath: "/admin/audit",
               }
             )}
           />

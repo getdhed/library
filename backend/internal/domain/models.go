@@ -20,50 +20,39 @@ const (
 
 type User struct {
 	ID           int64     `json:"id"`
-	Email        string    `json:"email"`
+	Username     string    `json:"username"`
 	FullName     string    `json:"fullName"`
 	Role         UserRole  `json:"role"`
 	AvatarURL    string    `json:"avatarUrl,omitempty"`
+	IsActive     bool      `json:"isActive"`
 	PasswordHash string    `json:"-"`
 	CreatedAt    time.Time `json:"createdAt"`
-}
-
-type Faculty struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
-	Slug string `json:"slug"`
-}
-
-type Department struct {
-	ID        int64  `json:"id"`
-	FacultyID int64  `json:"facultyId"`
-	Name      string `json:"name"`
-	Slug      string `json:"slug"`
-	Faculty   string `json:"faculty,omitempty"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
 type Document struct {
-	ID            int64     `json:"id"`
-	Title         string    `json:"title"`
-	Author        string    `json:"author"`
-	Year          int       `json:"year"`
-	Type          string    `json:"type"`
-	Description   string    `json:"description"`
-	FilePath      string    `json:"-"`
-	FileName      string    `json:"fileName"`
-	FileSizeBytes int64     `json:"fileSizeBytes"`
-	MimeType      string    `json:"mimeType"`
-	CoverPath     string    `json:"coverPath,omitempty"`
-	IsVisible     bool      `json:"isVisible"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
-	DepartmentID  int64     `json:"departmentId"`
-	Department    string    `json:"department"`
-	FacultyID     int64     `json:"facultyId"`
-	Faculty       string    `json:"faculty"`
-	Tags          []string  `json:"tags"`
-	IsFavorite    bool      `json:"isFavorite"`
-	Similarity    float64   `json:"similarity,omitempty"`
+	ID                 int64     `json:"id"`
+	Title              string    `json:"title"`
+	Author             string    `json:"author"`
+	Executor           string    `json:"executor,omitempty"`
+	ScientificAdvisor  string    `json:"scientificAdvisor,omitempty"`
+	Year               int       `json:"year"`
+	Type               string    `json:"type"`
+	PlaceOfPublication string    `json:"placeOfPublication,omitempty"`
+	Publisher          string    `json:"publisher,omitempty"`
+	PeriodicalName     string    `json:"periodicalName,omitempty"`
+	Volume             string    `json:"volume,omitempty"`
+	Description        string    `json:"description"`
+	FilePath           string    `json:"-"`
+	FileName           string    `json:"fileName"`
+	FileSizeBytes      int64     `json:"fileSizeBytes"`
+	MimeType           string    `json:"mimeType"`
+	CoverPath          string    `json:"coverPath,omitempty"`
+	CreatedAt          time.Time `json:"createdAt"`
+	UpdatedAt          time.Time `json:"updatedAt"`
+	Tags               []string  `json:"tags"`
+	IsFavorite         bool      `json:"isFavorite"`
+	Similarity         float64   `json:"similarity,omitempty"`
 }
 
 type DocumentSubmission struct {
@@ -71,10 +60,12 @@ type DocumentSubmission struct {
 	UserID             int64            `json:"userId"`
 	Title              string           `json:"title"`
 	Author             string           `json:"author,omitempty"`
-	DepartmentID       int64            `json:"departmentId,omitempty"`
-	Department         string           `json:"department,omitempty"`
-	FacultyID          int64            `json:"facultyId,omitempty"`
-	Faculty            string           `json:"faculty,omitempty"`
+	Executor           string           `json:"executor,omitempty"`
+	ScientificAdvisor  string           `json:"scientificAdvisor,omitempty"`
+	PlaceOfPublication string           `json:"placeOfPublication,omitempty"`
+	Publisher          string           `json:"publisher,omitempty"`
+	PeriodicalName     string           `json:"periodicalName,omitempty"`
+	Volume             string           `json:"volume,omitempty"`
 	Comment            string           `json:"comment,omitempty"`
 	FilePath           string           `json:"-"`
 	FileName           string           `json:"fileName"`
@@ -86,11 +77,13 @@ type DocumentSubmission struct {
 	ModerationNote     string           `json:"moderationNote,omitempty"`
 	ApprovedDocumentID int64            `json:"approvedDocumentId,omitempty"`
 	ReviewedBy         int64            `json:"reviewedBy,omitempty"`
+	ReviewerName       string           `json:"reviewerName,omitempty"`
+	ReviewerUsername   string           `json:"reviewerUsername,omitempty"`
 	ReviewedAt         *time.Time       `json:"reviewedAt,omitempty"`
 	CreatedAt          time.Time        `json:"createdAt"`
 	UpdatedAt          time.Time        `json:"updatedAt"`
 	UploaderName       string           `json:"uploaderName,omitempty"`
-	UploaderEmail      string           `json:"uploaderEmail,omitempty"`
+	UploaderUsername   string           `json:"uploaderUsername,omitempty"`
 }
 
 type SearchHistoryItem struct {
@@ -100,23 +93,22 @@ type SearchHistoryItem struct {
 }
 
 type Stats struct {
-	DocumentsCount     int64            `json:"documentsCount"`
-	ViewsToday         int64            `json:"viewsToday"`
-	DownloadsToday     int64            `json:"downloadsToday"`
-	SearchesToday      int64            `json:"searchesToday"`
-	TopQueries         []NamedStat      `json:"topQueries"`
-	TopDocuments       []NamedStat      `json:"topDocuments"`
-	DocumentsByFaculty []FacultyDocStat `json:"documentsByFaculty"`
+	DocumentsCount        int64       `json:"documentsCount"`
+	ViewsToday            int64       `json:"viewsToday"`
+	DownloadsToday        int64       `json:"downloadsToday"`
+	SearchesToday         int64       `json:"searchesToday"`
+	UploadedInPeriod      int64       `json:"uploadedInPeriod"`
+	UploadPeriodFrom      time.Time   `json:"uploadPeriodFrom"`
+	UploadPeriodTo        time.Time   `json:"uploadPeriodTo"`
+	TopQueries            []NamedStat `json:"topQueries"`
+	TopDocuments          []NamedStat `json:"topDocuments"`
+	DocumentsByType       []NamedStat `json:"documentsByType"`
+	DocumentsUploadedByDay []NamedStat `json:"documentsUploadedByDay"`
 }
 
 type NamedStat struct {
 	Name  string `json:"name"`
 	Count int64  `json:"count"`
-}
-
-type FacultyDocStat struct {
-	Faculty string `json:"faculty"`
-	Count   int64  `json:"count"`
 }
 
 type Pagination struct {
@@ -126,19 +118,38 @@ type Pagination struct {
 }
 
 type DocumentFilters struct {
-	Query        string
-	FacultyID    int64
-	DepartmentID int64
-	Type         string
-	Sort         string
-	Page         int
-	PageSize     int
-	Visibility   string
+	Query      string
+	Type       string
+	Author     string
+	TagsQuery  string
+	Sort       string
+	Page       int
+	PageSize   int
+	YearFrom   int
+	YearTo     int
+}
+
+type StatsFilters struct {
+	DateFrom time.Time
+	DateTo   time.Time
 }
 
 type PagedDocuments struct {
 	Items []Document `json:"items"`
 	Pagination
+}
+
+type PagedUsers struct {
+	Items []User `json:"items"`
+	Pagination
+}
+
+type UserFilters struct {
+	Query    string
+	Role     UserRole
+	Status   string
+	Page     int
+	PageSize int
 }
 
 type HomePayload struct {
@@ -148,13 +159,13 @@ type HomePayload struct {
 }
 
 type RegisterInput struct {
-	Email    string `json:"email"`
+	Username string `json:"username"`
 	Password string `json:"password"`
 	FullName string `json:"fullName"`
 }
 
 type LoginInput struct {
-	Email    string `json:"email"`
+	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
@@ -163,21 +174,74 @@ type AuthPayload struct {
 	User  User   `json:"user"`
 }
 
+type AdminUserInput struct {
+	Username string   `json:"username"`
+	FullName string   `json:"fullName"`
+	Role     UserRole `json:"role"`
+	Password string   `json:"password,omitempty"`
+}
+
+type UserStatusInput struct {
+	IsActive bool `json:"isActive"`
+}
+
 type UpsertDocumentInput struct {
-	Title        string
-	Author       string
-	Year         int
-	Type         string
-	Description  string
-	DepartmentID int64
-	Tags         []string
-	IsVisible    bool
-	FileName     string
-	FilePath     string
-	FileSize     int64
-	MimeType     string
-	CoverPath    string
-	Source       SubmissionSource
+	Title              string
+	Author             string
+	Executor           string
+	ScientificAdvisor  string
+	Year               int
+	Type               string
+	PlaceOfPublication string
+	Publisher          string
+	PeriodicalName     string
+	Volume             string
+	Description        string
+	Tags               []string
+	FileName           string
+	FilePath           string
+	FileSize           int64
+	MimeType           string
+	CoverPath          string
+	Source             SubmissionSource
+}
+
+type DocumentAuditEvent struct {
+	ID            int64          `json:"id"`
+	Action        string         `json:"action"`
+	ActorID       int64          `json:"actorId,omitempty"`
+	ActorName     string         `json:"actorName,omitempty"`
+	ActorUsername string         `json:"actorUsername,omitempty"`
+	DocumentID    int64          `json:"documentId,omitempty"`
+	SubmissionID  int64          `json:"submissionId,omitempty"`
+	DocumentTitle string         `json:"documentTitle"`
+	FileName      string         `json:"fileName"`
+	Details       map[string]any `json:"details"`
+	CreatedAt     time.Time      `json:"createdAt"`
+}
+
+type AuditFilters struct {
+	Query    string
+	Action   string
+	DateFrom time.Time
+	DateTo   time.Time
+	Page     int
+	PageSize int
+}
+
+type PagedAuditEvents struct {
+	Items []DocumentAuditEvent `json:"items"`
+	Pagination
+}
+
+type CreateAuditEventInput struct {
+	Action        string
+	ActorID       int64
+	DocumentID    int64
+	SubmissionID  int64
+	DocumentTitle string
+	FileName      string
+	Details       map[string]any
 }
 
 type ImportSubmissionError struct {
@@ -191,14 +255,19 @@ type ImportSubmissionsResult struct {
 }
 
 type CreateSubmissionInput struct {
-	Title        string
-	Author       string
-	Comment      string
-	DepartmentID int64
-	FileName     string
-	FilePath     string
-	FileSize     int64
-	MimeType     string
-	CoverPath    string
-	Source       SubmissionSource
+	Title              string
+	Author             string
+	Executor           string
+	ScientificAdvisor  string
+	PlaceOfPublication string
+	Publisher          string
+	PeriodicalName     string
+	Volume             string
+	Comment            string
+	FileName           string
+	FilePath           string
+	FileSize           int64
+	MimeType           string
+	CoverPath          string
+	Source             SubmissionSource
 }

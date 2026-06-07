@@ -2,7 +2,7 @@ import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
 const TOKEN_STORAGE_KEY = "library-token";
 
-export const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? "admin@library.local";
+export const ADMIN_USERNAME = process.env.E2E_ADMIN_USERNAME ?? "admin@library.local";
 export const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "admin12345";
 export const E2E_API_URL = process.env.E2E_API_URL ?? "http://localhost:8080/api";
 
@@ -10,7 +10,7 @@ type AuthPayload = {
   token: string;
   user: {
     id: number;
-    email: string;
+    username: string;
     fullName: string;
     role: "user" | "admin";
   };
@@ -27,30 +27,30 @@ type PagedDocuments = {
   items: Array<{ id: number; title: string }>;
 };
 
-export function buildUniqueEmail(prefix: string) {
+export function buildUniqueUsername(prefix: string) {
   const value = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
   return `${prefix}-${value}@e2e.local`;
 }
 
-export async function loginViaUi(page: Page, email: string, password: string) {
+export async function loginViaUi(page: Page, username: string, password: string) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Логин").fill(username);
   await page.getByLabel("Пароль").fill(password);
   await page.locator("form").first().locator('button[type="submit"]').click();
   await expect(page).toHaveURL(/\/$/);
 }
 
 export async function loginAsAdmin(page: Page) {
-  await loginViaUi(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+  await loginViaUi(page, ADMIN_USERNAME, ADMIN_PASSWORD);
 }
 
 export async function loginViaApiAndStoreSession(
   page: Page,
   request: APIRequestContext,
-  email: string,
+  username: string,
   password: string
 ) {
-  const token = await apiLogin(request, email, password);
+  const token = await apiLogin(request, username, password);
   await page.addInitScript(
     ([storageKey, storageValue]) => {
       window.localStorage.setItem(storageKey, storageValue);
@@ -64,7 +64,7 @@ export async function loginAsAdminViaApi(
   page: Page,
   request: APIRequestContext
 ) {
-  return loginViaApiAndStoreSession(page, request, ADMIN_EMAIL, ADMIN_PASSWORD);
+  return loginViaApiAndStoreSession(page, request, ADMIN_USERNAME, ADMIN_PASSWORD);
 }
 
 export async function openAccountMenu(page: Page) {
@@ -92,11 +92,11 @@ export async function chooseMuiOptionByIndex(
 
 export async function apiLogin(
   request: APIRequestContext,
-  email: string,
+  username: string,
   password: string
 ) {
   const response = await request.post(`${E2E_API_URL}/auth/login`, {
-    data: { email, password },
+    data: { username, password },
   });
   expect(response.ok(), `login failed with status ${response.status()}`).toBeTruthy();
   const payload = (await response.json()) as AuthPayload;
@@ -157,23 +157,6 @@ export async function ensureDocumentExists(
     return existingItem.id;
   }
 
-  const departmentsResponse = await request.get(`${E2E_API_URL}/admin/departments`, {
-    headers,
-  });
-  expect(
-    departmentsResponse.ok(),
-    `list departments failed with status ${departmentsResponse.status()}`
-  ).toBeTruthy();
-  const departmentsPayload = (await departmentsResponse.json()) as {
-    items: Department[];
-  };
-  expect(
-    departmentsPayload.items.length,
-    "no departments available for e2e setup"
-  ).toBeGreaterThan(0);
-
-  const departmentId = departmentsPayload.items[0].id;
-
   const createResponse = await request.post(`${E2E_API_URL}/admin/documents`, {
     headers,
     multipart: {
@@ -182,9 +165,7 @@ export async function ensureDocumentExists(
       year: String(new Date().getFullYear()),
       type: "Учебник",
       description: "Автоматически создано e2e тестом.",
-      departmentId: String(departmentId),
       tags: "e2e,playwright",
-      isVisible: "true",
       file: createPdfUploadPayload(title),
     },
   });

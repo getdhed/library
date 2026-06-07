@@ -41,7 +41,6 @@ const submissions = [
     status: "approved",
     source: "user_upload",
     approvedDocumentId: 42,
-    department: "Engineering Department",
     createdAt: "2026-03-18T09:00:00.000Z",
     updatedAt: "2026-03-24T09:30:00.000Z",
   },
@@ -68,10 +67,12 @@ function renderPage(withSuccessState = false) {
         token: "token",
         user: {
           id: 4,
-          email: "user@example.com",
+          username: "user",
           fullName: "Regular User",
           role: "user",
+          isActive: true,
           createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         },
         ready: true,
         login: async () => undefined,
@@ -101,6 +102,26 @@ describe("MyPdfsPage", () => {
       items: [...submissions],
     } as never);
     vi.mocked(getDocument).mockReset();
+  });
+
+  it("shows empty state when there are no submissions", async () => {
+    vi.mocked(getMySubmissions).mockResolvedValue({ items: [] } as never);
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("У вас пока нет отправленных PDF")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText("Вы ещё не отправляли файлы на модерацию. Хотите предложить новый PDF?")
+    ).toBeInTheDocument();
+
+    const uploadButtons = screen.getAllByRole("link", { name: "Загрузить новый PDF" });
+    expect(uploadButtons.length).toBeGreaterThanOrEqual(1);
+    expect(uploadButtons[0].getAttribute("href")).toBe("/submit");
+
+    expect(screen.queryByText("В обработке")).not.toBeInTheDocument();
+    expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
   });
 
   it("renders success state, filter toolbar and sorted cards", async () => {
@@ -141,13 +162,8 @@ describe("MyPdfsPage", () => {
       fileName: "catalog-approved.pdf",
       fileSizeBytes: 4096,
       mimeType: "application/pdf",
-      isVisible: true,
       createdAt: "2026-03-25T09:00:00.000Z",
       updatedAt: "2026-03-25T09:00:00.000Z",
-      departmentId: 1,
-      department: "Engineering Department",
-      facultyId: 1,
-      faculty: "FKTI",
       tags: [],
       isFavorite: false,
     } as never);

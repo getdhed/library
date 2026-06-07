@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
 import {
-  ADMIN_EMAIL,
+  ADMIN_USERNAME,
   ADMIN_PASSWORD,
   apiLogin,
-  buildUniqueEmail,
+  buildUniqueUsername,
   ensureDocumentExists,
 } from "./support/app";
 
@@ -12,16 +12,16 @@ test("registered user can find document and add it to favorites", async ({
   request,
 }) => {
   const title = "E2E Search Favorite Document";
-  const adminToken = await apiLogin(request, ADMIN_EMAIL, ADMIN_PASSWORD);
+  const adminToken = await apiLogin(request, ADMIN_USERNAME, ADMIN_PASSWORD);
   await ensureDocumentExists(request, adminToken, title);
 
-  const userEmail = buildUniqueEmail("reader");
+  const userUsername = buildUniqueUsername("reader");
   const userPassword = "reader12345";
 
   await test.step("register user in UI", async () => {
     await page.goto("/register");
-    await page.getByLabel("Имя").fill("E2E Reader");
-    await page.getByLabel("Email").fill(userEmail);
+    await page.getByLabel("Имя", { exact: true }).fill("E2E Reader");
+    await page.getByLabel("Имя пользователя").fill(userUsername);
     await page.getByLabel("Пароль").fill(userPassword);
     await page.locator("form").first().locator('button[type="submit"]').click();
     await expect(page).toHaveURL(/\/$/);

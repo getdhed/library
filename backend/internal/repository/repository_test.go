@@ -17,6 +17,19 @@ import (
 	"library-backend/internal/domain"
 )
 
+func TestSplitFilterTerms(t *testing.T) {
+	terms := splitFilterTerms(" devops, pdf; DevOps  сеть ")
+	expected := []string{"devops", "pdf", "сеть"}
+	if len(terms) != len(expected) {
+		t.Fatalf("expected %d terms, got %d: %#v", len(expected), len(terms), terms)
+	}
+	for index, expectedTerm := range expected {
+		if terms[index] != expectedTerm {
+			t.Fatalf("expected term %d to be %q, got %q", index, expectedTerm, terms[index])
+		}
+	}
+}
+
 func TestCreateAndApproveAdminImportSubmission(t *testing.T) {
 	adminDSN := os.Getenv("TEST_DATABASE_URL")
 	if strings.TrimSpace(adminDSN) == "" {
@@ -56,28 +69,10 @@ func TestCreateAndApproveAdminImportSubmission(t *testing.T) {
 
 	repo := New(db)
 
-	var facultyID int64
-	if err := db.QueryRowContext(ctx, `
-		INSERT INTO faculties(name, slug)
-		VALUES ('Test Faculty', 'test-faculty')
-		RETURNING id
-	`).Scan(&facultyID); err != nil {
-		t.Fatalf("insert faculty: %v", err)
-	}
-
-	var departmentID int64
-	if err := db.QueryRowContext(ctx, `
-		INSERT INTO departments(faculty_id, name, slug)
-		VALUES ($1, 'Test Department', 'test-department')
-		RETURNING id
-	`, facultyID).Scan(&departmentID); err != nil {
-		t.Fatalf("insert department: %v", err)
-	}
-
 	var adminID int64
 	if err := db.QueryRowContext(ctx, `
-		INSERT INTO users(email, password_hash, full_name, role)
-		VALUES ('admin@example.com', 'hash', 'Admin', 'admin')
+		INSERT INTO users(username, password_hash, full_name, role)
+		VALUES ('admin', 'hash', 'Admin', 'admin')
 		RETURNING id
 	`).Scan(&adminID); err != nil {
 		t.Fatalf("insert admin: %v", err)
@@ -109,13 +104,11 @@ func TestCreateAndApproveAdminImportSubmission(t *testing.T) {
 	}
 
 	document, err := repo.ApproveSubmission(ctx, submission.ID, adminID, domain.UpsertDocumentInput{
-		Title:        "Imported Draft",
-		Author:       "Admin",
-		Year:         2026,
-		Type:         "Методичка",
-		Description:  "Queued from import folder",
-		DepartmentID: departmentID,
-		IsVisible:    true,
+		Title:       "Imported Draft",
+		Author:      "Admin",
+		Year:        2026,
+		Type:        "Методичка",
+		Description: "Queued from import folder",
 	})
 	if err != nil {
 		t.Fatalf("ApproveSubmission() error = %v", err)
@@ -154,6 +147,61 @@ func TestCreateAndApproveAdminImportSubmission(t *testing.T) {
 	}
 	if !hasCatalogDuplicate {
 		t.Fatal("expected catalog duplicate to be detected")
+	}
+
+	if err := repo.CreateAuditEvent(ctx, domain.CreateAuditEventInput{
+		Action:        "approve",
+		ActorID:       adminID,
+		DocumentID:    document.ID,
+		SubmissionID:  submission.ID,
+		DocumentTitle: document.Title,
+		FileName:      document.FileName,
+		Details: map[string]any{
+			"source": domain.SubmissionSourceAdminImport,
+		},
+	}); err != nil {
+		t.Fatalf("CreateAuditEvent() error = %v", err)
+	}
+	events, err := repo.ListDocumentAuditEvents(ctx, document.ID)
+	if err != nil {
+		t.Fatalf("ListDocumentAuditEvents() error = %v", err)
+	}
+	if len(events) != 1 || events[0].ActorUsername != "admin" || events[0].Action != "approve" {
+		t.Fatalf("unexpected audit events: %#v", events)
+	}
+
+	types, err := repo.ListDocumentTypes(ctx)
+	if err != nil {
+		t.Fatalf("ListDocumentTypes() error = %v", err)
+	}
+	if len(types) != 1 || types[0] != "Методичка" {
+		t.Fatalf("unexpected document types: %#v", types)
+	}
+
+	createdUser, err := repo.CreateAdminUser(ctx, domain.AdminUserInput{
+		Username: "reader",
+		FullName: "Reader",
+		Role:     domain.RoleUser,
+	}, "hash")
+	if err != nil {
+		t.Fatalf("CreateAdminUser() error = %v", err)
+	}
+	if !createdUser.IsActive {
+		t.Fatal("expected created user to be active")
+	}
+	inactiveUser, err := repo.SetUserActive(ctx, createdUser.ID, false)
+	if err != nil {
+		t.Fatalf("SetUserActive() error = %v", err)
+	}
+	if inactiveUser.IsActive {
+		t.Fatal("expected user to be inactive")
+	}
+	filteredUsers, err := repo.ListUsers(ctx, domain.UserFilters{Status: "inactive"})
+	if err != nil {
+		t.Fatalf("ListUsers() error = %v", err)
+	}
+	if len(filteredUsers.Items) != 1 || filteredUsers.Items[0].Username != "reader" {
+		t.Fatalf("unexpected filtered users: %#v", filteredUsers)
 	}
 }
 
@@ -202,8 +250,8 @@ func TestEnsureSeedDataUpsertsAdminCredentials(t *testing.T) {
 	}
 
 	if _, err := db.ExecContext(ctx, `
-		INSERT INTO users(email, password_hash, full_name, role)
-		VALUES ('admin@library.local', $1, 'Legacy Admin', 'admin')
+		INSERT INTO users(username, password_hash, full_name, role)
+		VALUES ('admin', $1, 'Legacy Admin', 'admin')
 	`, oldHash); err != nil {
 		t.Fatalf("insert legacy admin: %v", err)
 	}
@@ -213,7 +261,7 @@ func TestEnsureSeedDataUpsertsAdminCredentials(t *testing.T) {
 		t.Fatalf("HashPassword(new) error = %v", err)
 	}
 
-	if err := repo.EnsureSeedData(ctx, "admin@library.local", "Администратор", newHash); err != nil {
+	if err := repo.EnsureSeedData(ctx, "admin", "Администратор", newHash); err != nil {
 		t.Fatalf("EnsureSeedData() error = %v", err)
 	}
 
@@ -223,7 +271,7 @@ func TestEnsureSeedDataUpsertsAdminCredentials(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `
 		SELECT password_hash, full_name, role
 		FROM users
-		WHERE email = 'admin@library.local'
+		WHERE username = 'admin'
 	`).Scan(&passwordHash, &fullName, &role); err != nil {
 		t.Fatalf("load admin after EnsureSeedData: %v", err)
 	}
@@ -280,27 +328,9 @@ func TestListDocumentsSupportsEmptyAndTextSearch(t *testing.T) {
 
 	repo := New(db)
 
-	var facultyID int64
-	if err := db.QueryRowContext(ctx, `
-		INSERT INTO faculties(name, slug)
-		VALUES ('Search Faculty', 'search-faculty')
-		RETURNING id
-	`).Scan(&facultyID); err != nil {
-		t.Fatalf("insert faculty: %v", err)
-	}
-
-	var departmentID int64
-	if err := db.QueryRowContext(ctx, `
-		INSERT INTO departments(faculty_id, name, slug)
-		VALUES ($1, 'Кафедра информационных систем', 'search-department')
-		RETURNING id
-	`, facultyID).Scan(&departmentID); err != nil {
-		t.Fatalf("insert department: %v", err)
-	}
-
 	var userID int64
 	if err := db.QueryRowContext(ctx, `
-		INSERT INTO users(email, password_hash, full_name, role)
+		INSERT INTO users(username, password_hash, full_name, role)
 		VALUES ('user@example.com', 'hash', 'User', 'user')
 		RETURNING id
 	`).Scan(&userID); err != nil {
@@ -308,18 +338,17 @@ func TestListDocumentsSupportsEmptyAndTextSearch(t *testing.T) {
 	}
 
 	if _, err := repo.CreateDocument(ctx, domain.UpsertDocumentInput{
-		Title:        "Распределенные системы",
-		Author:       "Таненбаум",
-		Year:         2026,
-		Type:         "Учебник",
-		Description:  "Базовый курс",
-		DepartmentID: departmentID,
-		FileName:     "ds.pdf",
-		FilePath:     "pdfs/ds.pdf",
-		FileSize:     1024,
-		MimeType:     "application/pdf",
-		CoverPath:    "covers/ds.png",
-		IsVisible:    true,
+		Title:       "Распределенные системы",
+		Author:      "Таненбаум",
+		Year:        2026,
+		Type:        "Учебник",
+		Description: "Базовый курс",
+		Tags:        []string{"распределенные", "сети"},
+		FileName:    "ds.pdf",
+		FilePath:    "pdfs/ds.pdf",
+		FileSize:    1024,
+		MimeType:    "application/pdf",
+		CoverPath:   "covers/ds.png",
 	}); err != nil {
 		t.Fatalf("CreateDocument() error = %v", err)
 	}
@@ -349,17 +378,43 @@ func TestListDocumentsSupportsEmptyAndTextSearch(t *testing.T) {
 		t.Fatalf("expected author search to find one document, got total=%d items=%d", authorSearch.Total, len(authorSearch.Items))
 	}
 
-	departmentSearch, err := repo.ListDocuments(ctx, userID, domain.DocumentFilters{
-		Query:    "информационных систем",
+	authorFilter, err := repo.ListDocuments(ctx, userID, domain.DocumentFilters{
+		Author:   "Танен",
 		Page:     1,
 		PageSize: 10,
 		Sort:     "relevance",
 	}, false)
 	if err != nil {
-		t.Fatalf("ListDocuments() by department error = %v", err)
+		t.Fatalf("ListDocuments() by author filter error = %v", err)
 	}
-	if departmentSearch.Total != 1 || len(departmentSearch.Items) != 1 {
-		t.Fatalf("expected department search to find one document, got total=%d items=%d", departmentSearch.Total, len(departmentSearch.Items))
+	if authorFilter.Total != 1 || len(authorFilter.Items) != 1 {
+		t.Fatalf("expected author filter to find one document, got total=%d items=%d", authorFilter.Total, len(authorFilter.Items))
+	}
+
+	tagsFilter, err := repo.ListDocuments(ctx, userID, domain.DocumentFilters{
+		TagsQuery: "нет сети",
+		Page:      1,
+		PageSize:  10,
+		Sort:      "relevance",
+	}, false)
+	if err != nil {
+		t.Fatalf("ListDocuments() by tags filter error = %v", err)
+	}
+	if tagsFilter.Total != 1 || len(tagsFilter.Items) != 1 {
+		t.Fatalf("expected tags filter to find one document, got total=%d items=%d", tagsFilter.Total, len(tagsFilter.Items))
+	}
+
+	tagSearch, err := repo.ListDocuments(ctx, userID, domain.DocumentFilters{
+		Query:    "сети",
+		Page:     1,
+		PageSize: 10,
+		Sort:     "relevance",
+	}, false)
+	if err != nil {
+		t.Fatalf("ListDocuments() by tag query error = %v", err)
+	}
+	if tagSearch.Total != 1 || len(tagSearch.Items) != 1 {
+		t.Fatalf("expected tag query to find one document, got total=%d items=%d", tagSearch.Total, len(tagSearch.Items))
 	}
 }
 
@@ -404,7 +459,7 @@ func TestListSubmissionsByUserOrdersByUpdatedAtDesc(t *testing.T) {
 
 	var reviewerID int64
 	if err := db.QueryRowContext(ctx, `
-		INSERT INTO users(email, password_hash, full_name, role)
+		INSERT INTO users(username, password_hash, full_name, role)
 		VALUES ('reviewer@example.com', 'hash', 'Reviewer', 'admin')
 		RETURNING id
 	`).Scan(&reviewerID); err != nil {
@@ -413,7 +468,7 @@ func TestListSubmissionsByUserOrdersByUpdatedAtDesc(t *testing.T) {
 
 	var userID int64
 	if err := db.QueryRowContext(ctx, `
-		INSERT INTO users(email, password_hash, full_name, role)
+		INSERT INTO users(username, password_hash, full_name, role)
 		VALUES ('submitter@example.com', 'hash', 'Submitter', 'user')
 		RETURNING id
 	`).Scan(&userID); err != nil {

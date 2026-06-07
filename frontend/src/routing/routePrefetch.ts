@@ -11,8 +11,11 @@ export const routeLoaders = {
   settings: () => import("../pages/SettingsPage"),
   submit: () => import("../pages/SubmitPage"),
   myPdfs: () => import("../pages/MyPdfsPage"),
+  reader: () => import("../pages/PdfReaderPage"),
   adminDocuments: () => import("../pages/admin/AdminDocumentsPage"),
   adminStats: () => import("../pages/admin/AdminStatsPage"),
+  adminUsers: () => import("../pages/admin/AdminUsersPage"),
+  adminAudit: () => import("../pages/admin/AdminAuditPage"),
   login: () => import("../pages/LoginPage"),
   register: () => import("../pages/RegisterPage"),
 } as const;
@@ -109,9 +112,7 @@ function getRouteChunksForPath(path: string): RouteChunk[] {
   if (normalizedPath.startsWith("/search")) {
     return ["searchResults"];
   }
-  if (normalizedPath.startsWith("/catalog")) {
-    return ["browse"];
-  }
+
   if (normalizedPath.startsWith("/favorites")) {
     return ["favorites"];
   }
@@ -124,14 +125,26 @@ function getRouteChunksForPath(path: string): RouteChunk[] {
   if (normalizedPath.startsWith("/submit")) {
     return ["submit"];
   }
+  if (normalizedPath.startsWith("/documents/") && normalizedPath.endsWith("/read")) {
+    return ["reader"];
+  }
+  if (normalizedPath.startsWith("/submissions/") && normalizedPath.endsWith("/read")) {
+    return ["reader"];
+  }
   if (normalizedPath.startsWith("/documents/")) {
     return ["book"];
+  }
+  if (normalizedPath.startsWith("/admin/audit")) {
+    return ["adminAudit"];
   }
   if (normalizedPath.startsWith("/admin/documents")) {
     return ["adminDocuments"];
   }
   if (normalizedPath.startsWith("/admin/stats")) {
     return ["adminStats"];
+  }
+  if (normalizedPath.startsWith("/admin/users")) {
+    return ["adminUsers"];
   }
   if (normalizedPath.startsWith("/login")) {
     return ["login"];
@@ -150,18 +163,22 @@ function getLikelyNextChunks(
   const normalizedPath = normalizePath(currentPath);
 
   if (role === "admin") {
+    if (normalizedPath.startsWith("/admin/audit")) {
+      return ["adminDocuments", "adminStats", "adminUsers", "searchResults"];
+    }
     if (normalizedPath.startsWith("/admin/documents")) {
-      return ["adminStats", "searchResults", "browse"];
+      return ["adminStats", "adminUsers", "adminAudit", "searchResults", "browse"];
     }
     if (normalizedPath.startsWith("/admin/stats")) {
-      return ["adminDocuments", "searchResults", "browse"];
+      return ["adminDocuments", "adminUsers", "adminAudit", "searchResults", "browse"];
+    }
+    if (normalizedPath.startsWith("/admin/users")) {
+      return ["adminDocuments", "adminStats", "adminAudit", "searchResults"];
     }
   }
 
   if (normalizedPath === "/") {
-    return role === "admin"
-      ? ["searchResults", "browse", "adminDocuments"]
-      : ["searchResults", "browse", "favorites"];
+    return [];
   }
 
   if (normalizedPath.startsWith("/search")) {
@@ -170,11 +187,7 @@ function getLikelyNextChunks(
       : ["browse", "book", "favorites"];
   }
 
-  if (normalizedPath.startsWith("/catalog")) {
-    return role === "admin"
-      ? ["searchResults", "book", "adminDocuments"]
-      : ["searchResults", "book", "favorites"];
-  }
+
 
   if (normalizedPath.startsWith("/favorites")) {
     return ["browse", "searchResults", "book"];
@@ -195,11 +208,11 @@ function getLikelyNextChunks(
   }
 
   if (normalizedPath.startsWith("/documents/")) {
-    return ["searchResults", "browse", "favorites"];
+    return ["reader", "searchResults", "browse", "favorites"];
   }
 
   return role === "admin"
-    ? ["adminDocuments", "adminStats", "searchResults"]
+    ? ["adminDocuments", "adminStats", "adminUsers", "searchResults"]
     : ["searchResults", "browse", "favorites"];
 }
 

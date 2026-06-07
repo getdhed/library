@@ -1,68 +1,44 @@
-﻿import React from "react";
-import {
-  Box,
-  Button,
-  ButtonGroup,
-  Stack,
-  Typography,
-} from "@mui/material";
-import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
-import DarkModeRoundedIcon from "@mui/icons-material/DarkModeRounded";
+import React from "react";
+import { Alert, Box, Paper, Stack, Typography } from "@mui/material";
 import { ContentCard, PageHeader, PageShell } from "../components/mui-primitives";
 import { useTheme } from "../theme/ThemeContext";
 
 const SettingsPage: React.FC = () => {
-  const { theme, setTheme } = useTheme();
+  const { theme } = useTheme();
 
   return (
     <PageShell>
-      <PageHeader eyebrow="Профиль" title="Настройки" />
+      <PageHeader
+        eyebrow="Профиль"
+        title="Настройки"
+        description="Управление пользовательскими параметрами интерфейса."
+      />
 
       <ContentCard>
-        <Stack
-          direction={{ xs: "column", md: "row" }}
-          spacing={2}
-          justifyContent="space-between"
-          alignItems={{ xs: "flex-start", md: "center" }}
-        >
-          <Box>
-            <Typography variant="h5">Тема интерфейса</Typography>
-            <Typography color="text.secondary" sx={{ mt: 1, maxWidth: "70ch" }}>
-              Светлая тема использует спокойную институтскую палитру, а тёмная
-              версия остаётся приглушённой и удобной для долгой работы с
-              документами.
-            </Typography>
-          </Box>
+        <Stack spacing={2}>
+          <Paper sx={{ p: 2, borderRadius: 0 }}>
+            <Stack spacing={1.2}>
+              <Typography variant="overline">Оформление</Typography>
+              <Typography variant="h5">Единый режим интерфейса</Typography>
+              <Typography color="text.secondary">
+                Для текущей итерации используется единый визуальный стиль
+                библиотеки. Переключение темы временно отключено.
+              </Typography>
+              <Box sx={{ pt: 0.3 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Активный режим:{" "}
+                  <Box component="span" sx={{ fontWeight: 700, color: "text.primary" }}>
+                    {theme === "dark" ? "Тёмный" : "Светлый"}
+                  </Box>
+                </Typography>
+              </Box>
+            </Stack>
+          </Paper>
 
-          <ButtonGroup role="group" aria-label="Переключение темы" variant="outlined" color="primary">
-            <Button
-              type="button"
-              onClick={() => setTheme("light")}
-              aria-pressed={theme === "light"}
-              variant={theme === "light" ? "contained" : "outlined"}
-              startIcon={<LightModeRoundedIcon />}
-            >
-              Светлая тема
-            </Button>
-            <Button
-              type="button"
-              onClick={() => setTheme("dark")}
-              aria-pressed={theme === "dark"}
-              variant={theme === "dark" ? "contained" : "outlined"}
-              startIcon={<DarkModeRoundedIcon />}
-            >
-              Тёмная тема
-            </Button>
-          </ButtonGroup>
+          <Alert severity="info" variant="outlined">
+            Блок с расширенными настройками будет возвращён в следующих итерациях.
+          </Alert>
         </Stack>
-      </ContentCard>
-
-      <ContentCard>
-        <Typography variant="h5">Что можно развивать дальше</Typography>
-        <Typography color="text.secondary" sx={{ mt: 1.2 }}>
-          Здесь можно расширить профиль пользователя, чтение PDF, персональные
-          настройки поиска и поведение карточек документов.
-        </Typography>
       </ContentCard>
     </PageShell>
   );

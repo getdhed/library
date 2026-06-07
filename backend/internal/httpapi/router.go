@@ -43,8 +43,7 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 	{
 		api.POST("/auth/register", handler.register)
 		api.POST("/auth/login", handler.login)
-		api.GET("/catalog/faculties", handler.listFaculties)
-		api.GET("/catalog/faculties/:id/departments", handler.listDepartments)
+		api.GET("/catalog/document-types", handler.listDocumentTypes)
 
 		authenticated := api.Group("/")
 		authenticated.Use(handler.requireAuth())
@@ -58,6 +57,7 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 			authenticated.POST("/documents/:id/open", handler.openDocument)
 			authenticated.GET("/documents/:id/file", handler.serveDocument)
 			authenticated.POST("/submissions", handler.createSubmission)
+			authenticated.GET("/submissions/:id", handler.getSubmission)
 			authenticated.GET("/submissions/:id/file", handler.serveSubmissionFile)
 			authenticated.POST("/documents/:id/favorite", handler.favoriteDocument)
 			authenticated.DELETE("/documents/:id/favorite", handler.unfavoriteDocument)
@@ -74,13 +74,18 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 			admin.POST("/documents", handler.adminCreateDocument)
 			admin.PUT("/documents/:id", handler.adminUpdateDocument)
 			admin.DELETE("/documents/:id", handler.adminDeleteDocument)
+			admin.GET("/documents/:id/audit", handler.adminDocumentAudit)
+			admin.GET("/audit", handler.adminAudit)
 			admin.GET("/submissions", handler.adminListSubmissions)
-			admin.POST("/submissions/import-folder", handler.adminImportSubmissionsFromFolder)
 			admin.POST("/submissions/:id/approve", handler.adminApproveSubmission)
 			admin.POST("/submissions/:id/reject", handler.adminRejectSubmission)
-			admin.GET("/faculties", handler.listFaculties)
-			admin.GET("/departments", handler.adminListDepartments)
 			admin.GET("/stats", handler.adminStats)
+			admin.GET("/users", handler.adminListUsers)
+			admin.POST("/users", handler.adminCreateUser)
+			admin.PUT("/users/:id", handler.adminUpdateUser)
+			admin.PUT("/users", handler.adminUpdateUser)
+			admin.PATCH("/users/:id/status", handler.adminSetUserStatus)
+			admin.POST("/users/:id/reset-password", handler.adminResetUserPassword)
 		}
 	}
 
@@ -104,7 +109,7 @@ func corsMiddleware(origins []string) gin.HandlerFunc {
 			}
 		}
 
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 
@@ -270,6 +275,27 @@ func (h *Handler) createSubmission(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, submission)
+}
+
+func (h *Handler) getSubmission(c *gin.Context) {
+	submissionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	submission, err := h.service.GetSubmission(
+		c.Request.Context(),
+		currentUserID(c),
+		currentUserRole(c),
+		submissionID,
+	)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, submission)
 }
 
 func (h *Handler) openDocument(c *gin.Context) {
@@ -446,22 +472,8 @@ func (h *Handler) unfavoriteDocument(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h *Handler) listFaculties(c *gin.Context) {
-	items, err := h.service.Faculties(c.Request.Context())
-	if err != nil {
-		writeError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
-}
-
-func (h *Handler) listDepartments(c *gin.Context) {
-	facultyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		writeError(c, apperror.ErrInvalidInput)
-		return
-	}
-	items, err := h.service.Departments(c.Request.Context(), facultyID)
+func (h *Handler) listDocumentTypes(c *gin.Context) {
+	items, err := h.service.DocumentTypes(c.Request.Context())
 	if err != nil {
 		writeError(c, err)
 		return
@@ -538,7 +550,7 @@ func (h *Handler) adminCreateDocument(c *gin.Context) {
 	input.FileSize = size
 	input.MimeType = mimeType
 
-	document, err := h.service.CreateDocument(c.Request.Context(), input)
+	document, err := h.service.CreateDocument(c.Request.Context(), input, currentUserID(c))
 	if err != nil {
 		writeError(c, err)
 		return
@@ -573,7 +585,7 @@ func (h *Handler) adminUpdateDocument(c *gin.Context) {
 		input.MimeType = mimeType
 	}
 
-	document, err := h.service.UpdateDocument(c.Request.Context(), documentID, input)
+	document, err := h.service.UpdateDocument(c.Request.Context(), documentID, input, currentUserID(c))
 	if err != nil {
 		writeError(c, err)
 		return
@@ -587,11 +599,58 @@ func (h *Handler) adminDeleteDocument(c *gin.Context) {
 		writeError(c, apperror.ErrInvalidInput)
 		return
 	}
-	if err := h.service.DeleteDocument(c.Request.Context(), documentID); err != nil {
+	if err := h.service.DeleteDocument(c.Request.Context(), documentID, currentUserID(c)); err != nil {
 		writeError(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) adminDocumentAudit(c *gin.Context) {
+	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	items, err := h.service.DocumentAuditEvents(c.Request.Context(), documentID)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) adminAudit(c *gin.Context) {
+	page, _ := strconv.Atoi(c.Query("page"))
+	pageSize, _ := strconv.Atoi(c.Query("pageSize"))
+	dateFrom, err := parseQueryDate(c.Query("dateFrom"))
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	dateTo, err := parseQueryDate(c.Query("dateTo"))
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	if !dateTo.IsZero() {
+		dateTo = dateTo.AddDate(0, 0, 1)
+	}
+
+	result, err := h.service.AuditEvents(c.Request.Context(), domain.AuditFilters{
+		Query:    strings.TrimSpace(c.Query("q")),
+		Action:   strings.TrimSpace(c.Query("action")),
+		DateFrom: dateFrom,
+		DateTo:   dateTo,
+		Page:     page,
+		PageSize: pageSize,
+	})
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 func (h *Handler) adminListSubmissions(c *gin.Context) {
@@ -601,26 +660,6 @@ func (h *Handler) adminListSubmissions(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items})
-}
-
-func (h *Handler) adminImportSubmissionsFromFolder(c *gin.Context) {
-	systemUser, err := h.service.GetUserByEmail(c.Request.Context(), h.config.SystemImportEmail)
-	if err != nil {
-		writeError(c, err)
-		return
-	}
-
-	result, err := h.service.ImportFolderSubmissions(
-		c.Request.Context(),
-		systemUser.ID,
-		h.config.ImportPath,
-	)
-	if err != nil {
-		writeError(c, err)
-		return
-	}
-
-	c.JSON(http.StatusOK, result)
 }
 
 func (h *Handler) adminApproveSubmission(c *gin.Context) {
@@ -669,27 +708,25 @@ func (h *Handler) adminRejectSubmission(c *gin.Context) {
 	c.JSON(http.StatusOK, submission)
 }
 
-func (h *Handler) adminListDepartments(c *gin.Context) {
-	var facultyID int64
-	if raw := strings.TrimSpace(c.Query("facultyId")); raw != "" {
-		value, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			writeError(c, apperror.ErrInvalidInput)
-			return
-		}
-		facultyID = value
-	}
-
-	items, err := h.service.Departments(c.Request.Context(), facultyID)
+func (h *Handler) adminStats(c *gin.Context) {
+	dateFrom, err := parseQueryDate(c.Query("dateFrom"))
 	if err != nil {
-		writeError(c, err)
+		writeError(c, apperror.ErrInvalidInput)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
-}
+	dateTo, err := parseQueryDate(c.Query("dateTo"))
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	if !dateTo.IsZero() {
+		dateTo = dateTo.AddDate(0, 0, 1)
+	}
 
-func (h *Handler) adminStats(c *gin.Context) {
-	stats, err := h.service.Stats(c.Request.Context())
+	stats, err := h.service.Stats(c.Request.Context(), domain.StatsFilters{
+		DateFrom: dateFrom,
+		DateTo:   dateTo,
+	})
 	if err != nil {
 		writeError(c, err)
 		return
@@ -697,22 +734,138 @@ func (h *Handler) adminStats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
+func (h *Handler) adminListUsers(c *gin.Context) {
+	page, _ := strconv.Atoi(c.Query("page"))
+	pageSize, _ := strconv.Atoi(c.Query("pageSize"))
+
+	result, err := h.service.Users(c.Request.Context(), domain.UserFilters{
+		Query:    strings.TrimSpace(c.Query("q")),
+		Role:     domain.UserRole(strings.TrimSpace(c.Query("role"))),
+		Status:   strings.TrimSpace(c.Query("status")),
+		Page:     page,
+		PageSize: pageSize,
+	})
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) adminCreateUser(c *gin.Context) {
+	var input domain.AdminUserInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	user, password, err := h.service.CreateAdminUser(c.Request.Context(), input)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"user": user, "temporaryPassword": password})
+}
+
+func (h *Handler) adminUpdateUser(c *gin.Context) {
+	var input struct {
+		ID       int64           `json:"id"`
+		Username string          `json:"username"`
+		FullName string          `json:"fullName"`
+		Role     domain.UserRole `json:"role"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	userID := input.ID
+	if rawID := strings.TrimSpace(c.Param("id")); rawID != "" {
+		parsed, err := strconv.ParseInt(rawID, 10, 64)
+		if err != nil {
+			writeError(c, apperror.ErrInvalidInput)
+			return
+		}
+		userID = parsed
+	}
+	if userID <= 0 {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	user, err := h.service.UpdateUser(c.Request.Context(), currentUserID(c), userID, domain.AdminUserInput{
+		Username: input.Username,
+		FullName: input.FullName,
+		Role:     input.Role,
+	})
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, user)
+}
+
+func (h *Handler) adminSetUserStatus(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	var input domain.UserStatusInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	user, err := h.service.SetUserActive(c.Request.Context(), currentUserID(c), userID, input.IsActive)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, user)
+}
+
+func (h *Handler) adminResetUserPassword(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	user, password, err := h.service.ResetUserPassword(c.Request.Context(), userID)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"user": user, "temporaryPassword": password})
+}
+
 func parseFilters(c *gin.Context) domain.DocumentFilters {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "12"))
-	facultyID, _ := strconv.ParseInt(c.DefaultQuery("facultyId", "0"), 10, 64)
-	departmentID, _ := strconv.ParseInt(c.DefaultQuery("departmentId", "0"), 10, 64)
+	yearFrom, _ := strconv.Atoi(c.DefaultQuery("yearFrom", "0"))
+	yearTo, _ := strconv.Atoi(c.DefaultQuery("yearTo", "0"))
 
 	return domain.DocumentFilters{
-		Query:        strings.TrimSpace(c.Query("q")),
-		FacultyID:    facultyID,
-		DepartmentID: departmentID,
-		Type:         strings.TrimSpace(c.Query("type")),
-		Sort:         strings.TrimSpace(c.DefaultQuery("sort", "relevance")),
-		Page:         page,
-		PageSize:     pageSize,
-		Visibility:   strings.TrimSpace(c.Query("visibility")),
+		Query:      strings.TrimSpace(c.Query("q")),
+		Type:       strings.TrimSpace(c.Query("type")),
+		Author:     strings.TrimSpace(c.Query("author")),
+		TagsQuery:  strings.TrimSpace(c.Query("tags")),
+		Sort:       strings.TrimSpace(c.DefaultQuery("sort", "relevance")),
+		Page:       page,
+		PageSize:   pageSize,
+		YearFrom:   yearFrom,
+		YearTo:     yearTo,
 	}
+}
+
+func parseQueryDate(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, nil
+	}
+	return time.Parse("2006-01-02", value)
 }
 
 func currentUserID(c *gin.Context) int64 {

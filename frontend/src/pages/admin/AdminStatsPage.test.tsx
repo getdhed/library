@@ -11,9 +11,13 @@ const getAdminStatsMock = vi.fn(() =>
     viewsToday: 10,
     downloadsToday: 7,
     searchesToday: 15,
+    uploadedInPeriod: 3,
+    uploadPeriodFrom: "2026-05-07T00:00:00Z",
+    uploadPeriodTo: "2026-06-07T00:00:00Z",
     topQueries: [{ name: "алгоритмы", count: 4 }],
     topDocuments: [{ name: "СУРП", count: 5 }],
-    documentsByFaculty: [{ faculty: "ФКТИ", count: 12 }],
+    documentsByType: [{ name: "Учебник", count: 9 }],
+    documentsUploadedByDay: [{ name: "2026-06-01", count: 2 }],
   })
 );
 
@@ -29,9 +33,11 @@ function renderPage() {
         user: {
           id: 1,
           fullName: "Admin",
-          email: "admin@example.com",
+          username: "admin",
           role: "admin",
+          isActive: true,
           createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         },
         ready: true,
         login: async () => undefined,
@@ -70,7 +76,7 @@ describe("AdminStatsPage", () => {
     expect(activeLink).toHaveTextContent("Статистика");
 
     expect(screen.getByText("Всего документов")).toBeInTheDocument();
-    expect(screen.getByText("Популярные запросы")).toBeInTheDocument();
-    expect(screen.getByText("Документы по факультетам")).toBeInTheDocument();
+    expect(screen.getByText("Популярные документы")).toBeInTheDocument();
+    expect(screen.getByText("Документы по типам")).toBeInTheDocument();
   });
 });
