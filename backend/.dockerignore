@@ -1,0 +1,4 @@
+server
+.git
+.env
+.cache

@@ -7,6 +7,7 @@ import SubmitPage from "./SubmitPage";
 
 vi.mock("../api/library", () => ({
   createSubmission: vi.fn(),
+  getDocumentTypes: vi.fn().mockResolvedValue({ items: ["УЧЕБНИК"] }),
 }));
 
 import {
@@ -19,7 +20,9 @@ afterEach(() => {
 
 describe("SubmitPage", () => {
   beforeEach(() => {
-            vi.mocked(createSubmission).mockReset();
+    vi.mocked(createSubmission).mockReset();
+    window.URL.createObjectURL = vi.fn();
+    window.URL.revokeObjectURL = vi.fn();
   });
 
   it("renders only the upload flow and no longer shows moderation history", async () => {
@@ -46,14 +49,23 @@ describe("SubmitPage", () => {
       </AuthContext.Provider>
     );
 
+    // Simulate file upload to show the form
+    const fileInput = document.querySelector('input[type="file"]');
+    expect(fileInput).not.toBeNull();
+    fireEvent.change(fileInput!, {
+      target: {
+        files: [new File(["dummy content"], "test.pdf", { type: "application/pdf" })],
+      },
+    });
+
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Название")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Название документа")).toBeInTheDocument();
     });
 
     expect(
-      screen.getByRole("button", { name: "Отправить PDF" })
+      screen.getByRole("button", { name: "Отправить на проверку" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Перейти в мои PDF")).toBeInTheDocument();
+
     expect(screen.queryByText("История модерации")).not.toBeInTheDocument();
     expect(screen.queryByText("Мои заявки")).not.toBeInTheDocument();
   });
@@ -88,25 +100,30 @@ describe("SubmitPage", () => {
       </AuthContext.Provider>
     );
 
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText("Название")).toBeInTheDocument();
-    });
-
-    fireEvent.change(screen.getByPlaceholderText("Название"), {
-      target: { value: "Distributed Systems" },
-    });
-    fireEvent.change(screen.getByLabelText("PDF-файл"), {
+    // Simulate file upload to show the form
+    const fileInput = document.querySelector('input[type="file"]');
+    expect(fileInput).not.toBeNull();
+    fireEvent.change(fileInput!, {
       target: {
         files: [new File(["%PDF-1.4"], "distributed.pdf", { type: "application/pdf" })],
       },
     });
 
-    const submitButton = screen.getByRole("button", { name: "Отправить PDF" });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Название документа")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Название документа"), {
+      target: { value: "Distributed Systems" },
+    });
+    // file is already uploaded above
+
+    const submitButton = screen.getByRole("button", { name: "Отправить на проверку" });
     fireEvent.submit(submitButton.closest("form") as HTMLFormElement);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Отправляется..." })
+        screen.getByRole("button", { name: "Отправка..." })
       ).toBeDisabled();
     });
 

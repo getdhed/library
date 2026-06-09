@@ -1,0 +1,1319 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Backend API for the Library application.",
+        "title": "Library API",
+        "termsOfService": "http://swagger.io/terms/",
+        "contact": {
+            "name": "API Support",
+            "email": "support@library.local"
+        },
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/api",
+    "paths": {
+        "/admin/documents": {
+            "get": {
+                "description": "Retrieve a paginated list of all documents including unapproved ones",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "List documents (Admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search query",
+                        "name": "query",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Document type",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.PagedDocuments"
+                        }
+                    },
+                    "401": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "description": "Upload a file and create a document directly bypassing moderation",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Create document (Admin)",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Document file (PDF)",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Document title",
+                        "name": "title",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Document type",
+                        "name": "type",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/domain.Document"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/auth/login": {
+            "post": {
+                "description": "Authenticate a user and return JWT",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Login user",
+                "parameters": [
+                    {
+                        "description": "Login credentials",
+                        "name": "input",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.LoginInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.AuthPayload"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/register": {
+            "post": {
+                "description": "Register a new user in the system",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Register new user",
+                "parameters": [
+                    {
+                        "description": "Registration info",
+                        "name": "input",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.RegisterInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/domain.AuthPayload"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/catalog/document-types": {
+            "get": {
+                "description": "Get available document types",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "public"
+                ],
+                "summary": "List document types",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/catalog/documents": {
+            "get": {
+                "description": "Retrieve a paginated list of documents with filters",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "documents"
+                ],
+                "summary": "List documents",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search query",
+                        "name": "query",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Document type",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.PagedDocuments"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/catalog/documents/{id}": {
+            "get": {
+                "description": "Retrieve details of a specific document by ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "documents"
+                ],
+                "summary": "Get document details",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Document ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.Document"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/catalog/documents/{id}/cover": {
+            "get": {
+                "description": "Retrieve the generated cover image for a document",
+                "produces": [
+                    "image/png"
+                ],
+                "tags": [
+                    "documents"
+                ],
+                "summary": "Get document cover image",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Document ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/catalog/documents/{id}/favorite": {
+            "post": {
+                "description": "Add a document to favorites",
+                "tags": [
+                    "profile"
+                ],
+                "summary": "Favorite a document",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Document ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "description": "Remove a document from favorites",
+                "tags": [
+                    "profile"
+                ],
+                "summary": "Unfavorite a document",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Document ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/catalog/documents/{id}/file": {
+            "get": {
+                "description": "Get the raw PDF file for a document",
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "documents"
+                ],
+                "summary": "Download/View document file",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Document ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Set to 1 to force download",
+                        "name": "download",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/catalog/submissions": {
+            "post": {
+                "description": "Upload a file and submit it for moderation",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "documents"
+                ],
+                "summary": "Submit a new document",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Document file (PDF)",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Document title",
+                        "name": "title",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Document type",
+                        "name": "type",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/domain.DocumentSubmission"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/catalog/submissions/{id}": {
+            "get": {
+                "description": "Retrieve details of a document submission by ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "documents"
+                ],
+                "summary": "Get submission details",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Submission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.DocumentSubmission"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/catalog/submissions/{id}/file": {
+            "get": {
+                "description": "Get the raw PDF file for a submission",
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "documents"
+                ],
+                "summary": "Download/View submission file",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Submission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Set to 1 to force download",
+                        "name": "download",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/catalog/suggest": {
+            "get": {
+                "description": "Get auto-complete suggestions based on query",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "public"
+                ],
+                "summary": "Search suggestions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search query",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/home": {
+            "get": {
+                "description": "Retrieves recent documents, favorites, and search history for the user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "public"
+                ],
+                "summary": "Get homepage data",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.HomePayload"
+                        }
+                    },
+                    "401": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/me": {
+            "get": {
+                "description": "Retrieve the currently authenticated user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Get current user",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.User"
+                        }
+                    },
+                    "401": {
+                        "description": "error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ]
+            }
+        }
+    },
+    "definitions": {
+        "domain.AuthPayload": {
+            "type": "object",
+            "properties": {
+                "token": {
+                    "type": "string"
+                },
+                "user": {
+                    "$ref": "#/definitions/domain.User"
+                }
+            }
+        },
+        "domain.Document": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "coverPath": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "deletedAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "executor": {
+                    "type": "string"
+                },
+                "fileName": {
+                    "type": "string"
+                },
+                "fileSizeBytes": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "isFavorite": {
+                    "type": "boolean"
+                },
+                "mimeType": {
+                    "type": "string"
+                },
+                "periodicalName": {
+                    "type": "string"
+                },
+                "placeOfPublication": {
+                    "type": "string"
+                },
+                "publisher": {
+                    "type": "string"
+                },
+                "scientificAdvisor": {
+                    "type": "string"
+                },
+                "similarity": {
+                    "type": "number"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "volume": {
+                    "type": "string"
+                },
+                "year": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.DocumentSubmission": {
+            "type": "object",
+            "properties": {
+                "approvedDocumentId": {
+                    "type": "integer"
+                },
+                "author": {
+                    "type": "string"
+                },
+                "comment": {
+                    "type": "string"
+                },
+                "coverPath": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "executor": {
+                    "type": "string"
+                },
+                "fileName": {
+                    "type": "string"
+                },
+                "fileSizeBytes": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "mimeType": {
+                    "type": "string"
+                },
+                "moderationNote": {
+                    "type": "string"
+                },
+                "periodicalName": {
+                    "type": "string"
+                },
+                "placeOfPublication": {
+                    "type": "string"
+                },
+                "publisher": {
+                    "type": "string"
+                },
+                "reviewedAt": {
+                    "type": "string"
+                },
+                "reviewedBy": {
+                    "type": "integer"
+                },
+                "reviewerName": {
+                    "type": "string"
+                },
+                "reviewerUsername": {
+                    "type": "string"
+                },
+                "scientificAdvisor": {
+                    "type": "string"
+                },
+                "source": {
+                    "$ref": "#/definitions/domain.SubmissionSource"
+                },
+                "status": {
+                    "$ref": "#/definitions/domain.SubmissionStatus"
+                },
+                "tags": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "uploaderName": {
+                    "type": "string"
+                },
+                "uploaderUsername": {
+                    "type": "string"
+                },
+                "userId": {
+                    "type": "integer"
+                },
+                "volume": {
+                    "type": "string"
+                },
+                "year": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.HomePayload": {
+            "type": "object",
+            "properties": {
+                "favorites": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.Document"
+                    }
+                },
+                "recent": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.Document"
+                    }
+                },
+                "searchHistory": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.SearchHistoryItem"
+                    }
+                }
+            }
+        },
+        "domain.LoginInput": {
+            "type": "object",
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.PagedDocuments": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.Document"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "pageSize": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.RegisterInput": {
+            "type": "object",
+            "properties": {
+                "fullName": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.SearchHistoryItem": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "query": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.SubmissionSource": {
+            "type": "string",
+            "enum": [
+                "user_upload",
+                "admin_import"
+            ],
+            "x-enum-varnames": [
+                "SubmissionSourceUserUpload",
+                "SubmissionSourceAdminImport"
+            ]
+        },
+        "domain.SubmissionStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "approved",
+                "rejected"
+            ],
+            "x-enum-varnames": [
+                "SubmissionStatusPending",
+                "SubmissionStatusApproved",
+                "SubmissionStatusRejected"
+            ]
+        },
+        "domain.User": {
+            "type": "object",
+            "properties": {
+                "avatarUrl": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "fullName": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "isActive": {
+                    "type": "boolean"
+                },
+                "role": {
+                    "$ref": "#/definitions/domain.UserRole"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.UserRole": {
+            "type": "string",
+            "enum": [
+                "user",
+                "admin"
+            ],
+            "x-enum-varnames": [
+                "RoleUser",
+                "RoleAdmin"
+            ]
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "Type \"Bearer\" followed by a space and JWT token.",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}

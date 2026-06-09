@@ -23,6 +23,7 @@ export type DocumentQuery = {
   pageSize?: number;
   yearFrom?: string | number;
   yearTo?: string | number;
+  includeDeleted?: string | number;
 }
 
 function buildQuery(params: Record<string, string | number | undefined>) {
@@ -169,6 +170,13 @@ export function updateDocument(token: string, id: number, formData: FormData) {
 export function deleteDocument(token: string, id: number) {
   return request<void>(`/admin/documents/${id}`, {
     method: "DELETE",
+    token,
+  });
+}
+
+export function restoreDocument(token: string, id: number) {
+  return request<void>(`/admin/documents/${id}/restore`, {
+    method: "POST",
     token,
   });
 }

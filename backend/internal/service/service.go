@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/csv"
 	"fmt"
 	"io"
 	"mime"
@@ -313,17 +314,39 @@ func (s *Service) DocumentTypes(ctx context.Context) ([]string, error) {
 	return types, nil
 }
 
+func truncateString(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	r := []rune(s)
+	if len(r) > max {
+		return string(r[:max])
+	}
+	return s
+}
+
 func (s *Service) ParseSubmissionInput(formValue func(string) string) (domain.CreateSubmissionInput, error) {
+	year := 0
+	if value := strings.TrimSpace(formValue("year")); value != "" {
+		if parsedYear, err := strconv.Atoi(value); err == nil && parsedYear > 0 {
+			year = parsedYear
+		}
+	}
+
 	input := domain.CreateSubmissionInput{
-		Title:              strings.TrimSpace(formValue("title")),
-		Author:             strings.TrimSpace(formValue("author")),
-		Executor:           strings.TrimSpace(formValue("executor")),
-		ScientificAdvisor:  strings.TrimSpace(formValue("scientificAdvisor")),
-		PlaceOfPublication: strings.TrimSpace(formValue("placeOfPublication")),
-		Publisher:          strings.TrimSpace(formValue("publisher")),
-		PeriodicalName:     strings.TrimSpace(formValue("periodicalName")),
-		Volume:             strings.TrimSpace(formValue("volume")),
-		Comment:            strings.TrimSpace(formValue("comment")),
+		Title:              truncateString(strings.TrimSpace(formValue("title")), 100),
+		Author:             truncateString(strings.TrimSpace(formValue("author")), 150),
+		Executor:           truncateString(strings.TrimSpace(formValue("executor")), 150),
+		ScientificAdvisor:  truncateString(strings.TrimSpace(formValue("scientificAdvisor")), 150),
+		PlaceOfPublication: truncateString(strings.TrimSpace(formValue("placeOfPublication")), 100),
+		Publisher:          truncateString(strings.TrimSpace(formValue("publisher")), 150),
+		PeriodicalName:     truncateString(strings.TrimSpace(formValue("periodicalName")), 150),
+		Volume:             truncateString(strings.TrimSpace(formValue("volume")), 50),
+		Year:               year,
+		Type:               truncateString(strings.TrimSpace(formValue("type")), 100),
+		Description:        truncateString(strings.TrimSpace(formValue("description")), 500),
+		Tags:               truncateString(strings.TrimSpace(formValue("tags")), 500),
+		Comment:            truncateString(strings.TrimSpace(formValue("comment")), 500),
 	}
 	if input.Title == "" {
 		return domain.CreateSubmissionInput{}, apperror.ErrInvalidInput
@@ -344,18 +367,18 @@ func (s *Service) ParseDocumentInput(formValue func(string) string) (domain.Upse
 	}
 
 	input := domain.UpsertDocumentInput{
-		Title:              strings.TrimSpace(formValue("title")),
-		Author:             strings.TrimSpace(formValue("author")),
-		Executor:           strings.TrimSpace(formValue("executor")),
-		ScientificAdvisor:  strings.TrimSpace(formValue("scientificAdvisor")),
+		Title:              truncateString(strings.TrimSpace(formValue("title")), 100),
+		Author:             truncateString(strings.TrimSpace(formValue("author")), 150),
+		Executor:           truncateString(strings.TrimSpace(formValue("executor")), 150),
+		ScientificAdvisor:  truncateString(strings.TrimSpace(formValue("scientificAdvisor")), 150),
 		Year:               year,
-		Type:               strings.TrimSpace(formValue("type")),
-		PlaceOfPublication: strings.TrimSpace(formValue("placeOfPublication")),
-		Publisher:          strings.TrimSpace(formValue("publisher")),
-		PeriodicalName:     strings.TrimSpace(formValue("periodicalName")),
-		Volume:             strings.TrimSpace(formValue("volume")),
-		Description:        strings.TrimSpace(formValue("description")),
-		Tags:               splitCSV(formValue("tags")),
+		Type:               truncateString(strings.TrimSpace(formValue("type")), 100),
+		PlaceOfPublication: truncateString(strings.TrimSpace(formValue("placeOfPublication")), 100),
+		Publisher:          truncateString(strings.TrimSpace(formValue("publisher")), 150),
+		PeriodicalName:     truncateString(strings.TrimSpace(formValue("periodicalName")), 150),
+		Volume:             truncateString(strings.TrimSpace(formValue("volume")), 50),
+		Description:        truncateString(strings.TrimSpace(formValue("description")), 500),
+		Tags:               splitCSV(truncateString(strings.TrimSpace(formValue("tags")), 500)),
 	}
 	if input.Title == "" {
 		return domain.UpsertDocumentInput{}, apperror.ErrInvalidInput
@@ -647,10 +670,31 @@ func (s *Service) DeleteDocument(ctx context.Context, id int64, actorID int64) e
 	if err := s.repo.DeleteDocument(ctx, id); err != nil {
 		return err
 	}
-	if err := s.files.Delete(document.FilePath); err != nil {
+	return nil
+}
+
+func (s *Service) RestoreDocument(ctx context.Context, id int64, actorID int64) error {
+	document, err := s.repo.GetDocumentByID(ctx, 0, id, true)
+	if err != nil {
 		return err
 	}
-	return s.files.Delete(document.CoverPath)
+	if err := s.logAudit(ctx, domain.CreateAuditEventInput{
+		Action:        "restore",
+		ActorID:       actorID,
+		DocumentID:    document.ID,
+		DocumentTitle: document.Title,
+		FileName:      document.FileName,
+		Details: map[string]any{
+			"type": document.Type,
+		},
+	}); err != nil {
+		return err
+	}
+	return s.repo.RestoreDocument(ctx, id)
+}
+
+func (s *Service) LogAPIRequest(ctx context.Context, method, path string, statusCode, durationMs int) error {
+	return s.repo.LogAPIRequest(ctx, method, path, statusCode, durationMs)
 }
 
 func (s *Service) Stats(ctx context.Context, filters domain.StatsFilters) (domain.Stats, error) {
@@ -796,5 +840,65 @@ func (s *Service) validatePDFPath(path, label string) error {
 		return fmt.Errorf("invalid pdf header for %s", label)
 	}
 
+	return nil
+}
+
+func (s *Service) ArchiveOldLogs(ctx context.Context) error {
+	// Define the threshold: 4 months ago
+	threshold := time.Now().AddDate(0, -4, 0)
+	
+	// 1. Delete old api_requests_log (no need to export)
+	if err := s.repo.DeleteOldAPIRequests(ctx, threshold); err != nil {
+		return err
+	}
+	
+	// 2. Export old document_audit_events
+	events, err := s.repo.GetOldAuditEvents(ctx, threshold)
+	if err != nil {
+		return err
+	}
+	
+	if len(events) == 0 {
+		return nil
+	}
+	
+	filename := fmt.Sprintf("audit_archive_%s.csv", time.Now().Format("2006-01-02_15-04-05"))
+	archivePath := s.files.Resolve(filepath.Join("archives", filename))
+	
+	file, err := os.Create(archivePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	
+	writer := csv.NewWriter(file)
+	
+	// Write header
+	writer.Write([]string{"ID", "Action", "DocumentID", "DocumentTitle", "FileName", "ActorID", "ActorUsername", "ActorName", "CreatedAt"})
+	
+	for _, e := range events {
+		writer.Write([]string{
+			fmt.Sprint(e.ID),
+			e.Action,
+			fmt.Sprint(e.DocumentID),
+			e.DocumentTitle,
+			e.FileName,
+			fmt.Sprint(e.ActorID),
+			e.ActorUsername,
+			e.ActorName,
+			e.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return err
+	}
+	
+	// 3. Delete from DB
+	if err := s.repo.DeleteOldAuditEvents(ctx, threshold); err != nil {
+		return err
+	}
+	
 	return nil
 }

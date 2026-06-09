@@ -131,7 +131,7 @@ describe("HomePage", () => {
     fireEvent.change(searchInput, { target: { value: "DevOps" } });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "DevOps Playbook" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /DevOps Playbook/ })).toBeInTheDocument();
     });
 
     const searchForm = searchInput.closest("form");

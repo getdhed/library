@@ -20,8 +20,8 @@ test("registered user can find document and add it to favorites", async ({
 
   await test.step("register user in UI", async () => {
     await page.goto("/register");
-    await page.getByLabel("Имя", { exact: true }).fill("E2E Reader");
-    await page.getByLabel("Имя пользователя").fill(userUsername);
+    await page.getByLabel("Имя (как к вам обращаться)").fill("E2E Reader");
+    await page.getByLabel("Логин").fill(userUsername);
     await page.getByLabel("Пароль").fill(userPassword);
     await page.locator("form").first().locator('button[type="submit"]').click();
     await expect(page).toHaveURL(/\/$/);

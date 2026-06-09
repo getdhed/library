@@ -31,24 +31,14 @@ const DocumentCover: React.FC<Props> = ({
     <Box
       sx={{
         borderRadius: 0,
-        border: (theme) => `1px solid ${theme.palette.divider}`,
-        p: isCard ? 0.9 : 1.1,
-        position: "relative",
-        backgroundColor: "background.paper",
+        overflow: "hidden",
+        backgroundColor: (theme) => theme.palette.background.default,
+        aspectRatio: "1 / 1.4142",
+        width: "100%",
+        maxWidth: isCard ? 172 : "none",
+        mx: isCard ? "auto" : 0,
       }}
     >
-      <Box
-        sx={{
-          borderRadius: 0,
-          overflow: "hidden",
-          border: (theme) => `1px solid ${theme.palette.divider}`,
-          backgroundColor: (theme) => theme.palette.background.default,
-          aspectRatio: "1 / 1.4142",
-          width: "100%",
-          maxWidth: isCard ? 172 : "none",
-          mx: isCard ? "auto" : 0,
-        }}
-      >
         {coverUrl && !coverFailed ? (
           <Box
             component="img"
@@ -83,7 +73,6 @@ const DocumentCover: React.FC<Props> = ({
           </Box>
         )}
       </Box>
-    </Box>
   );
 };
 

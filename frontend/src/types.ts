@@ -31,6 +31,7 @@ export interface DocumentItem {
   tags: string[];
   isFavorite: boolean;
   similarity?: number;
+  deletedAt?: string;
 }
 
 export type SubmissionStatus = "pending" | "approved" | "rejected";
@@ -47,6 +48,10 @@ export interface SubmissionItem {
   publisher?: string;
   periodicalName?: string;
   volume?: string;
+  year?: number;
+  type?: string;
+  description?: string;
+  tags?: string;
   comment?: string;
   fileName: string;
   fileSizeBytes: number;
@@ -114,7 +119,7 @@ export interface AdminStats {
   topQueries: NamedStat[];
   topDocuments: NamedStat[];
   documentsByType: NamedStat[];
-  documentsUploadedByDay: NamedStat[];
+  appLoadByHour: NamedStat[];
 }
 
 export interface DocumentAuditEvent {

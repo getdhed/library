@@ -5,6 +5,7 @@ import {
   FormControl,
   InputLabel,
   MenuItem,
+  Paper,
   Select,
   Stack,
   TextField,
@@ -53,6 +54,17 @@ export const createEmptyForm = (defaultType = "Учебник"): AdminForm => {
   };
 };
 
+const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2, bgcolor: "background.paper" }}>
+    <Typography variant="subtitle2" color="primary" fontWeight={700} sx={{ mb: 2, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+      {title}
+    </Typography>
+    <Stack spacing={2.5}>
+      {children}
+    </Stack>
+  </Paper>
+);
+
 export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
   form,
   setForm,
@@ -65,159 +77,196 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
   };
 
   return (
-    <Stack spacing={1.4}>
-      <TextField
-        label="Название *"
-        value={form.title}
-        onChange={(e) => handleChange("title", e.target.value)}
-        placeholder="Название документа"
-        required
-        fullWidth
-        inputProps={{ "aria-label": "Название *" }}
-      />
-
-      <TextField
-        label="Автор"
-        value={form.author}
-        onChange={(e) => handleChange("author", e.target.value)}
-        placeholder="ФИО автора"
-        fullWidth
-        inputProps={{ "aria-label": "Автор" }}
-      />
-
-      <TextField
-        label="Исполнитель"
-        value={form.executor}
-        onChange={(e) => handleChange("executor", e.target.value)}
-        placeholder="ФИО исполнителя"
-        fullWidth
-      />
-
-      <TextField
-        label="Научный руководитель"
-        value={form.scientificAdvisor}
-        onChange={(e) => handleChange("scientificAdvisor", e.target.value)}
-        placeholder="ФИО научного руководителя"
-        fullWidth
-      />
-
-      <Stack direction="row" spacing={2}>
+    <Stack spacing={2.5}>
+      <Section title="Основная информация">
         <TextField
-          label="Год *"
-          value={String(form.year || "")}
-          onChange={(e) => handleChange("year", Number(e.target.value))}
-          placeholder="Год"
-          type="number"
+          label="Название"
+          value={form.title}
+          onChange={(e) => handleChange("title", e.target.value)}
+          placeholder="Название документа"
           required
-          sx={{ width: "120px" }}
-          inputProps={{ "aria-label": "Год *" }}
-        />
-
-        <FormControl fullWidth required>
-          <InputLabel id={`${idPrefix}-type-label`}>Тип документа</InputLabel>
-          <Select
-            labelId={`${idPrefix}-type-label`}
-            id={`${idPrefix}-type`}
-            value={form.type}
-            label="Тип документа"
-            onChange={(e) => handleChange("type", e.target.value)}
-          >
-            {documentTypes.map((t) => (
-              <MenuItem key={t} value={t}>
-                {t}
-              </MenuItem>
-            ))}
-            {!documentTypes.includes(form.type) && form.type && (
-              <MenuItem value={form.type}>{form.type}</MenuItem>
-            )}
-          </Select>
-        </FormControl>
-      </Stack>
-
-      <TextField
-        label="Место издания"
-        value={form.placeOfPublication}
-        onChange={(e) => handleChange("placeOfPublication", e.target.value)}
-        placeholder="Город"
-        fullWidth
-      />
-
-      <TextField
-        label="Издательство"
-        value={form.publisher}
-        onChange={(e) => handleChange("publisher", e.target.value)}
-        placeholder="Наименование издательства"
-        fullWidth
-      />
-
-      <Stack direction="row" spacing={2}>
-        <TextField
-          label="Периодическое издание"
-          value={form.periodicalName}
-          onChange={(e) => handleChange("periodicalName", e.target.value)}
-          placeholder="Название журнала/сборника"
           fullWidth
+          multiline
+          maxRows={4}
+          inputProps={{ "aria-label": "Название", maxLength: 100 }}
         />
-        <TextField
-          label="Том/Выпуск"
-          value={form.volume}
-          onChange={(e) => handleChange("volume", e.target.value)}
-          placeholder="№"
-          sx={{ width: "180px" }}
-        />
-      </Stack>
 
-      <TextField
-        label="Ключевые слова"
-        value={form.tags}
-        onChange={(e) => handleChange("tags", e.target.value)}
-        placeholder="Введите через запятую"
-        fullWidth
-      />
+        <Stack direction="row" spacing={2}>
+          <TextField
+            label="Год"
+            value={String(form.year || "")}
+            onChange={(e) => handleChange("year", Number(e.target.value))}
+            placeholder="Год"
+            type="number"
+            sx={{ width: "120px" }}
+            inputProps={{ "aria-label": "Год" }}
+          />
+
+          <FormControl fullWidth>
+            <InputLabel id={`${idPrefix}-type-label`}>Тип документа</InputLabel>
+            <Select
+              labelId={`${idPrefix}-type-label`}
+              id={`${idPrefix}-type`}
+              value={form.type}
+              label="Тип документа"
+              onChange={(e) => handleChange("type", e.target.value)}
+            >
+              {documentTypes.map((t) => (
+                <MenuItem key={t} value={t}>
+                  {t}
+                </MenuItem>
+              ))}
+              {!documentTypes.includes(form.type) && form.type && (
+                <MenuItem value={form.type}>{form.type}</MenuItem>
+              )}
+            </Select>
+          </FormControl>
+        </Stack>
+
+        <TextField
+          label="Ключевые слова"
+          value={form.tags}
+          onChange={(e) => handleChange("tags", e.target.value)}
+          placeholder="Введите через запятую"
+          fullWidth
+          multiline
+          maxRows={3}
+          inputProps={{ maxLength: 200 }}
+        />
+
+        <TextField
+          label="Аннотация"
+          value={form.description}
+          onChange={(e) => handleChange("description", e.target.value)}
+          placeholder="Краткое описание"
+          multiline
+          minRows={4}
+          fullWidth
+          inputProps={{ maxLength: 500 }}
+        />
+      </Section>
+
+      <Section title="Авторы и исполнители">
+        <TextField
+          label="Автор"
+          value={form.author}
+          onChange={(e) => handleChange("author", e.target.value)}
+          placeholder="ФИО автора"
+          fullWidth
+          multiline
+          maxRows={2}
+          inputProps={{ "aria-label": "Автор", maxLength: 150 }}
+        />
+
+        <TextField
+          label="Исполнитель"
+          value={form.executor}
+          onChange={(e) => handleChange("executor", e.target.value)}
+          placeholder="ФИО исполнителя"
+          fullWidth
+          multiline
+          maxRows={2}
+          inputProps={{ maxLength: 150 }}
+        />
+
+        <TextField
+          label="Научный руководитель"
+          value={form.scientificAdvisor}
+          onChange={(e) => handleChange("scientificAdvisor", e.target.value)}
+          placeholder="ФИО научного руководителя"
+          fullWidth
+          multiline
+          maxRows={2}
+          inputProps={{ maxLength: 150 }}
+        />
+      </Section>
+
+      <Section title="Выходные данные">
+        <TextField
+          label="Место издания"
+          value={form.placeOfPublication}
+          onChange={(e) => handleChange("placeOfPublication", e.target.value)}
+          placeholder="Город"
+          fullWidth
+          multiline
+          maxRows={2}
+          inputProps={{ maxLength: 100 }}
+        />
+
+        <TextField
+          label="Издательство"
+          value={form.publisher}
+          onChange={(e) => handleChange("publisher", e.target.value)}
+          placeholder="Наименование издательства"
+          fullWidth
+          multiline
+          maxRows={3}
+          inputProps={{ maxLength: 150 }}
+        />
+
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+          <TextField
+            label="Периодическое издание"
+            value={form.periodicalName}
+            onChange={(e) => handleChange("periodicalName", e.target.value)}
+            placeholder="Название журнала/сборника"
+            fullWidth
+            multiline
+            maxRows={3}
+            inputProps={{ maxLength: 150 }}
+          />
+          <TextField
+            label="Том/Выпуск"
+            value={form.volume}
+            onChange={(e) => handleChange("volume", e.target.value)}
+            placeholder="№"
+            sx={{ minWidth: "120px" }}
+            inputProps={{ maxLength: 50 }}
+          />
+        </Stack>
+      </Section>
 
       {fileLabel && (
-        <Box sx={{ display: "grid", gap: 0.8 }}>
-          <Typography fontWeight={600}>{fileLabel}</Typography>
-          <Stack
-            direction={{ xs: "column", sm: "row" }}
-            spacing={1}
-            alignItems={{ xs: "flex-start", sm: "center" }}
-          >
-            <Button component="label" variant="outlined" sx={{ position: "relative" }}>
-              {form.file ? "Заменить PDF" : "Выбрать PDF"}
-              <Box
-                component="input"
-                type="file"
-                aria-label={fileLabel}
-                accept=".pdf,application/pdf"
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  handleChange("file", e.target.files?.[0] ?? null)
-                }
-                sx={{
-                  position: "absolute",
-                  inset: 0,
-                  opacity: 0,
-                  cursor: "pointer",
-                }}
-              />
-            </Button>
-            <Typography variant="body2" color="text.secondary">
-              {form.file ? form.file.name : "Файл не выбран"}
-            </Typography>
-          </Stack>
-        </Box>
+        <Section title="Файл документа">
+          <Box sx={{ display: "grid", gap: 0.8 }}>
+            <Typography fontWeight={600}>{fileLabel}</Typography>
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={1}
+              alignItems={{ xs: "flex-start", sm: "center" }}
+            >
+              <Button component="label" variant="outlined" sx={{ position: "relative" }}>
+                {form.file ? "Заменить PDF" : "Выбрать PDF"}
+                <Box
+                  component="input"
+                  type="file"
+                  aria-label={fileLabel}
+                  accept=".pdf,application/pdf"
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    const file = e.target.files?.[0] ?? null;
+                    setForm((current) => {
+                      const updates: Partial<AdminForm> = { file };
+                      if (file && !current.title.trim()) {
+                        updates.title = file.name.replace(/\.[^/.]+$/, "");
+                      }
+                      return { ...current, ...updates };
+                    });
+                  }}
+                  sx={{
+                    position: "absolute",
+                    inset: 0,
+                    opacity: 0,
+                    cursor: "pointer",
+                  }}
+                />
+              </Button>
+              <Typography variant="body2" color="text.secondary">
+                {form.file ? form.file.name : "Файл не выбран"}
+              </Typography>
+            </Stack>
+          </Box>
+        </Section>
       )}
-
-      <TextField
-        label="Аннотация"
-        value={form.description}
-        onChange={(e) => handleChange("description", e.target.value)}
-        placeholder="Краткое описание"
-        multiline
-        minRows={4}
-        fullWidth
-      />
-
     </Stack>
   );
 };

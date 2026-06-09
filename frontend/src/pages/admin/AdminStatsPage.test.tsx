@@ -5,24 +5,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthContext } from "../../auth/AuthContext";
 import AdminStatsPage from "./AdminStatsPage";
 
-const getAdminStatsMock = vi.fn(() =>
-  Promise.resolve({
-    documentsCount: 42,
-    viewsToday: 10,
-    downloadsToday: 7,
-    searchesToday: 15,
-    uploadedInPeriod: 3,
-    uploadPeriodFrom: "2026-05-07T00:00:00Z",
-    uploadPeriodTo: "2026-06-07T00:00:00Z",
-    topQueries: [{ name: "алгоритмы", count: 4 }],
-    topDocuments: [{ name: "СУРП", count: 5 }],
-    documentsByType: [{ name: "Учебник", count: 9 }],
-    documentsUploadedByDay: [{ name: "2026-06-01", count: 2 }],
-  })
-);
+const { getAdminStatsMock, getAdminSubmissionsMock } = vi.hoisted(() => ({
+  getAdminStatsMock: vi.fn(() =>
+    Promise.resolve({
+      documentsCount: 42,
+      viewsToday: 10,
+      downloadsToday: 7,
+      searchesToday: 15,
+      uploadedInPeriod: 3,
+      pendingImports: 2,
+      uploadPeriodFrom: "2026-05-07T00:00:00Z",
+      uploadPeriodTo: "2026-06-07T00:00:00Z",
+      topQueries: [{ name: "алгоритмы", count: 4 }],
+      topDocuments: [{ name: "СУРП", count: 5 }],
+      documentsByType: [{ name: "Учебник", count: 9 }],
+      documentsUploadedByDay: [{ name: "2026-06-01", count: 2 }],
+    })
+  ),
+  getAdminSubmissionsMock: vi.fn(() => Promise.resolve({ items: [], totalCount: 0 })),
+}));
 
 vi.mock("../../api/library", () => ({
   getAdminStats: (...args: unknown[]) => getAdminStatsMock(...args),
+  getAdminSubmissions: (...args: unknown[]) => getAdminSubmissionsMock(...args),
 }));
 
 function renderPage() {
@@ -66,7 +71,7 @@ describe("AdminStatsPage", () => {
   it("renders admin subnav and stats sections", async () => {
     renderPage();
 
-    expect(await screen.findByRole("heading", { name: "Статистика" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Панель администратора" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Документы" })).toBeInTheDocument();
 
     const activeLink = screen
@@ -75,7 +80,7 @@ describe("AdminStatsPage", () => {
     expect(activeLink).toBeDefined();
     expect(activeLink).toHaveTextContent("Статистика");
 
-    expect(screen.getByText("Всего документов")).toBeInTheDocument();
+    expect(screen.getByText("ВСЕГО ДОКУМЕНТОВ")).toBeInTheDocument();
     expect(screen.getByText("Популярные документы")).toBeInTheDocument();
     expect(screen.getByText("Документы по типам")).toBeInTheDocument();
   });

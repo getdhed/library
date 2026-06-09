@@ -9,6 +9,22 @@ import (
 	"library-backend/internal/logging"
 )
 
+// @title Library API
+// @version 1.0
+// @description Backend API for the Library application.
+// @termsOfService http://swagger.io/terms/
+
+// @contact.name API Support
+// @contact.email support@library.local
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
+
+// @host localhost:8080
+// @BasePath /api
+
 func main() {
 	cfg := config.Load()
 	logger := logging.New(cfg)

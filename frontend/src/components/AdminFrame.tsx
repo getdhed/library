@@ -1,19 +1,14 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Box, Chip, Divider, Paper, Stack, Typography, alpha } from "@mui/material";
 import AdminSectionNav from "./AdminSectionNav";
-import { eyebrowSx, PageShell } from "./mui-primitives";
+import { PageShell } from "./mui-primitives";
 
 type AdminFrameProps = {
   title: string;
-  chips?: Array<{ label: string }>;
   children: React.ReactNode;
 };
 
-const AdminFrame: React.FC<AdminFrameProps> = ({
-  title,
-  chips = [],
-  children,
-}) => {
+const AdminFrame: React.FC<AdminFrameProps> = ({ children }) => {
   return (
     <PageShell>
       <Paper
@@ -25,24 +20,11 @@ const AdminFrame: React.FC<AdminFrameProps> = ({
         }}
       >
         <Stack spacing={2}>
-          <Stack direction="row" spacing={1.5} justifyContent="space-between" alignItems="center">
-            <Box>
-              <Typography variant="caption" sx={eyebrowSx}>
-                Админка
-              </Typography>
-              <Typography variant="h4" sx={{ mt: 0.8 }}>
-                {title}
-              </Typography>
-            </Box>
-
-            {chips.length > 0 && (
-              <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap">
-                {chips.map((chip) => (
-                  <Chip key={chip.label} label={chip.label} />
-                ))}
-              </Stack>
-            )}
-          </Stack>
+          <Box>
+            <Typography variant="h4" sx={{ mt: 0.5, mb: 0.5 }}>
+              Панель администратора
+            </Typography>
+          </Box>
 
           <Divider />
           <AdminSectionNav />

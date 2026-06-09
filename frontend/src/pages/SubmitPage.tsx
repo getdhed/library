@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Alert,
   Box,
@@ -6,25 +6,41 @@ import {
   Stack,
   TextField,
   Typography,
+  alpha,
 } from "@mui/material";
 import { Link, useNavigate } from "react-router-dom";
-import { createSubmission } from "../api/library";
+import { createSubmission, getDocumentTypes } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
-import { ContentCard, PageHeader, PageShell } from "../components/mui-primitives";
-
-const emptyForm = {
-  title: "",
-  author: "",
-  comment: "",
-  file: null as File | null,
-};
+import { PageShell } from "../components/mui-primitives";
+import { DocumentFormFields, type AdminForm, createEmptyForm } from "../components/DocumentFormFields";
+import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 
 const SubmitPage: React.FC = () => {
   const { token } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState<AdminForm>(() => createEmptyForm());
+  const [comment, setComment] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [documentTypes, setDocumentTypes] = useState<string[]>([]);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string>("");
+
+  useEffect(() => {
+    getDocumentTypes()
+      .then((res) => setDocumentTypes(res.items))
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (form.file) {
+      const url = URL.createObjectURL(form.file);
+      setPdfPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setPdfPreviewUrl("");
+    }
+  }, [form.file]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -34,25 +50,43 @@ const SubmitPage: React.FC = () => {
 
     setError("");
 
+    if (!form.title.trim()) {
+      setError("Заполните название документа.");
+      return;
+    }
+    if (!form.type.trim()) {
+      setError("Выберите тип документа.");
+      return;
+    }
     if (!form.file) {
       setError("Выберите PDF-файл.");
       return;
     }
 
     const formData = new FormData();
-    formData.set("title", form.title);
+    formData.set("title", form.title.trim());
     formData.set("file", form.file);
-    if (form.author.trim()) {
-      formData.set("author", form.author.trim());
-    }
-    if (form.comment.trim()) {
-      formData.set("comment", form.comment.trim());
+    if (form.author.trim()) formData.set("author", form.author.trim());
+    if (form.executor.trim()) formData.set("executor", form.executor.trim());
+    if (form.scientificAdvisor.trim()) formData.set("scientificAdvisor", form.scientificAdvisor.trim());
+    formData.set("year", String(form.year));
+    formData.set("type", form.type.trim());
+    if (form.placeOfPublication.trim()) formData.set("placeOfPublication", form.placeOfPublication.trim());
+    if (form.publisher.trim()) formData.set("publisher", form.publisher.trim());
+    if (form.periodicalName.trim()) formData.set("periodicalName", form.periodicalName.trim());
+    if (form.volume.trim()) formData.set("volume", form.volume.trim());
+    if (form.description.trim()) formData.set("description", form.description.trim());
+    if (form.tags.trim()) formData.set("tags", form.tags.trim());
+
+    if (comment.trim()) {
+      formData.set("comment", comment.trim());
     }
 
     setIsSubmitting(true);
     try {
       await createSubmission(token, formData);
-      setForm(emptyForm);
+      setForm(createEmptyForm(documentTypes.length > 0 ? documentTypes[0] : "Учебник"));
+      setComment("");
       navigate("/account/pdfs", {
         state: { submissionCreated: true },
       });
@@ -66,108 +100,188 @@ const SubmitPage: React.FC = () => {
 
   return (
     <PageShell>
-      <ContentCard>
-        <PageHeader
-          eyebrow="Предложить PDF"
-          title="Загрузка пользовательского документа"
-          side={
-            <Button component={Link} to="/account/pdfs" variant="outlined">
-              Перейти в мои PDF
-            </Button>
-          }
-        />
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" },
+          minHeight: "calc(100vh - 120px)",
+          bgcolor: "background.paper",
+          borderRadius: 0,
+          border: "1px solid",
+          borderColor: "divider",
+          overflow: "hidden",
+        }}
+      >
+        {/* Left: Form */}
+        <Box
+          sx={{
+            p: { xs: 3, md: 5 },
+            overflowY: "auto",
+            borderRight: { lg: "1px solid" },
+            borderColor: "divider",
+          }}
+        >
+          <Stack spacing={4}>
+            <Box>
+              <Typography variant="h4" fontWeight={800} gutterBottom sx={{ lineHeight: 1.1 }}>
+                Предложить документ
+              </Typography>
+              <Typography color="text.secondary" variant="body2">
+                Отправьте PDF-файл и укажите метаданные документа на основе предпросмотра справа. После проверки администратором документ появится в каталоге.
+              </Typography>
+            </Box>
 
-        <Typography color="text.secondary" sx={{ mt: 2 }}>
-          Отправьте PDF и минимальные данные, а админ проверит файл и оформит
-          его как обычный документ каталога. Все статусы и решения модерации
-          появятся в разделе <Link to="/account/pdfs">Мои PDF</Link>.
-        </Typography>
-
-        <Stack component="form" spacing={1.75} sx={{ mt: 2.5 }} onSubmit={handleSubmit}>
-          <TextField
-            value={form.title}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, title: event.target.value }))
-            }
-            placeholder="Название"
-            disabled={isSubmitting}
-            required
-            fullWidth
-          />
-
-          <TextField
-            value={form.author}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, author: event.target.value }))
-            }
-            placeholder="Автор (необязательно)"
-            disabled={isSubmitting}
-            fullWidth
-          />
-
-          <Box sx={{ display: "grid", gap: 0.8 }}>
-            <Typography fontWeight={600}>
-              PDF-файл
-            </Typography>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "flex-start", sm: "center" }}>
-              <Button component="label" variant="outlined" type="button" disabled={isSubmitting}>
-                {form.file ? "Заменить PDF" : "Выбрать PDF"}
-                <Box
-                  component="input"
+            <Box
+              component="form"
+              onSubmit={handleSubmit}
+              sx={{ display: "flex", flexDirection: "column", gap: 3.5 }}
+            >
+              {/* Файл */}
+              <Box
+                component="label"
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  p: { xs: 4, md: 5 },
+                  border: "2px dashed",
+                  borderColor: form.file ? "primary.main" : "divider",
+                  borderRadius: 3,
+                  bgcolor: form.file
+                    ? (theme: any) => alpha(theme.palette.primary.main, 0.08)
+                    : "background.default",
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                  "&:hover": {
+                    borderColor: "primary.main",
+                    bgcolor: (theme: any) =>
+                      alpha(theme.palette.primary.main, 0.04),
+                  },
+                }}
+              >
+                <input
                   type="file"
-                  aria-label="PDF-файл"
                   accept=".pdf,application/pdf"
                   disabled={isSubmitting}
-                  onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                    setForm((current) => ({
-                      ...current,
-                      file: event.target.files?.[0] ?? null,
-                    }))
-                  }
-                  required
+                  onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                    const file = event.target.files?.[0] ?? null;
+                    setForm((current) => {
+                      const updates: Partial<AdminForm> = { file };
+                      if (file && !current.title.trim()) {
+                        updates.title = file.name.replace(/\.[^/.]+$/, "");
+                      }
+                      return { ...current, ...updates };
+                    });
+                  }}
+                  style={{ display: "none" }}
+                />
+                <CloudUploadIcon
                   sx={{
-                    position: "absolute",
-                    width: 1,
-                    height: 1,
-                    p: 0,
-                    m: -1,
-                    overflow: "hidden",
-                    clip: "rect(0 0 0 0)",
-                    whiteSpace: "nowrap",
-                    border: 0,
+                    fontSize: 48,
+                    color: form.file ? "primary.main" : "text.secondary",
+                    mb: 1.5,
                   }}
                 />
-              </Button>
-              <Typography variant="body2" color="text.secondary">
-                {form.file ? form.file.name : "Файл не выбран"}
+                <Typography
+                  variant="h6"
+                  fontWeight={600}
+                  color={form.file ? "primary.main" : "text.primary"}
+                  textAlign="center"
+                >
+                  {form.file ? form.file.name : "Нажмите, чтобы выбрать PDF-файл"}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Максимальный размер: не ограничен
+                </Typography>
+              </Box>
+
+              {form.file && (
+                <>
+                  <DocumentFormFields
+                    form={form}
+                    setForm={setForm}
+                    documentTypes={documentTypes}
+                    idPrefix="user-submit"
+                  />
+
+                  <TextField
+                    label="Комментарий для модератора"
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    placeholder="Укажите любую дополнительную информацию, которая может помочь при проверке (опционально)..."
+                    disabled={isSubmitting}
+                    multiline
+                    minRows={3}
+                    fullWidth
+                    inputProps={{ maxLength: 500 }}
+                  />
+
+                  {error && <Alert severity="error">{error}</Alert>}
+
+                  <Stack
+                    direction={{ xs: "column-reverse", sm: "row" }}
+                    spacing={2}
+                    justifyContent="space-between"
+                    alignItems="center"
+                    sx={{ pt: 1 }}
+                  >
+                    <Button component={Link} to="/account/pdfs" color="inherit">
+                      К моим загрузкам
+                    </Button>
+                    <Button
+                      variant="contained"
+                      type="submit"
+                      size="large"
+                      disabled={isSubmitting}
+                      sx={{
+                        minWidth: { xs: "100%", sm: 220 },
+                        py: 1.2,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {isSubmitting ? "Отправка..." : "Отправить на проверку"}
+                    </Button>
+                  </Stack>
+                </>
+              )}
+            </Box>
+          </Stack>
+        </Box>
+
+        {/* Right: PDF Preview */}
+        <Box
+          sx={{
+            bgcolor: "grey.100",
+            minHeight: { xs: 500, lg: 0 },
+            position: "relative",
+          }}
+        >
+          {pdfPreviewUrl ? (
+            <Box
+              component="iframe"
+              src={pdfPreviewUrl}
+              title="Предпросмотр PDF"
+              sx={{ width: "100%", height: "100%", border: 0, bgcolor: "common.white" }}
+            />
+          ) : (
+            <Stack
+              alignItems="center"
+              justifyContent="center"
+              height="100%"
+              color="text.secondary"
+              spacing={2}
+              p={4}
+              textAlign="center"
+            >
+              <PictureAsPdfRoundedIcon sx={{ fontSize: 64, opacity: 0.3 }} />
+              <Typography variant="body1">
+                Выберите PDF-файл в форме слева, чтобы увидеть предпросмотр
               </Typography>
             </Stack>
-          </Box>
-
-          <TextField
-            value={form.comment}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                comment: event.target.value,
-              }))
-            }
-            placeholder="Комментарий для модератора (необязательно)"
-            disabled={isSubmitting}
-            multiline
-            minRows={4}
-            fullWidth
-          />
-
-          {error && <Alert severity="error">{error}</Alert>}
-
-          <Box>
-            <Button variant="contained" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Отправляется..." : "Отправить PDF"}
-            </Button>
-          </Box>
-        </Stack>
-      </ContentCard>
+          )}
+        </Box>
+      </Box>
     </PageShell>
   );
 };

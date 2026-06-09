@@ -25,6 +25,9 @@ func (s *FileStorage) Ensure() error {
 	if err := os.MkdirAll(filepath.Join(s.basePath, "covers"), 0o755); err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Join(s.basePath, "archives"), 0o755); err != nil {
+		return err
+	}
 	return nil
 }
 

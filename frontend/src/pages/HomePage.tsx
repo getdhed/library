@@ -3,6 +3,7 @@ import {
   alpha,
   Box,
   Button,
+  InputBase,
   Paper,
   Stack,
   Typography,
@@ -17,11 +18,12 @@ import {
 import { useAuth } from "../auth/AuthContext";
 import DocumentCardActions from "../components/DocumentCardActions";
 import { ContentCard, PageShell } from "../components/mui-primitives";
-import DocumentListItem from "../components/DocumentListItem";
+import PaginatedDocumentList from "../components/PaginatedDocumentList";
+import SearchBar from "../components/SearchBar";
 import type { DocumentItem } from "../types";
 
 const HomePage: React.FC = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [recentItems, setRecentItems] = useState<DocumentItem[]>([]);
@@ -106,8 +108,8 @@ const HomePage: React.FC = () => {
     );
   }
 
-  async function submitSearch(event: React.FormEvent) {
-    event.preventDefault();
+  async function submitSearch(event?: React.FormEvent) {
+    event?.preventDefault();
     const trimmedQuery = query.trim();
 
     if (showDropdown && trimmedQuery && suggestions.length > 0) {
@@ -168,22 +170,16 @@ const HomePage: React.FC = () => {
           }}
         >
           <Box
+            component="img"
+            src="/ips-logo.jpg"
+            alt="Логотип ИПС"
             sx={{
               flexShrink: 0,
               width: { xs: 80, sm: 120, md: 160 },
               height: { xs: 80, sm: 120, md: 160 },
-              display: "grid",
-              placeItems: "center",
-              border: "1px dashed rgba(255,255,255,0.3)",
-              color: "primary.contrastText",
+              objectFit: "contain",
             }}
-          >
-            <Typography variant="caption" sx={{ textAlign: "center" }}>
-              Логотип
-              <br />
-              ИПС
-            </Typography>
-          </Box>
+          />
 
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography
@@ -222,62 +218,31 @@ const HomePage: React.FC = () => {
               }}
             >
               <Box component="form" onSubmit={submitSearch} sx={{ position: "relative" }}>
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "stretch",
-                  }}
-                >
-                  <Box
-                    component="input"
-                    aria-label="Поиск документов"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    onFocus={() => setShowHistory(true)}
-                    onBlur={() => window.setTimeout(() => setShowHistory(false), 150)}
+                <Box sx={{ display: "flex", gap: 1.2 }}>
+                  <InputBase
                     placeholder="Название, автор, тип документа"
+                    inputProps={{ "aria-label": "Поиск документов" }}
                     sx={{
                       flex: 1,
-                      minHeight: 56,
-                      minWidth: 0,
-                      borderRadius: 0,
-                      border: "1px solid rgba(154,171,130,0.25)",
-                      borderRight: 0,
-                      backgroundColor: "rgba(255,255,255,0.06)",
-                      color: "primary.contrastText",
-                      px: 1.8,
-                      font: "inherit",
-                      fontSize: "1rem",
-                      outline: 0,
-                      "&::placeholder": {
-                        color: (theme) => alpha(theme.palette.primary.contrastText, 0.5),
-                      },
-                      "&:hover": {
-                        borderColor: "rgba(184,151,42,0.9)",
-                      },
-                      "&:focus": {
-                        borderColor: "secondary.main",
-                      },
+                      px: 2.2,
+                      py: 1.1,
+                      border: (theme) => `1px solid ${theme.palette.divider}`,
+                      backgroundColor: "background.paper",
+                      fontSize: 16,
                     }}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onFocus={() => setShowHistory(true)}
+                    onBlur={() => window.setTimeout(() => setShowHistory(false), 150)}
                   />
-
                   <Button
                     type="submit"
-                    aria-label="Поиск"
+                    variant="contained"
+                    size="large"
                     sx={{
-                      minWidth: 150,
-                      minHeight: 56,
-                      px: 3,
-                      borderRadius: 0,
-                      justifyContent: "center",
-                      bgcolor: "error.main",
-                      color: "primary.contrastText",
-                      border: (theme) =>
-                        `1px solid ${alpha(theme.palette.error.main, 0.9)}`,
-                      borderLeft: 0,
-                      "&:hover": {
-                        bgcolor: "#a02525",
-                      },
+                      px: 3.5,
+                      boxShadow: "none",
+                      fontSize: 15,
                     }}
                   >
                     Поиск
@@ -362,9 +327,6 @@ const HomePage: React.FC = () => {
           sx={{ mb: 1.5 }}
         >
           <Typography variant="h5">Недавние документы</Typography>
-          <Button component={Link} to="/search" variant="text" color="error">
-            Все документы
-          </Button>
         </Stack>
 
         <Box
@@ -375,94 +337,56 @@ const HomePage: React.FC = () => {
             alignItems: "start",
           }}
         >
-          {displayedRecentItems.map((item, index) => (
-            <DocumentListItem
-              key={item.id}
-              item={item}
-              token={token}
-              priorityCover={index === 0}
-              actions={
-                <DocumentCardActions
-                  item={item}
-                  token={token}
-                  onOpen={handleQuickOpen}
-                  onToggleFavorite={toggleFavorite}
-                />
-              }
-            />
-          ))}
-
-          {displayedRecentItems.length === 0 && (
-            <Paper sx={{ p: 2.25, borderRadius: 0, gridColumn: "1 / -1" }}>
-              <Typography variant="h6">Вы пока не просматривали документы</Typography>
-            </Paper>
-          )}
+          <PaginatedDocumentList
+            items={displayedRecentItems}
+            total={displayedRecentItems.length}
+            page={1}
+            pageSize={4}
+            onPageChange={() => {}}
+            token={token}
+            limit={4}
+            emptyMessage="Вы пока не просматривали документы"
+            actionsRenderer={(item) => (
+              <DocumentCardActions
+                item={item}
+                token={token}
+                onOpen={handleQuickOpen}
+                onToggleFavorite={toggleFavorite}
+              />
+            )}
+          />
         </Box>
       </ContentCard>
 
-      <Paper
-        sx={{
-          p: 0,
-          overflow: "hidden",
-          borderColor: (theme) => alpha(theme.palette.secondary.main, 0.4),
-          backgroundColor: (theme) => alpha(theme.palette.secondary.main, 0.08),
-        }}
-      >
-        <Box
+      {user?.role !== "admin" && (
+        <Paper
           sx={{
-            display: "grid",
-            gridTemplateColumns: "1.1fr 0.9fr",
-            gap: 2.5,
-            p: 2.6,
+            p: { xs: 2.5, md: 3 },
+            display: "flex",
+            flexDirection: { xs: "column", md: "row" },
+            alignItems: { xs: "flex-start", md: "center" },
+            justifyContent: "space-between",
+            gap: 3,
+            borderColor: (theme) => alpha(theme.palette.secondary.main, 0.4),
+            backgroundColor: (theme) => alpha(theme.palette.secondary.main, 0.05),
           }}
         >
           <Box>
-            <Typography variant="overline" color="secondary.main">
+            <Typography variant="overline" color="secondary.main" fontWeight={600}>
               Сотрудничество
             </Typography>
-            <Typography variant="h4" sx={{ mt: 0.8 }}>
-              Предложить материал
+            <Typography variant="h5" sx={{ mt: 0.5, mb: 0.5 }}>
+              Не нашли нужный материал?
             </Typography>
-            <Typography color="text.secondary" sx={{ mt: 1.1, maxWidth: "64ch" }}>
-              Вы можете загрузить PDF-документ для рассмотрения администратором
-              библиотеки. После проверки материал появится в каталоге.
+            <Typography color="text.secondary" variant="body2">
+              Вы можете загрузить свой PDF-документ. После быстрой модерации он появится в общем каталоге.
             </Typography>
-            <Stack direction="row" spacing={1.2} sx={{ mt: 1.8 }}>
-              <Button component={Link} to="/submit" variant="contained">
-                Перейти к загрузке
-              </Button>
-              <Button component={Link} to="/account/pdfs" variant="outlined">
-                Мои PDF
-              </Button>
-            </Stack>
           </Box>
-
-          <Paper
-            component={Link}
-            to="/submit"
-            sx={{
-              textDecoration: "none",
-              color: "inherit",
-              p: 2.2,
-              borderStyle: "dashed",
-              borderColor: (theme) => alpha(theme.palette.secondary.main, 0.55),
-              backgroundColor: (theme) => alpha(theme.palette.background.default, 0.85),
-              display: "grid",
-              alignContent: "center",
-              justifyItems: "start",
-              gap: 1,
-            }}
-          >
-            <Typography variant="h6">Загрузить PDF</Typography>
-            <Typography color="text.secondary">
-              Перетащите файл или откройте форму отправки.
-            </Typography>
-            <Button variant="outlined" color="error" sx={{ mt: 0.3 }}>
-              Открыть форму
-            </Button>
-          </Paper>
-        </Box>
-      </Paper>
+          <Button component={Link} to="/submit" variant="contained" size="large" sx={{ flexShrink: 0 }}>
+            Предложить документ
+          </Button>
+        </Paper>
+      )}
     </PageShell>
   );
 };

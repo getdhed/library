@@ -102,6 +102,8 @@ describe("MyPdfsPage", () => {
       items: [...submissions],
     } as never);
     vi.mocked(getDocument).mockReset();
+    window.URL.createObjectURL = vi.fn();
+    window.URL.revokeObjectURL = vi.fn();
   });
 
   it("shows empty state when there are no submissions", async () => {
@@ -113,7 +115,7 @@ describe("MyPdfsPage", () => {
     });
 
     expect(
-      screen.getByText("Вы ещё не отправляли файлы на модерацию. Хотите предложить новый PDF?")
+      screen.getByText("Вы ещё не отправляли файлы на модерацию.")
     ).toBeInTheDocument();
 
     const uploadButtons = screen.getAllByRole("link", { name: "Загрузить новый PDF" });
@@ -135,7 +137,7 @@ describe("MyPdfsPage", () => {
     expect(screen.getByRole("toolbar")).toBeInTheDocument();
 
     const cardTitles = screen
-      .getAllByRole("heading", { level: 3 })
+      .getAllByRole("heading", { level: 6 })
       .map((item) => item.textContent);
     expect(cardTitles).toEqual([
       "Rejected Draft",
@@ -176,7 +178,7 @@ describe("MyPdfsPage", () => {
 
     const rejectedCard = screen.getByText("Rejected Draft").closest("article");
     expect(rejectedCard).not.toBeNull();
-    fireEvent.click(within(rejectedCard as HTMLElement).getAllByRole("button")[0]);
+    fireEvent.click(rejectedCard!.querySelector("button") as HTMLElement);
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -188,7 +190,7 @@ describe("MyPdfsPage", () => {
 
     const approvedCard = screen.getByText("Approved Draft").closest("article");
     expect(approvedCard).not.toBeNull();
-    fireEvent.click(within(approvedCard as HTMLElement).getAllByRole("button")[0]);
+    fireEvent.click(approvedCard!.querySelector("button") as HTMLElement);
 
     await waitFor(() => {
       expect(screen.getByText("Approved Catalog Title")).toBeInTheDocument();
@@ -204,7 +206,7 @@ describe("MyPdfsPage", () => {
 
     const pendingCard = screen.getByText("Pending Notes").closest("article");
     expect(pendingCard).not.toBeNull();
-    fireEvent.click(within(pendingCard as HTMLElement).getAllByRole("button")[0]);
+    fireEvent.click(pendingCard!.querySelector("button") as HTMLElement);
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();

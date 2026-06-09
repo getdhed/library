@@ -1,15 +1,18 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
+  Divider,
   FormControl,
+  FormControlLabel,
   InputLabel,
   MenuItem,
   Paper,
@@ -27,7 +30,6 @@ import {
   IconButton,
   Typography,
 } from "@mui/material";
-import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import BlockRoundedIcon from "@mui/icons-material/BlockRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
@@ -43,9 +45,6 @@ import {
   cardActionIconButtonDangerSx,
   cardActionIconButtonPrimarySx,
   cardActionIconButtonSx,
-  ContentCard,
-  eyebrowSx,
-  filterPanelSx,
   statusToneChipSx,
   tableSurfaceSx,
 } from "../../components/mui-primitives";
@@ -100,11 +99,6 @@ const AdminUsersPage: React.FC = () => {
   const [form, setForm] = useState<UserForm>(() => createEmptyForm());
   const [error, setError] = useState("");
   const [temporaryPassword, setTemporaryPassword] = useState("");
-
-  const activeCount = useMemo(
-    () => items.filter((item) => item.isActive).length,
-    [items]
-  );
 
   async function loadUsers() {
     if (!token) return;
@@ -215,41 +209,49 @@ const AdminUsersPage: React.FC = () => {
   return (
     <AdminFrame
       title="Пользователи"
-      chips={[
-        { label: `Всего: ${items.length}` },
-        { label: `Активные: ${activeCount}` },
-        { label: `Отключены: ${items.length - activeCount}` },
-      ]}
     >
-      <ContentCard>
-        <Stack spacing={1.5}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between">
-            <Stack>
-              <Typography variant="caption" sx={eyebrowSx}>
-                Управление доступом
-              </Typography>
-              <Typography component="h2" variant="h5">
-                Пользователи библиотеки
-              </Typography>
-            </Stack>
-            <Button
-              variant="contained"
-              startIcon={<AddRoundedIcon />}
-              onClick={handleOpenCreate}
-            >
-              Создать пользователя
-            </Button>
-          </Stack>
+      <Box sx={{ display: "flex", gap: { xs: 3, md: 5 }, alignItems: "flex-start", flexDirection: { xs: "column", md: "row" }, mt: 2 }}>
+        <Box
+          sx={{
+            width: { xs: "100%", md: "33.333%" },
+            minWidth: { md: 320 },
+            maxWidth: { md: 400 },
+            position: { md: "sticky" },
+            top: { md: 24 },
+            maxHeight: { md: "calc(100vh - 48px)" },
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: 3,
+            flexShrink: 0,
+            bgcolor: "action.hover",
+            p: 3,
+            borderRadius: 2,
+            border: (theme) => `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <Box>
+            <Typography variant="h5" fontWeight={700}>
+              Пользователи <Typography component="span" variant="h6" color="text.secondary">({total})</Typography>
+            </Typography>
+          </Box>
 
-          <Paper sx={filterPanelSx}>
-            <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap>
+          <Button variant="contained" size="large" onClick={handleOpenCreate} fullWidth>
+            Создать пользователя
+          </Button>
+
+          <Divider />
+
+          <Box>
+            <Typography variant="h6" sx={{ mb: 2 }}>Фильтры</Typography>
+            <Stack spacing={2}>
               <TextField
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Поиск по имени или логину"
-                sx={{ minWidth: 280 }}
+                fullWidth
               />
-              <FormControl sx={{ minWidth: 180 }}>
+              <FormControl fullWidth>
                 <InputLabel id="users-role-filter-label">Роль</InputLabel>
                 <Select
                   labelId="users-role-filter-label"
@@ -262,7 +264,7 @@ const AdminUsersPage: React.FC = () => {
                   <MenuItem value="admin">Библиотекарь</MenuItem>
                 </Select>
               </FormControl>
-              <FormControl sx={{ minWidth: 180 }}>
+              <FormControl fullWidth>
                 <InputLabel id="users-status-filter-label">Статус</InputLabel>
                 <Select
                   labelId="users-status-filter-label"
@@ -276,8 +278,10 @@ const AdminUsersPage: React.FC = () => {
                 </Select>
               </FormControl>
             </Stack>
-          </Paper>
+          </Box>
+        </Box>
 
+        <Stack spacing={3} sx={{ flexGrow: 1, minWidth: 0 }}>
           {error && !isModalOpen && <Alert severity="error">{error}</Alert>}
           {temporaryPassword && (
             <Alert severity="success" onClose={() => setTemporaryPassword("")}>
@@ -329,7 +333,7 @@ const AdminUsersPage: React.FC = () => {
                               size="small"
                               aria-label="Редактировать"
                               onClick={() => handleOpenEdit(item)}
-                              sx={[cardActionIconButtonSx, cardActionIconButtonPrimarySx]}
+                              sx={[cardActionIconButtonSx, cardActionIconButtonPrimarySx] as any}
                             >
                               <EditRoundedIcon fontSize="small" />
                             </IconButton>
@@ -347,7 +351,7 @@ const AdminUsersPage: React.FC = () => {
                                   item.isActive
                                     ? cardActionIconButtonDangerSx
                                     : cardActionIconButtonPrimarySx,
-                                ]}
+                                ] as any}
                               >
                                 {item.isActive ? (
                                   <BlockRoundedIcon fontSize="small" />
@@ -374,17 +378,22 @@ const AdminUsersPage: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
-          <TablePagination
-            component="div"
-            count={total}
-            page={page}
-            onPageChange={(_, newPage) => setPage(newPage)}
-            rowsPerPage={50}
+          {total > 50 && (
+            <TablePagination
+              component="div"
+              count={total}
+              page={page}
+              onPageChange={(_, newPage) => {
+                setPage(newPage);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              rowsPerPage={50}
             rowsPerPageOptions={[50]}
             labelDisplayedRows={({ from, to, count }) => `${from}–${to} из ${count !== -1 ? count : `более чем ${to}`}`}
-          />
+            />
+          )}
         </Stack>
-      </ContentCard>
+      </Box>
 
       <Dialog open={!!userToToggle} onClose={handleCloseToggle}>
         <DialogTitle>Подтверждение действия</DialogTitle>
@@ -430,23 +439,26 @@ const AdminUsersPage: React.FC = () => {
                 fullWidth
                 inputProps={{ "aria-label": "Логин" }}
               />
-              <FormControl fullWidth>
-                <InputLabel id="dialog-role-form-label">Роль</InputLabel>
-                <Select
-                  labelId="dialog-role-form-label"
-                  value={form.role}
-                  label="Роль"
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      role: event.target.value as User["role"],
-                    }))
-                  }
-                >
-                  <MenuItem value="user">Читатель</MenuItem>
-                  <MenuItem value="admin">Библиотекарь</MenuItem>
-                </Select>
-              </FormControl>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={form.role === "admin"}
+                    onChange={(event) => {
+                      if (event.target.checked) {
+                        if (!window.confirm("Вы уверены, что хотите выдать этому пользователю права администратора?")) {
+                          return;
+                        }
+                      }
+                      setForm((current) => ({
+                        ...current,
+                        role: event.target.checked ? "admin" : "user",
+                      }));
+                    }}
+                    color="primary"
+                  />
+                }
+                label="Права администратора"
+              />
               
               {!editingUser && (
                 <TextField

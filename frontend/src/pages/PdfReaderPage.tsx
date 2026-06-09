@@ -9,9 +9,9 @@ import {
   Typography,
   alpha,
 } from "@mui/material";
-import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
-import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
-import FullscreenRoundedIcon from "@mui/icons-material/FullscreenRounded";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import FullscreenIcon from "@mui/icons-material/Fullscreen";
+import DownloadIcon from "@mui/icons-material/Download";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   documentFileUrl,
@@ -214,7 +214,7 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
       >
         <Stack direction="row" spacing={1.5} alignItems="center" minWidth={0}>
           <IconButton onClick={() => isEditing ? setIsEditing(false) : navigate(-1)} edge="start" color="inherit">
-            <ArrowBackRoundedIcon />
+            <ArrowBackIcon />
           </IconButton>
           <Box minWidth={0}>
             <Typography variant="h6" noWrap>
@@ -269,7 +269,7 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
                 href={downloadUrl}
                 variant="outlined"
                 color="inherit"
-                startIcon={<DownloadRoundedIcon />}
+                startIcon={<DownloadIcon />}
                 disabled={!downloadUrl}
               >
                 Скачать
@@ -278,7 +278,7 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
                 type="button"
                 variant="outlined"
                 color="inherit"
-                startIcon={<FullscreenRoundedIcon />}
+                startIcon={<FullscreenIcon />}
                 onClick={requestFullscreen}
               >
                 Полный экран

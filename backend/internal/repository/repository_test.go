@@ -33,7 +33,7 @@ func TestSplitFilterTerms(t *testing.T) {
 func TestCreateAndApproveAdminImportSubmission(t *testing.T) {
 	adminDSN := os.Getenv("TEST_DATABASE_URL")
 	if strings.TrimSpace(adminDSN) == "" {
-		adminDSN = "postgres://library:library@localhost:5432/postgres?sslmode=disable"
+		adminDSN = "postgres://library:library@localhost:5433/library?sslmode=disable"
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -208,7 +208,7 @@ func TestCreateAndApproveAdminImportSubmission(t *testing.T) {
 func TestEnsureSeedDataUpsertsAdminCredentials(t *testing.T) {
 	adminDSN := os.Getenv("TEST_DATABASE_URL")
 	if strings.TrimSpace(adminDSN) == "" {
-		adminDSN = "postgres://library:library@localhost:5432/postgres?sslmode=disable"
+		adminDSN = "postgres://library:library@localhost:5433/library?sslmode=disable"
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -292,7 +292,7 @@ func TestEnsureSeedDataUpsertsAdminCredentials(t *testing.T) {
 func TestListDocumentsSupportsEmptyAndTextSearch(t *testing.T) {
 	adminDSN := os.Getenv("TEST_DATABASE_URL")
 	if strings.TrimSpace(adminDSN) == "" {
-		adminDSN = "postgres://library:library@localhost:5432/postgres?sslmode=disable"
+		adminDSN = "postgres://library:library@localhost:5433/library?sslmode=disable"
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -421,7 +421,7 @@ func TestListDocumentsSupportsEmptyAndTextSearch(t *testing.T) {
 func TestListSubmissionsByUserOrdersByUpdatedAtDesc(t *testing.T) {
 	adminDSN := os.Getenv("TEST_DATABASE_URL")
 	if strings.TrimSpace(adminDSN) == "" {
-		adminDSN = "postgres://library:library@localhost:5432/postgres?sslmode=disable"
+		adminDSN = "postgres://library:library@localhost:5433/library?sslmode=disable"
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -537,4 +537,140 @@ func withDatabaseName(t *testing.T, dsn, dbName string) string {
 
 	parsed.Path = "/" + dbName
 	return parsed.String()
+}
+
+func setupTestRepo(t *testing.T) (*Repository, *sql.DB, context.Context, context.CancelFunc) {
+	t.Helper()
+	adminDSN := os.Getenv("TEST_DATABASE_URL")
+	if strings.TrimSpace(adminDSN) == "" {
+		adminDSN = "postgres://library:library@localhost:5433/library?sslmode=disable"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	adminDB, err := sql.Open("postgres", adminDSN)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	if err := adminDB.PingContext(ctx); err != nil {
+		t.Skipf("skipping integration test, postgres unavailable: %v", err)
+	}
+	dbName := fmt.Sprintf("library_repo_test_%d", time.Now().UnixNano())
+	if _, err := adminDB.ExecContext(ctx, "CREATE DATABASE "+dbName); err != nil {
+		t.Fatalf("create test database: %v", err)
+	}
+	testDSN := withDatabaseName(t, adminDSN, dbName)
+	db, err := database.Open(ctx, testDSN)
+	if err != nil {
+		t.Fatalf("database.Open() error = %v", err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if err := database.Migrate(ctx, db, logger); err != nil {
+		t.Fatalf("database.Migrate() error = %v", err)
+	}
+	
+	cleanup := func() {
+		db.Close()
+		adminDB.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+dbName)
+		adminDB.Close()
+		cancel()
+	}
+	
+	return New(db), db, ctx, cleanup
+}
+
+func TestDocumentCRUD(t *testing.T) {
+	repo, db, ctx, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	var adminID int64
+	err := db.QueryRowContext(ctx, "INSERT INTO users(username, password_hash, full_name, role) VALUES ('admin', 'hash', 'Admin', 'admin') RETURNING id").Scan(&adminID)
+	if err != nil {
+		t.Fatalf("insert admin: %v", err)
+	}
+
+	doc, err := repo.CreateDocument(ctx, domain.UpsertDocumentInput{
+		Title:       "Test Book",
+		Author:      "Test Author",
+		Year:        2025,
+		Type:        "Book",
+		Description: "Test Desc",
+		Tags:        []string{"test", "crud"},
+		FileName:    "test.pdf",
+		FilePath:    "pdfs/test.pdf",
+		FileSize:    100,
+		MimeType:    "application/pdf",
+	})
+	if err != nil {
+		t.Fatalf("CreateDocument: %v", err)
+	}
+	if doc.ID == 0 {
+		t.Fatal("expected valid ID")
+	}
+
+	fetched, err := repo.GetDocumentByID(ctx, adminID, doc.ID, true)
+	if err != nil {
+		t.Fatalf("GetDocument: %v", err)
+	}
+	if fetched.Title != "Test Book" {
+		t.Fatalf("expected Title 'Test Book', got %q", fetched.Title)
+	}
+
+	updated, err := repo.UpdateDocument(ctx, doc.ID, domain.UpsertDocumentInput{
+		Title:       "Updated Book",
+		Author:      "Updated Author",
+		Year:        2026,
+		Type:        "Book",
+		Description: "Test Desc",
+		Tags:        []string{"updated"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateDocument: %v", err)
+	}
+	if updated.Title != "Updated Book" || len(updated.Tags) != 1 || updated.Tags[0] != "updated" {
+		t.Fatalf("Update failed, got: %+v", updated)
+	}
+
+	err = repo.DeleteDocument(ctx, doc.ID)
+	if err != nil {
+		t.Fatalf("DeleteDocument: %v", err)
+	}
+
+	_, err = repo.GetDocumentByID(ctx, adminID, doc.ID, false)
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected not found error for regular mode, got: %v", err)
+	}
+}
+
+func TestFavorites(t *testing.T) {
+	repo, db, ctx, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	var userID int64
+	db.QueryRowContext(ctx, "INSERT INTO users(username, password_hash, full_name, role) VALUES ('user1', 'hash', 'User1', 'user') RETURNING id").Scan(&userID)
+
+	doc, _ := repo.CreateDocument(ctx, domain.UpsertDocumentInput{
+		Title: "Fav Book", Author: "A", Year: 2026, Type: "B", FileName: "f.pdf", FilePath: "p/f.pdf",
+	})
+
+	err := repo.UpsertFavorite(ctx, userID, doc.ID, true)
+	if err != nil {
+		t.Fatalf("UpsertFavorite 1: %v", err)
+	}
+
+	favs, err := repo.ListFavorites(ctx, userID, 10)
+	if err != nil {
+		t.Fatalf("ListFavorites: %v", err)
+	}
+	if len(favs) != 1 || favs[0].ID != doc.ID {
+		t.Fatalf("expected 1 favorite")
+	}
+
+	err = repo.UpsertFavorite(ctx, userID, doc.ID, false)
+	if err != nil {
+		t.Fatalf("UpsertFavorite 2: %v", err)
+	}
+
+	favs, _ = repo.ListFavorites(ctx, userID, 10)
+	if len(favs) != 0 {
+		t.Fatalf("expected 0 favorites")
+	}
 }

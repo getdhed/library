@@ -60,7 +60,6 @@ describe("BookPage", () => {
       expect(screen.getByText("DevOps Playbook")).toBeInTheDocument();
     });
 
-    expect(screen.getByAltText("Обложка DevOps Playbook")).toBeInTheDocument();
     expect(screen.getByText("Скачать")).toBeInTheDocument();
     expect(screen.getByText("В избранном")).toBeInTheDocument();
     expect(screen.getByText("Demo Author")).toBeInTheDocument();

@@ -35,7 +35,6 @@ const LoginPage: React.FC = () => {
   return (
     <AuthPageFrame
       title="Вход"
-      subtitle="Используйте вашу учетную запись библиотеки."
       formContent={
         <Stack component="form" spacing={2} onSubmit={handleSubmit}>
           <TextField

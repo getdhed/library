@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"log/slog"
 	"sync"
+	"time"
 
 	"library-backend/internal/auth"
 	"library-backend/internal/config"
@@ -23,6 +24,7 @@ type App struct {
 	}
 	cfg          config.Config
 	logger       *slog.Logger
+	svc          *service.Service
 	cancel       context.CancelFunc
 	backgroundWg sync.WaitGroup
 }
@@ -71,8 +73,11 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		server: router,
 		cfg:    cfg,
 		logger: logger,
+		svc:    svc,
 		cancel: cancel,
 	}
+
+	application.startArchiver(ctx)
 
 	return application, nil
 }
@@ -92,3 +97,40 @@ func (a *App) Close() error {
 	}
 	return nil
 }
+
+func (a *App) startArchiver(ctx context.Context) {
+	a.backgroundWg.Add(1)
+	go func() {
+		defer a.backgroundWg.Done()
+		
+		// Run once on startup
+		if err := a.svc.ArchiveOldLogs(ctx); err != nil {
+			a.logger.Error("failed to archive old logs on startup", "error", err)
+		} else {
+			a.logger.Info("successfully executed old logs archiver")
+		}
+		if err := a.svc.CleanupDeletedItems(ctx); err != nil {
+			a.logger.Error("failed to cleanup deleted items on startup", "error", err)
+		}
+
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := a.svc.ArchiveOldLogs(ctx); err != nil {
+					a.logger.Error("failed to archive old logs", "error", err)
+				} else {
+					a.logger.Info("successfully executed old logs archiver")
+				}
+				if err := a.svc.CleanupDeletedItems(ctx); err != nil {
+					a.logger.Error("failed to cleanup deleted items", "error", err)
+				}
+			}
+		}
+	}()
+}
+

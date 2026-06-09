@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"mime"
@@ -16,6 +17,11 @@ import (
 	"library-backend/internal/config"
 	"library-backend/internal/domain"
 	"library-backend/internal/service"
+
+	_ "library-backend/docs"
+
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 const (
@@ -38,6 +44,21 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 	router.Use(requestLogger(logger))
 	router.Use(recoveryLogger(logger))
 	router.Use(corsMiddleware(cfg.CORSOrigins))
+
+	// Swagger documentation
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	// Middleware to log API requests for application load tracking
+	router.Use(func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		durationMs := int(time.Since(start).Milliseconds())
+
+		// Do this asynchronously so it doesn't block the request response
+		go func(ctx context.Context, method, path string, status int, duration int) {
+			_ = handler.service.LogAPIRequest(ctx, method, path, status, duration)
+		}(context.Background(), c.Request.Method, c.Request.URL.Path, c.Writer.Status(), durationMs)
+	})
 
 	api := router.Group("/api")
 	{
@@ -74,6 +95,7 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 			admin.POST("/documents", handler.adminCreateDocument)
 			admin.PUT("/documents/:id", handler.adminUpdateDocument)
 			admin.DELETE("/documents/:id", handler.adminDeleteDocument)
+			admin.POST("/documents/:id/restore", handler.adminRestoreDocument)
 			admin.GET("/documents/:id/audit", handler.adminDocumentAudit)
 			admin.GET("/audit", handler.adminAudit)
 			admin.GET("/submissions", handler.adminListSubmissions)
@@ -166,6 +188,15 @@ func (h *Handler) requireRole(role domain.UserRole) gin.HandlerFunc {
 	}
 }
 
+// @Summary Register new user
+// @Description Register a new user in the system
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param input body domain.RegisterInput true "Registration info"
+// @Success 201 {object} domain.AuthPayload
+// @Failure 400 {object} map[string]string "error"
+// @Router /auth/register [post]
 func (h *Handler) register(c *gin.Context) {
 	var input domain.RegisterInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -180,6 +211,15 @@ func (h *Handler) register(c *gin.Context) {
 	c.JSON(http.StatusCreated, payload)
 }
 
+// @Summary Login user
+// @Description Authenticate a user and return JWT
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param input body domain.LoginInput true "Login credentials"
+// @Success 200 {object} domain.AuthPayload
+// @Failure 400,401 {object} map[string]string "error"
+// @Router /auth/login [post]
 func (h *Handler) login(c *gin.Context) {
 	var input domain.LoginInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -194,6 +234,14 @@ func (h *Handler) login(c *gin.Context) {
 	c.JSON(http.StatusOK, payload)
 }
 
+// @Summary Get current user
+// @Description Retrieve the currently authenticated user
+// @Tags auth
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} domain.User
+// @Failure 401 {object} map[string]string "error"
+// @Router /me [get]
 func (h *Handler) me(c *gin.Context) {
 	user, err := h.service.Me(c.Request.Context(), currentUserID(c))
 	if err != nil {
@@ -203,6 +251,14 @@ func (h *Handler) me(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
+// @Summary Get homepage data
+// @Description Retrieves recent documents, favorites, and search history for the user
+// @Tags public
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} domain.HomePayload
+// @Failure 401 {object} map[string]string "error"
+// @Router /home [get]
 func (h *Handler) home(c *gin.Context) {
 	payload, err := h.service.Home(c.Request.Context(), currentUserID(c))
 	if err != nil {
@@ -212,6 +268,15 @@ func (h *Handler) home(c *gin.Context) {
 	c.JSON(http.StatusOK, payload)
 }
 
+// @Summary Search suggestions
+// @Description Get auto-complete suggestions based on query
+// @Tags public
+// @Produce json
+// @Param q query string true "Search query"
+// @Security BearerAuth
+// @Success 200 {object} map[string]interface{}
+// @Failure 400,401 {object} map[string]string "error"
+// @Router /catalog/suggest [get]
 func (h *Handler) suggest(c *gin.Context) {
 	items, err := h.service.Suggest(c.Request.Context(), currentUserID(c), c.Query("q"))
 	if err != nil {
@@ -221,6 +286,18 @@ func (h *Handler) suggest(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
+// @Summary List documents
+// @Description Retrieve a paginated list of documents with filters
+// @Tags documents
+// @Produce json
+// @Param query query string false "Search query"
+// @Param type query string false "Document type"
+// @Param page query int false "Page number"
+// @Param pageSize query int false "Page size"
+// @Security BearerAuth
+// @Success 200 {object} domain.PagedDocuments
+// @Failure 400,401 {object} map[string]string "error"
+// @Router /catalog/documents [get]
 func (h *Handler) listDocuments(c *gin.Context) {
 	payload, err := h.service.ListDocuments(c.Request.Context(), currentUserID(c), parseFilters(c), false)
 	if err != nil {
@@ -230,6 +307,15 @@ func (h *Handler) listDocuments(c *gin.Context) {
 	c.JSON(http.StatusOK, payload)
 }
 
+// @Summary Get document details
+// @Description Retrieve details of a specific document by ID
+// @Tags documents
+// @Produce json
+// @Param id path int true "Document ID"
+// @Security BearerAuth
+// @Success 200 {object} domain.Document
+// @Failure 400,401,404 {object} map[string]string "error"
+// @Router /catalog/documents/{id} [get]
 func (h *Handler) getDocument(c *gin.Context) {
 	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -244,6 +330,18 @@ func (h *Handler) getDocument(c *gin.Context) {
 	c.JSON(http.StatusOK, document)
 }
 
+// @Summary Submit a new document
+// @Description Upload a file and submit it for moderation
+// @Tags documents
+// @Accept multipart/form-data
+// @Produce json
+// @Param file formData file true "Document file (PDF)"
+// @Param title formData string true "Document title"
+// @Param type formData string true "Document type"
+// @Security BearerAuth
+// @Success 201 {object} domain.DocumentSubmission
+// @Failure 400,401 {object} map[string]string "error"
+// @Router /catalog/submissions [post]
 func (h *Handler) createSubmission(c *gin.Context) {
 	input, err := h.service.ParseSubmissionInput(c.PostForm)
 	if err != nil {
@@ -277,6 +375,15 @@ func (h *Handler) createSubmission(c *gin.Context) {
 	c.JSON(http.StatusCreated, submission)
 }
 
+// @Summary Get submission details
+// @Description Retrieve details of a document submission by ID
+// @Tags documents
+// @Produce json
+// @Param id path int true "Submission ID"
+// @Security BearerAuth
+// @Success 200 {object} domain.DocumentSubmission
+// @Failure 400,401,404 {object} map[string]string "error"
+// @Router /catalog/submissions/{id} [get]
 func (h *Handler) getSubmission(c *gin.Context) {
 	submissionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -350,6 +457,16 @@ func (h *Handler) serveStoredFile(c *gin.Context, relativePath, fileName, conten
 	http.ServeContent(c.Writer, c.Request, fileName, time.Time{}, file)
 }
 
+// @Summary Download/View document file
+// @Description Get the raw PDF file for a document
+// @Tags documents
+// @Produce application/pdf
+// @Param id path int true "Document ID"
+// @Param download query int false "Set to 1 to force download"
+// @Security BearerAuth
+// @Success 200 {file} file
+// @Failure 400,401,404,409 {object} map[string]string "error"
+// @Router /catalog/documents/{id}/file [get]
 func (h *Handler) serveDocument(c *gin.Context) {
 	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -380,6 +497,16 @@ func (h *Handler) serveDocument(c *gin.Context) {
 	h.serveStoredFile(c, document.FilePath, document.FileName, document.MimeType, dispositionType)
 }
 
+// @Summary Download/View submission file
+// @Description Get the raw PDF file for a submission
+// @Tags documents
+// @Produce application/pdf
+// @Param id path int true "Submission ID"
+// @Param download query int false "Set to 1 to force download"
+// @Security BearerAuth
+// @Success 200 {file} file
+// @Failure 400,401,404,409 {object} map[string]string "error"
+// @Router /catalog/submissions/{id}/file [get]
 func (h *Handler) serveSubmissionFile(c *gin.Context) {
 	submissionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -411,6 +538,15 @@ func (h *Handler) serveSubmissionFile(c *gin.Context) {
 	h.serveStoredFile(c, submission.FilePath, submission.FileName, submission.MimeType, dispositionType)
 }
 
+// @Summary Get document cover image
+// @Description Retrieve the generated cover image for a document
+// @Tags documents
+// @Produce image/png
+// @Param id path int true "Document ID"
+// @Security BearerAuth
+// @Success 200 {file} file
+// @Failure 400,401,404,409 {object} map[string]string "error"
+// @Router /catalog/documents/{id}/cover [get]
 func (h *Handler) serveDocumentCover(c *gin.Context) {
 	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -446,6 +582,14 @@ func (h *Handler) serveDocumentCover(c *gin.Context) {
 	c.File(path)
 }
 
+// @Summary Favorite a document
+// @Description Add a document to favorites
+// @Tags profile
+// @Param id path int true "Document ID"
+// @Security BearerAuth
+// @Success 204
+// @Failure 400,401 {object} map[string]string "error"
+// @Router /catalog/documents/{id}/favorite [post]
 func (h *Handler) favoriteDocument(c *gin.Context) {
 	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -459,6 +603,14 @@ func (h *Handler) favoriteDocument(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// @Summary Unfavorite a document
+// @Description Remove a document from favorites
+// @Tags profile
+// @Param id path int true "Document ID"
+// @Security BearerAuth
+// @Success 204
+// @Failure 400,401 {object} map[string]string "error"
+// @Router /catalog/documents/{id}/favorite [delete]
 func (h *Handler) unfavoriteDocument(c *gin.Context) {
 	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -472,6 +624,13 @@ func (h *Handler) unfavoriteDocument(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// @Summary List document types
+// @Description Get available document types
+// @Tags public
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Failure 500 {object} map[string]string "error"
+// @Router /catalog/document-types [get]
 func (h *Handler) listDocumentTypes(c *gin.Context) {
 	items, err := h.service.DocumentTypes(c.Request.Context())
 	if err != nil {
@@ -517,6 +676,18 @@ func (h *Handler) profileSubmissions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
+// @Summary List documents (Admin)
+// @Description Retrieve a paginated list of all documents including unapproved ones
+// @Tags admin
+// @Produce json
+// @Param query query string false "Search query"
+// @Param type query string false "Document type"
+// @Param page query int false "Page number"
+// @Param pageSize query int false "Page size"
+// @Security BearerAuth
+// @Success 200 {object} domain.PagedDocuments
+// @Failure 401,403 {object} map[string]string "error"
+// @Router /admin/documents [get]
 func (h *Handler) adminListDocuments(c *gin.Context) {
 	payload, err := h.service.ListDocuments(c.Request.Context(), currentUserID(c), parseFilters(c), true)
 	if err != nil {
@@ -526,6 +697,18 @@ func (h *Handler) adminListDocuments(c *gin.Context) {
 	c.JSON(http.StatusOK, payload)
 }
 
+// @Summary Create document (Admin)
+// @Description Upload a file and create a document directly bypassing moderation
+// @Tags admin
+// @Accept multipart/form-data
+// @Produce json
+// @Param file formData file true "Document file (PDF)"
+// @Param title formData string true "Document title"
+// @Param type formData string true "Document type"
+// @Security BearerAuth
+// @Success 201 {object} domain.Document
+// @Failure 400,401,403 {object} map[string]string "error"
+// @Router /admin/documents [post]
 func (h *Handler) adminCreateDocument(c *gin.Context) {
 	input, err := h.service.ParseDocumentInput(c.PostForm)
 	if err != nil {
@@ -600,6 +783,19 @@ func (h *Handler) adminDeleteDocument(c *gin.Context) {
 		return
 	}
 	if err := h.service.DeleteDocument(c.Request.Context(), documentID, currentUserID(c)); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) adminRestoreDocument(c *gin.Context) {
+	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	if err := h.service.RestoreDocument(c.Request.Context(), documentID, currentUserID(c)); err != nil {
 		writeError(c, err)
 		return
 	}
@@ -848,15 +1044,16 @@ func parseFilters(c *gin.Context) domain.DocumentFilters {
 	yearTo, _ := strconv.Atoi(c.DefaultQuery("yearTo", "0"))
 
 	return domain.DocumentFilters{
-		Query:      strings.TrimSpace(c.Query("q")),
-		Type:       strings.TrimSpace(c.Query("type")),
-		Author:     strings.TrimSpace(c.Query("author")),
-		TagsQuery:  strings.TrimSpace(c.Query("tags")),
-		Sort:       strings.TrimSpace(c.DefaultQuery("sort", "relevance")),
-		Page:       page,
-		PageSize:   pageSize,
-		YearFrom:   yearFrom,
-		YearTo:     yearTo,
+		Query:          strings.TrimSpace(c.Query("q")),
+		Type:           strings.TrimSpace(c.Query("type")),
+		Author:         strings.TrimSpace(c.Query("author")),
+		TagsQuery:      strings.TrimSpace(c.Query("tags")),
+		Sort:           strings.TrimSpace(c.DefaultQuery("sort", "relevance")),
+		IncludeDeleted: c.Query("includeDeleted") == "1",
+		Page:           page,
+		PageSize:       pageSize,
+		YearFrom:       yearFrom,
+		YearTo:         yearTo,
 	}
 }
 

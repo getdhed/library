@@ -18,26 +18,15 @@ export const pageShellSx = {
 export const contentCardSx = {
   borderRadius: 0,
   p: 2.5,
-  borderColor: (theme: any) => alpha(theme.palette.divider, 0.95),
   backgroundColor: (theme: any) => alpha(theme.palette.background.paper, 0.98),
 };
 
 export const headerCardSx = {
   borderRadius: 0,
   p: 2.5,
-  borderColor: (theme: any) => alpha(theme.palette.divider, 0.98),
   position: "relative",
   overflow: "hidden",
   backgroundColor: (theme: any) => theme.palette.background.paper,
-  "&::before": {
-    content: '""',
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 2,
-    background: (theme: any) => alpha(theme.palette.primary.main, 0.8),
-  },
 };
 
 export const eyebrowSx: SxProps<Theme> = {
@@ -53,8 +42,10 @@ export const tableSurfaceSx: SxProps<Theme> = {
 };
 
 export const filterPanelSx: SxProps<Theme> = {
-  p: 1.5,
+  p: 2,
   borderRadius: 0,
+  border: (theme: any) => `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+  backgroundColor: (theme: any) => alpha(theme.palette.background.paper, 0.6),
 };
 
 export const cardActionIconButtonSx: SxProps<Theme> = {

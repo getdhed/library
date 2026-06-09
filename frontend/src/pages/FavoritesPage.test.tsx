@@ -8,6 +8,8 @@ import FavoritesPage from "./FavoritesPage";
 vi.mock("../api/library", () => ({
   getFavorites: vi.fn(),
   documentCoverUrl: vi.fn(() => "/api/documents/1/cover"),
+  documentFileUrl: vi.fn(() => "/api/documents/1/file"),
+  toggleDocumentFavorite: vi.fn(),
 }));
 
 import { getFavorites } from "../api/library";

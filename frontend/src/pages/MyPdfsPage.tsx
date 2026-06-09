@@ -386,55 +386,12 @@ const MyPdfsPage: React.FC = () => {
           <Stack spacing={2} alignItems="flex-start">
             <Typography variant="h5">У вас пока нет отправленных PDF</Typography>
             <Typography color="text.secondary">
-              Вы ещё не отправляли файлы на модерацию. Хотите предложить новый PDF?
+              Вы ещё не отправляли файлы на модерацию.
             </Typography>
-            <Button component={Link} to="/submit" variant="contained">
-              Загрузить новый PDF
-            </Button>
           </Stack>
         </ContentCard>
       ) : (
-        <>
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 1.5,
-            }}
-          >
-            <Paper component="article" sx={{ p: 2.25, borderRadius: 0 }}>
-              <Typography variant="body2" color="text.secondary">
-                В обработке
-              </Typography>
-              <Typography variant="h4">{stats.pending}</Typography>
-            </Paper>
-
-            <Paper component="article" sx={{ p: 2.25, borderRadius: 0 }}>
-              <Typography variant="body2" color="text.secondary">
-                Принято
-              </Typography>
-              <Typography variant="h4">{stats.approved}</Typography>
-            </Paper>
-
-            <Paper component="article" sx={{ p: 2.25, borderRadius: 0 }}>
-              <Typography variant="body2" color="text.secondary">
-                Отказано
-              </Typography>
-              <Typography variant="h4">{stats.rejected}</Typography>
-            </Paper>
-          </Box>
-
-          <ContentCard>
-            <Stack spacing={2}>
-              <Stack>
-                <Typography
-                  variant="caption"
-                  sx={eyebrowSx}
-                >
-                  История файлов
-                </Typography>
-                <Typography variant="h5">Отправленные PDF</Typography>
-              </Stack>
+        <Stack spacing={2.5}>
 
               <Stack
                 direction="row"
@@ -463,51 +420,68 @@ const MyPdfsPage: React.FC = () => {
               )}
 
               {!isLoading && !loadError && filteredSubmissions.length > 0 && (
-                <Stack spacing={1.5}>
+                <Stack spacing={0}>
                   {filteredSubmissions.map((item) => (
                     <Paper
                       key={item.id}
                       component="article"
-                      sx={{ p: 2.25, borderRadius: 0, display: "grid", gap: 1.5 }}
+                      elevation={0}
+                      sx={{
+                        p: 1.8,
+                        borderRadius: 0,
+                        borderBottom: (theme) => `2px solid ${alpha(theme.palette.divider, 1)}`,
+                        display: "flex",
+                        flexDirection: { xs: "column", sm: "row" },
+                        alignItems: { xs: "flex-start", sm: "center" },
+                        justifyContent: "space-between",
+                        gap: 2,
+                        backgroundColor: "transparent",
+                        transition: "background-color 0.15s ease",
+                        "&:hover": {
+                          backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.05),
+                        },
+                        "&:last-of-type": {
+                          borderBottom: "none",
+                        }
+                      }}
                     >
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        justifyContent="space-between"
-                        alignItems="center"
-                      >
-                        <Box>
-                          <Typography component="h3" variant="h6">
-                            {item.title}
+                      <Stack spacing={0.75} flex={1} minWidth={0}>
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                          <Chip
+                            size="small"
+                            label={submissionStatusLabel(item.status)}
+                            sx={statusToneChipSx(submissionStatusTone(item.status))}
+                          />
+                          <Typography variant="caption" color="text.secondary">
+                            Обновлено: {formatDateTime(item.updatedAt)}
                           </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Исходный файл: {item.fileName}
-                          </Typography>
-                        </Box>
+                        </Stack>
 
-                        <Chip
-                          label={submissionStatusLabel(item.status)}
-                          sx={statusToneChipSx(submissionStatusTone(item.status))}
-                        />
+                        <Typography
+                          variant="h6"
+                          fontWeight={700}
+                          sx={{
+                            lineHeight: 1.2,
+                            letterSpacing: "0.01em",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                          }}
+                        >
+                          {item.title}
+                        </Typography>
+
+                        <Typography variant="body2" color="text.secondary" noWrap>
+                          Файл: {item.fileName} • Отправлено: {formatDateTime(item.createdAt)}
+                        </Typography>
                       </Stack>
 
-                      <Box
-                        component="dl"
-                        sx={{
-                          ...detailGridSx,
-                          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                        }}
-                      >
-                        {renderDetailField("Отправлен", formatDateTime(item.createdAt))}
-                        {renderDetailField(
-                          "Последнее изменение",
-                          formatDateTime(item.updatedAt)
-                        )}
-                      </Box>
-
-                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                      <Stack direction="row" spacing={1} sx={{ mt: { xs: 1, sm: 0 } }}>
                         <Button
-                          variant="contained"
+                          variant="outlined"
+                          size="small"
                           type="button"
                           onClick={() => setSelectedSubmission(item)}
                           sx={{ borderRadius: 0 }}
@@ -517,10 +491,11 @@ const MyPdfsPage: React.FC = () => {
                         <Button
                           component={Link}
                           variant="outlined"
+                          size="small"
                           to={`/submissions/${item.id}/read`}
                           sx={{ borderRadius: 0 }}
                         >
-                          Открыть PDF
+                          PDF
                         </Button>
                       </Stack>
                     </Paper>
@@ -528,8 +503,6 @@ const MyPdfsPage: React.FC = () => {
                 </Stack>
               )}
             </Stack>
-          </ContentCard>
-        </>
       )}
 
       <Drawer

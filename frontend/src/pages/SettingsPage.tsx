@@ -9,7 +9,6 @@ const SettingsPage: React.FC = () => {
   return (
     <PageShell>
       <PageHeader
-        eyebrow="Профиль"
         title="Настройки"
         description="Управление пользовательскими параметрами интерфейса."
       />

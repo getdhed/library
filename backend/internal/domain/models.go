@@ -51,8 +51,9 @@ type Document struct {
 	CreatedAt          time.Time `json:"createdAt"`
 	UpdatedAt          time.Time `json:"updatedAt"`
 	Tags               []string  `json:"tags"`
-	IsFavorite         bool      `json:"isFavorite"`
-	Similarity         float64   `json:"similarity,omitempty"`
+	IsFavorite         bool       `json:"isFavorite"`
+	Similarity         float64    `json:"similarity,omitempty"`
+	DeletedAt          *time.Time `json:"deletedAt,omitempty"`
 }
 
 type DocumentSubmission struct {
@@ -66,6 +67,10 @@ type DocumentSubmission struct {
 	Publisher          string           `json:"publisher,omitempty"`
 	PeriodicalName     string           `json:"periodicalName,omitempty"`
 	Volume             string           `json:"volume,omitempty"`
+	Year               int              `json:"year,omitempty"`
+	Type               string           `json:"type,omitempty"`
+	Description        string           `json:"description,omitempty"`
+	Tags               string           `json:"tags,omitempty"`
 	Comment            string           `json:"comment,omitempty"`
 	FilePath           string           `json:"-"`
 	FileName           string           `json:"fileName"`
@@ -103,7 +108,7 @@ type Stats struct {
 	TopQueries            []NamedStat `json:"topQueries"`
 	TopDocuments          []NamedStat `json:"topDocuments"`
 	DocumentsByType       []NamedStat `json:"documentsByType"`
-	DocumentsUploadedByDay []NamedStat `json:"documentsUploadedByDay"`
+	AppLoadByHour         []NamedStat `json:"appLoadByHour"`
 }
 
 type NamedStat struct {
@@ -118,15 +123,16 @@ type Pagination struct {
 }
 
 type DocumentFilters struct {
-	Query      string
-	Type       string
-	Author     string
-	TagsQuery  string
-	Sort       string
-	Page       int
-	PageSize   int
-	YearFrom   int
-	YearTo     int
+	Query          string
+	Type           string
+	Author         string
+	TagsQuery      string
+	Sort           string
+	IncludeDeleted bool
+	Page           int
+	PageSize       int
+	YearFrom       int
+	YearTo         int
 }
 
 type StatsFilters struct {
@@ -263,6 +269,10 @@ type CreateSubmissionInput struct {
 	Publisher          string
 	PeriodicalName     string
 	Volume             string
+	Year               int
+	Type               string
+	Description        string
+	Tags               string
 	Comment            string
 	FileName           string
 	FilePath           string

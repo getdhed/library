@@ -136,12 +136,10 @@ export function createAppTheme(mode: PaletteMode) {
       MuiPaper: {
         defaultProps: {
           elevation: 0,
-          variant: "outlined",
         },
         styleOverrides: {
           root: {
             borderRadius: 0,
-            borderColor: t.line,
             backgroundColor: t.panel,
             boxShadow: "none",
           },
@@ -151,7 +149,6 @@ export function createAppTheme(mode: PaletteMode) {
         styleOverrides: {
           root: {
             borderRadius: 0,
-            borderColor: t.line,
             backgroundColor: t.surface,
             boxShadow: "none",
           },

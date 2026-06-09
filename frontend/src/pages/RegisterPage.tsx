@@ -36,7 +36,6 @@ const RegisterPage: React.FC = () => {
   return (
     <AuthPageFrame
       title="Регистрация"
-      subtitle="Создайте учетную запись для работы с библиотекой."
       formContent={
         <Stack component="form" spacing={2} onSubmit={handleSubmit}>
           <TextField

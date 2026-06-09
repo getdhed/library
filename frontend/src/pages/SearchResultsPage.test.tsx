@@ -108,9 +108,6 @@ describe("SearchResultsPage", () => {
     expect(screen.getByAltText("Обложка DevOps Playbook")).toBeInTheDocument();
     expect(screen.getAllByLabelText("Открыть документ").length).toBeGreaterThan(0);
     expect(screen.getAllByLabelText("Добавить в избранное").length).toBeGreaterThan(0);
-    expect(
-      screen.getByRole("link", { name: "Предложить документ" })
-    ).toBeInTheDocument();
   });
 
   it("handles open and favorite actions from icon buttons", async () => {
@@ -151,14 +148,14 @@ describe("SearchResultsPage", () => {
       target: { value: "devops pdf" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Применить" }));
+    fireEvent.click(screen.getByRole("button", { name: "Поиск" }));
 
     await waitFor(() => {
       expect(getDocumentsMock).toHaveBeenLastCalledWith(
         "token",
         expect.objectContaining({
           q: "devops",
-          sort: "relevance",
+          sort: "date_desc",
           page: 1,
           type: "Учебник",
           author: "Demo Author",
@@ -170,47 +167,23 @@ describe("SearchResultsPage", () => {
     });
   });
 
-  it("opens the first suggestion on Enter without click", async () => {
-    getSuggestionsMock.mockResolvedValue({
-      items: [
-        {
-          id: 1,
-          title: "DevOps Playbook",
-          author: "Demo Author",
-          year: 2026,
-          type: "Учебник",
-          description: "Generated demo PDF set",
-          fileName: "playbook.pdf",
-          fileSizeBytes: 1024,
-          mimeType: "application/pdf",
-          coverPath: "covers/playbook.png",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          tags: [],
-          isFavorite: false,
-        },
-      ],
-    });
-
+  it("submits search query from the search bar", async () => {
     renderPage();
 
     const searchInput = await screen.findByLabelText("Поиск документов");
-    fireEvent.focus(searchInput);
-    fireEvent.change(searchInput, { target: { value: "DevOps" } });
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "DevOps Playbook" })).toBeInTheDocument();
-    });
+    fireEvent.change(searchInput, { target: { value: "New Search" } });
 
     const searchForm = searchInput.closest("form");
-    expect(searchForm).not.toBeNull();
     fireEvent.submit(searchForm!);
 
     await waitFor(() => {
-      expect(markOpenedMock).toHaveBeenCalledWith("token", 1);
-    });
-    await waitFor(() => {
-      expect(screen.getByText("Document page")).toBeInTheDocument();
+      expect(getDocumentsMock).toHaveBeenLastCalledWith(
+        "token",
+        expect.objectContaining({
+          q: "New Search",
+          page: 1,
+        })
+      );
     });
   });
 });

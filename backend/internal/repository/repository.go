@@ -294,6 +294,10 @@ func (r *Repository) CreateSubmission(ctx context.Context, userID int64, input d
 			publisher,
 			periodical_name,
 			volume,
+			year,
+			type,
+			description,
+			tags,
 			comment,
 			file_path,
 			file_name,
@@ -303,7 +307,7 @@ func (r *Repository) CreateSubmission(ctx context.Context, userID int64, input d
 			status,
 			source
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'pending', $16)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 'pending', $20)
 		RETURNING id
 	`,
 		userID,
@@ -315,6 +319,10 @@ func (r *Repository) CreateSubmission(ctx context.Context, userID int64, input d
 		input.Publisher,
 		input.PeriodicalName,
 		input.Volume,
+		input.Year,
+		input.Type,
+		input.Description,
+		input.Tags,
 		input.Comment,
 		input.FilePath,
 		input.FileName,
@@ -343,6 +351,10 @@ func (r *Repository) GetSubmissionByID(ctx context.Context, id int64) (domain.Do
 			s.publisher,
 			s.periodical_name,
 			s.volume,
+			s.year,
+			s.type,
+			s.description,
+			s.tags,
 			s.comment,
 			s.file_path,
 			s.file_name,
@@ -388,6 +400,10 @@ func (r *Repository) ListSubmissionsByUser(ctx context.Context, userID int64) ([
 			s.publisher,
 			s.periodical_name,
 			s.volume,
+			s.year,
+			s.type,
+			s.description,
+			s.tags,
 			s.comment,
 			s.file_path,
 			s.file_name,
@@ -441,6 +457,10 @@ func (r *Repository) ListSubmissions(ctx context.Context, status domain.Submissi
 			s.publisher,
 			s.periodical_name,
 			s.volume,
+			s.year,
+			s.type,
+			s.description,
+			s.tags,
 			s.comment,
 			s.file_path,
 			s.file_name,
@@ -609,6 +629,10 @@ func scanSubmission(row rowScanner) (domain.DocumentSubmission, error) {
 		&item.Publisher,
 		&item.PeriodicalName,
 		&item.Volume,
+		&item.Year,
+		&item.Type,
+		&item.Description,
+		&item.Tags,
 		&item.Comment,
 		&item.FilePath,
 		&item.FileName,
@@ -662,6 +686,14 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 	countArgs := []any{}
 	countConditions := []string{"1=1"}
 	countArgIndex := 1
+
+	if filters.IncludeDeleted {
+		queryConditions = append(queryConditions, "d.deleted_at IS NOT NULL")
+		countConditions = append(countConditions, "d.deleted_at IS NOT NULL")
+	} else {
+		queryConditions = append(queryConditions, "d.deleted_at IS NULL")
+		countConditions = append(countConditions, "d.deleted_at IS NULL")
+	}
 
 	if requestedQuery != "" {
 		queryConditions = append(
@@ -835,6 +867,7 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			d.cover_path,
 			d.created_at,
 			d.updated_at,
+			d.deleted_at,
 			COALESCE(array_to_string(array_agg(DISTINCT t.name), ','), '') AS tags,
 			CASE WHEN $1 > 0 THEN EXISTS (
 				SELECT 1 FROM favorites fav WHERE fav.user_id = $1 AND fav.document_id = d.id
@@ -883,6 +916,7 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			&item.CoverPath,
 			&item.CreatedAt,
 			&item.UpdatedAt,
+			&item.DeletedAt,
 			&tags,
 			&item.IsFavorite,
 			&item.Similarity,
@@ -937,6 +971,7 @@ func (r *Repository) GetDocumentByID(ctx context.Context, userID, id int64, admi
 			d.cover_path,
 			d.created_at,
 			d.updated_at,
+			d.deleted_at,
 			COALESCE(array_to_string(array_agg(DISTINCT t.name), ','), '') AS tags,
 			CASE WHEN $1 > 0 THEN EXISTS (
 				SELECT 1 FROM favorites fav WHERE fav.user_id = $1 AND fav.document_id = d.id
@@ -947,6 +982,9 @@ func (r *Repository) GetDocumentByID(ctx context.Context, userID, id int64, admi
 		LEFT JOIN tags t ON t.id = dt.tag_id
 		WHERE d.id = $2
 	`
+	if !adminMode {
+		query += ` AND d.deleted_at IS NULL`
+	}
 	query += ` GROUP BY d.id`
 
 	var document domain.Document
@@ -971,6 +1009,7 @@ func (r *Repository) GetDocumentByID(ctx context.Context, userID, id int64, admi
 		&document.CoverPath,
 		&document.CreatedAt,
 		&document.UpdatedAt,
+		&document.DeletedAt,
 		&tags,
 		&document.IsFavorite,
 		&document.Similarity,
@@ -1065,6 +1104,7 @@ func (r *Repository) listDocumentsByRelation(ctx context.Context, relationTable,
 			d.cover_path,
 			d.created_at,
 			d.updated_at,
+			d.deleted_at,
 			COALESCE(array_to_string(array_agg(DISTINCT t.name), ','), '') AS tags,
 			EXISTS (
 				SELECT 1 FROM favorites fav WHERE fav.user_id = $1 AND fav.document_id = d.id
@@ -1074,7 +1114,7 @@ func (r *Repository) listDocumentsByRelation(ctx context.Context, relationTable,
 		JOIN documents d ON d.id = rel.document_id
 		LEFT JOIN document_tags dt ON dt.document_id = d.id
 		LEFT JOIN tags t ON t.id = dt.tag_id
-		WHERE rel.user_id = $1
+		WHERE rel.user_id = $1 AND d.deleted_at IS NULL
 		GROUP BY d.id, rel.`+orderColumn+`
 		ORDER BY rel.`+orderColumn+` DESC
 		LIMIT $2
@@ -1093,7 +1133,7 @@ func (r *Repository) listDocumentsByRelation(ctx context.Context, relationTable,
 			&item.Year, &item.Type, &item.PlaceOfPublication, &item.Publisher, &item.PeriodicalName,
 			&item.Volume, &item.Description,
 			&item.FilePath, &item.FileName, &item.FileSizeBytes, &item.MimeType, &item.CoverPath,
-			&item.CreatedAt, &item.UpdatedAt, &tags, &item.IsFavorite, &item.Similarity,
+			&item.CreatedAt, &item.UpdatedAt, &item.DeletedAt, &tags, &item.IsFavorite, &item.Similarity,
 		); err != nil {
 			return nil, err
 		}
@@ -1160,11 +1200,11 @@ func (r *Repository) UpdateDocument(ctx context.Context, id int64, input domain.
 			volume = $11,
 			description = $12,
 
-			file_path = CASE WHEN $13 = '' THEN file_path ELSE $14 END,
-			file_name = CASE WHEN $15 = '' THEN file_name ELSE $15 END,
-			file_size_bytes = CASE WHEN $16 = 0 THEN file_size_bytes ELSE $16 END,
-			mime_type = CASE WHEN $17 = '' THEN mime_type ELSE $17 END,
-			cover_path = CASE WHEN $18 = '' THEN cover_path ELSE $18 END,
+			file_path = CASE WHEN $13 = '' THEN file_path ELSE $13 END,
+			file_name = CASE WHEN $14 = '' THEN file_name ELSE $14 END,
+			file_size_bytes = CASE WHEN $15 = 0 THEN file_size_bytes ELSE $15 END,
+			mime_type = CASE WHEN $16 = '' THEN mime_type ELSE $16 END,
+			cover_path = CASE WHEN $17 = '' THEN cover_path ELSE $17 END,
 			updated_at = NOW()
 		WHERE id = $1
 	`, id, input.Title, input.Author, input.Executor, input.ScientificAdvisor, input.Year, input.Type, input.PlaceOfPublication, input.Publisher, input.PeriodicalName, input.Volume, input.Description, input.FilePath, input.FileName, input.FileSize, input.MimeType, input.CoverPath)
@@ -1349,7 +1389,22 @@ func (r *Repository) replaceTags(ctx context.Context, tx *sql.Tx, documentID int
 }
 
 func (r *Repository) DeleteDocument(ctx context.Context, id int64) error {
-	result, err := r.db.ExecContext(ctx, `DELETE FROM documents WHERE id = $1`, id)
+	result, err := r.db.ExecContext(ctx, `UPDATE documents SET deleted_at = NOW() WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return apperror.ErrNotFound
+	}
+	return nil
+}
+
+func (r *Repository) RestoreDocument(ctx context.Context, id int64) error {
+	result, err := r.db.ExecContext(ctx, `UPDATE documents SET deleted_at = NULL WHERE id = $1`, id)
 	if err != nil {
 		return err
 	}
@@ -1589,6 +1644,54 @@ func (r *Repository) ListAuditEvents(ctx context.Context, filters domain.AuditFi
 	}, nil
 }
 
+func (r *Repository) LogAPIRequest(ctx context.Context, method, path string, statusCode, durationMs int) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO api_requests_log(method, path, status_code, duration_ms)
+		VALUES ($1, $2, $3, $4)
+	`, method, path, statusCode, durationMs)
+	return err
+}
+
+func (r *Repository) GetOldAuditEvents(ctx context.Context, olderThan time.Time) ([]domain.DocumentAuditEvent, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT e.id, e.action, e.document_id, COALESCE(d.title, ''), e.file_name, 
+		       e.actor_id, COALESCE(u.username, ''), COALESCE(u.full_name, ''), e.created_at
+		FROM document_audit_events e
+		LEFT JOIN documents d ON d.id = e.document_id
+		LEFT JOIN users u ON u.id = e.actor_id
+		WHERE e.created_at < $1
+		ORDER BY e.created_at ASC
+	`, olderThan)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []domain.DocumentAuditEvent
+	for rows.Next() {
+		item, err := scanAuditEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (r *Repository) DeleteOldAuditEvents(ctx context.Context, olderThan time.Time) error {
+	_, err := r.db.ExecContext(ctx, "DELETE FROM document_audit_events WHERE created_at < $1", olderThan)
+	return err
+}
+
+func (r *Repository) DeleteOldAPIRequests(ctx context.Context, olderThan time.Time) error {
+	_, err := r.db.ExecContext(ctx, "DELETE FROM api_requests_log WHERE created_at < $1", olderThan)
+	return err
+}
+
+
 func (r *Repository) Stats(ctx context.Context, filters domain.StatsFilters) (domain.Stats, error) {
 	stats := domain.Stats{}
 	now := time.Now()
@@ -1606,52 +1709,34 @@ func (r *Repository) Stats(ctx context.Context, filters domain.StatsFilters) (do
 	stats.UploadPeriodFrom = dateFrom
 	stats.UploadPeriodTo = dateTo
 
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM documents`).Scan(&stats.DocumentsCount); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM documents WHERE created_at < $1 AND deleted_at IS NULL`, dateTo).Scan(&stats.DocumentsCount); err != nil {
 		return stats, err
 	}
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM document_views WHERE created_at >= CURRENT_DATE`).Scan(&stats.ViewsToday); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM document_views WHERE created_at >= $1 AND created_at < $2`, dateFrom, dateTo).Scan(&stats.ViewsToday); err != nil {
 		return stats, err
 	}
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM document_downloads WHERE created_at >= CURRENT_DATE`).Scan(&stats.DownloadsToday); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM document_downloads WHERE created_at >= $1 AND created_at < $2`, dateFrom, dateTo).Scan(&stats.DownloadsToday); err != nil {
 		return stats, err
 	}
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM search_history WHERE created_at >= CURRENT_DATE`).Scan(&stats.SearchesToday); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM search_history WHERE created_at >= $1 AND created_at < $2`, dateFrom, dateTo).Scan(&stats.SearchesToday); err != nil {
 		return stats, err
 	}
 	if err := r.db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
 		FROM documents
-		WHERE created_at >= $1 AND created_at < $2
+		WHERE created_at >= $1 AND created_at < $2 AND deleted_at IS NULL
 	`, dateFrom, dateTo).Scan(&stats.UploadedInPeriod); err != nil {
 		return stats, err
-	}
-
-	uploadRows, err := r.db.QueryContext(ctx, `
-		SELECT TO_CHAR(created_at::date, 'YYYY-MM-DD') AS day, COUNT(*) AS count
-		FROM documents
-		WHERE created_at >= $1 AND created_at < $2
-		GROUP BY created_at::date
-		ORDER BY created_at::date ASC
-	`, dateFrom, dateTo)
-	if err != nil {
-		return stats, err
-	}
-	defer uploadRows.Close()
-	for uploadRows.Next() {
-		var item domain.NamedStat
-		if err := uploadRows.Scan(&item.Name, &item.Count); err != nil {
-			return stats, err
-		}
-		stats.DocumentsUploadedByDay = append(stats.DocumentsUploadedByDay, item)
 	}
 
 	queryRows, err := r.db.QueryContext(ctx, `
 		SELECT query, COUNT(*) AS count
 		FROM search_history
+		WHERE created_at >= $1 AND created_at < $2
 		GROUP BY query
 		ORDER BY count DESC, query ASC
 		LIMIT 5
-	`)
+	`, dateFrom, dateTo)
 	if err != nil {
 		return stats, err
 	}
@@ -1668,10 +1753,11 @@ func (r *Repository) Stats(ctx context.Context, filters domain.StatsFilters) (do
 		SELECT d.title, COUNT(*) AS count
 		FROM document_views v
 		JOIN documents d ON d.id = v.document_id
+		WHERE v.created_at >= $1 AND v.created_at < $2
 		GROUP BY d.title
 		ORDER BY count DESC, d.title ASC
 		LIMIT 5
-	`)
+	`, dateFrom, dateTo)
 	if err != nil {
 		return stats, err
 	}
@@ -1687,9 +1773,10 @@ func (r *Repository) Stats(ctx context.Context, filters domain.StatsFilters) (do
 	typeRows, err := r.db.QueryContext(ctx, `
 		SELECT type, COUNT(*) AS count
 		FROM documents
+		WHERE created_at >= $1 AND created_at < $2
 		GROUP BY type
 		ORDER BY count DESC, type ASC
-	`)
+	`, dateFrom, dateTo)
 	if err != nil {
 		return stats, err
 	}
@@ -1700,6 +1787,25 @@ func (r *Repository) Stats(ctx context.Context, filters domain.StatsFilters) (do
 			return stats, err
 		}
 		stats.DocumentsByType = append(stats.DocumentsByType, item)
+	}
+
+	loadRows, err := r.db.QueryContext(ctx, `
+		SELECT TO_CHAR(DATE_TRUNC('hour', created_at), 'YYYY-MM-DD HH24:00') AS name, COUNT(*) AS count
+		FROM api_requests_log
+		WHERE created_at >= $1 AND created_at < $2
+		GROUP BY DATE_TRUNC('hour', created_at)
+		ORDER BY DATE_TRUNC('hour', created_at) ASC
+	`, dateFrom, dateTo)
+	if err != nil {
+		return stats, err
+	}
+	defer loadRows.Close()
+	for loadRows.Next() {
+		var item domain.NamedStat
+		if err := loadRows.Scan(&item.Name, &item.Count); err != nil {
+			return stats, err
+		}
+		stats.AppLoadByHour = append(stats.AppLoadByHour, item)
 	}
 
 	return stats, nil

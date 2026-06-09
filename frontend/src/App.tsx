@@ -14,7 +14,9 @@ const SettingsPage = lazy(routeLoaders.settings);
 const SubmitPage = lazy(routeLoaders.submit);
 const MyPdfsPage = lazy(routeLoaders.myPdfs);
 const PdfReaderPage = lazy(routeLoaders.reader);
+const AdminModerationPage = lazy(routeLoaders.adminModeration);
 const AdminDocumentsPage = lazy(routeLoaders.adminDocuments);
+const AdminTrashPage = lazy(routeLoaders.adminTrash);
 const AdminStatsPage = lazy(routeLoaders.adminStats);
 const AdminUsersPage = lazy(routeLoaders.adminUsers);
 const AdminAuditPage = lazy(routeLoaders.adminAudit);
@@ -156,6 +158,20 @@ const App: React.FC = () => {
             })}
           />
           <Route
+            path="/admin/moderation"
+            element={withSeo(
+              <AdminRoute>
+                <AdminModerationPage />
+              </AdminRoute>,
+              {
+                title: "Админка: модерация",
+                description: "Рассмотрение пользовательских заявок.",
+                noIndex: true,
+                canonicalPath: "/admin/moderation",
+              }
+            )}
+          />
+          <Route
             path="/admin/documents"
             element={withSeo(
               <AdminRoute>
@@ -166,6 +182,20 @@ const App: React.FC = () => {
                 description: "Управление каталогом и модерацией документов.",
                 noIndex: true,
                 canonicalPath: "/admin/documents",
+              }
+            )}
+          />
+          <Route
+            path="/admin/trash"
+            element={withSeo(
+              <AdminRoute>
+                <AdminTrashPage />
+              </AdminRoute>,
+              {
+                title: "Админка: корзина",
+                description: "Удаленные документы.",
+                noIndex: true,
+                canonicalPath: "/admin/trash",
               }
             )}
           />

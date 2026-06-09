@@ -12,7 +12,9 @@ export const routeLoaders = {
   submit: () => import("../pages/SubmitPage"),
   myPdfs: () => import("../pages/MyPdfsPage"),
   reader: () => import("../pages/PdfReaderPage"),
+  adminModeration: () => import("../pages/admin/AdminModerationPage"),
   adminDocuments: () => import("../pages/admin/AdminDocumentsPage"),
+  adminTrash: () => import("../pages/admin/AdminTrashPage"),
   adminStats: () => import("../pages/admin/AdminStatsPage"),
   adminUsers: () => import("../pages/admin/AdminUsersPage"),
   adminAudit: () => import("../pages/admin/AdminAuditPage"),
@@ -137,8 +139,14 @@ function getRouteChunksForPath(path: string): RouteChunk[] {
   if (normalizedPath.startsWith("/admin/audit")) {
     return ["adminAudit"];
   }
+  if (normalizedPath.startsWith("/admin/moderation")) {
+    return ["adminModeration"];
+  }
   if (normalizedPath.startsWith("/admin/documents")) {
     return ["adminDocuments"];
+  }
+  if (normalizedPath.startsWith("/admin/trash")) {
+    return ["adminTrash"];
   }
   if (normalizedPath.startsWith("/admin/stats")) {
     return ["adminStats"];

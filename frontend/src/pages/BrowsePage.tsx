@@ -1,13 +1,12 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  Badge,
   Box,
-  Button,
   Pagination,
   Stack,
   Typography,
+  Button,
 } from "@mui/material";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import {
   getDocuments,
   getDocumentTypes,
@@ -15,10 +14,11 @@ import {
   toggleDocumentFavorite,
 } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
-import CatalogFiltersDialog from "../components/CatalogFiltersDialog";
+import CatalogFilters from "../components/CatalogFilters";
 import DocumentCardActions from "../components/DocumentCardActions";
 import DocumentListItem from "../components/DocumentListItem";
-import { ContentCard, PageHeader, PageShell } from "../components/mui-primitives";
+import SearchBar from "../components/SearchBar";
+import { ContentCard, PageShell } from "../components/mui-primitives";
 import type { PagedDocuments } from "../types";
 
 type FilterDraft = {
@@ -40,12 +40,12 @@ const emptyDraft: FilterDraft = {
 };
 
 const BrowsePage: React.FC = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [params, setParams] = useSearchParams();
   const [payload, setPayload] = useState<PagedDocuments | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [documentTypes, setDocumentTypes] = useState<string[]>([]);
 
+  const q = params.get("q") ?? "";
   const type = params.get("type") ?? "";
   const author = params.get("author") ?? "";
   const yearFrom = params.get("yearFrom") ?? "";
@@ -53,6 +53,8 @@ const BrowsePage: React.FC = () => {
   const tags = params.get("tags") ?? "";
   const sort = params.get("sort") ?? "date_desc";
   const page = Number(params.get("page") ?? 1);
+
+  const [searchQuery, setSearchQuery] = useState(q);
 
   const [draftFilters, setDraftFilters] = useState<FilterDraft>({
     type,
@@ -62,6 +64,10 @@ const BrowsePage: React.FC = () => {
     tags,
     sort,
   });
+
+  useEffect(() => {
+    setSearchQuery(q);
+  }, [q]);
 
   useEffect(() => {
     setDraftFilters({
@@ -86,6 +92,7 @@ const BrowsePage: React.FC = () => {
     }
 
     const response = await getDocuments(token, {
+      q,
       sort,
       type,
       author,
@@ -95,20 +102,11 @@ const BrowsePage: React.FC = () => {
       page,
     });
     setPayload(response);
-  }, [author, page, sort, tags, token, type, yearFrom, yearTo]);
+  }, [q, author, page, sort, tags, token, type, yearFrom, yearTo]);
 
   useEffect(() => {
     loadDocuments().catch(console.error);
   }, [loadDocuments]);
-
-  const activeFiltersCount = [
-    type,
-    author,
-    yearFrom,
-    yearTo,
-    tags,
-    sort !== "date_desc" ? sort : "",
-  ].filter(Boolean).length;
 
   function updateParam(next: Record<string, string>) {
     const copy = new URLSearchParams(params);
@@ -131,25 +129,19 @@ const BrowsePage: React.FC = () => {
   }
 
   function handleQuickOpen(id: number) {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     void markOpened(token, id).catch(console.error);
   }
 
   async function toggleFavorite(id: number, isFavorite: boolean) {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     await toggleDocumentFavorite(token, id, isFavorite);
     await loadDocuments();
   }
 
   function applyFilters() {
-    setFiltersOpen(false);
     updateParam({
+      q: searchQuery.trim(),
       type: draftFilters.type,
       author: draftFilters.author.trim(),
       yearFrom: draftFilters.yearFrom,
@@ -160,10 +152,15 @@ const BrowsePage: React.FC = () => {
     });
   }
 
+  function applySearch() {
+    applyFilters();
+  }
+
   function resetFilters() {
-    setFiltersOpen(false);
+    setSearchQuery("");
     setDraftFilters(emptyDraft);
     updateParam({
+      q: "",
       type: "",
       author: "",
       yearFrom: "",
@@ -174,123 +171,156 @@ const BrowsePage: React.FC = () => {
     });
   }
 
+  const getSearchTitle = () => {
+    const parts = [];
+    if (searchQuery) parts.push(`"${searchQuery}"`);
+    if (draftFilters.author) parts.push(`автору "${draftFilters.author}"`);
+    if (draftFilters.type) parts.push(`типу "${draftFilters.type}"`);
+    if (draftFilters.yearFrom || draftFilters.yearTo) {
+      if (draftFilters.yearFrom && draftFilters.yearTo) parts.push(`годам ${draftFilters.yearFrom}-${draftFilters.yearTo}`);
+      else if (draftFilters.yearFrom) parts.push(`годам от ${draftFilters.yearFrom}`);
+      else parts.push(`годам до ${draftFilters.yearTo}`);
+    }
+    if (draftFilters.tags) parts.push(`тегам "${draftFilters.tags}"`);
+
+    if (parts.length === 0) return "Все документы";
+    return `Результаты по ${parts.join(", ")}`;
+  };
+
   return (
     <PageShell>
-      <PageHeader
-        eyebrow="Каталог"
-        title="Все документы"
-        description="Полный список материалов библиотеки."
-        side={<Typography fontWeight={700}>{payload?.total ?? 0} документов</Typography>}
-      />
+      <Box sx={{ display: "flex", gap: { xs: 3, md: 5 }, alignItems: "flex-start", flexDirection: { xs: "column", md: "row" } }}>
+        <Box
+          sx={{
+            width: { xs: "100%", md: "33.333%" },
+            minWidth: { md: 320 },
+            maxWidth: { md: 400 },
+            position: { md: "sticky" },
+            top: { md: 90 },
+            maxHeight: { md: "calc(100vh - 110px)" },
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: 3,
+            flexShrink: 0,
+            bgcolor: "action.hover",
+            p: 3,
+            borderRadius: 2,
+            border: (theme) => `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <Typography variant="h4" fontWeight={700}>
+            Каталог <Typography component="span" variant="h5" color="text.secondary">({payload?.total ?? 0})</Typography>
+          </Typography>
 
-      <ContentCard>
-        <Box sx={{ mb: 1.8 }}>
-          <Button
-            type="button"
-            variant="outlined"
-            onClick={() => setFiltersOpen(true)}
-            startIcon={
-              <Badge
-                color="primary"
-                badgeContent={activeFiltersCount > 0 ? activeFiltersCount : undefined}
-              >
-                <Box sx={{ width: 12 }} />
-              </Badge>
-            }
-          >
-            Фильтры
-          </Button>
-        </Box>
+          <SearchBar
+            value={searchQuery}
+            onChange={setSearchQuery}
+            onSubmit={applySearch}
+            placeholder="Искать в каталоге..."
+            hideButton
+          />
 
-        <Stack spacing={1.4}>
-          {(payload?.items ?? []).map((item) => (
-            <DocumentListItem
-              key={item.id}
-              item={item}
-              token={token}
-              actions={
-                <DocumentCardActions
-                  item={item}
-                  token={token}
-                  onOpen={handleQuickOpen}
-                  onToggleFavorite={toggleFavorite}
-                />
+          <Box>
+            <Typography variant="h6" sx={{ mb: 2 }}>Фильтры</Typography>
+            <CatalogFilters
+              onApply={applyFilters}
+              onReset={resetFilters}
+              idPrefix="browse"
+              documentTypes={documentTypes}
+              typeValue={draftFilters.type}
+              onTypeChange={(value) =>
+                setDraftFilters((current) => ({ ...current, type: value }))
+              }
+              authorValue={draftFilters.author}
+              onAuthorChange={(value) =>
+                setDraftFilters((current) => ({ ...current, author: value }))
+              }
+              yearFromValue={draftFilters.yearFrom}
+              onYearFromChange={(value) =>
+                setDraftFilters((current) => ({ ...current, yearFrom: value }))
+              }
+              yearToValue={draftFilters.yearTo}
+              onYearToChange={(value) =>
+                setDraftFilters((current) => ({ ...current, yearTo: value }))
+              }
+              tagsValue={draftFilters.tags}
+              onTagsChange={(value) =>
+                setDraftFilters((current) => ({ ...current, tags: value }))
+              }
+              includeSort
+              sortValue={draftFilters.sort}
+              onSortChange={(value) =>
+                setDraftFilters((current) => ({ ...current, sort: value }))
               }
             />
-          ))}
+          </Box>
+        </Box>
 
-          {payload && payload.items.length === 0 && (
-            <Typography color="text.secondary">Документы не найдены</Typography>
-          )}
-        </Stack>
+        <Box sx={{ flex: 1, minWidth: 0, width: "100%" }}>
+          <ContentCard sx={{ minHeight: "100%", p: { xs: 0 }, bgcolor: "transparent", border: "none", boxShadow: "none" }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2, px: { xs: 2, md: 0 }, pt: { xs: 2, md: 0 } }}>
+              <Typography variant="h5">
+                {getSearchTitle()}
+              </Typography>
+              {user?.role !== "admin" && (
+                <Button component={Link} to="/submit" variant="outlined" size="small">
+                  Предложить документ
+                </Button>
+              )}
+            </Stack>
+            <Stack spacing={0}>
+              {(payload?.items ?? []).map((item) => (
+                <DocumentListItem
+                  key={item.id}
+                  item={item}
+                  token={token}
+                  actions={
+                    <DocumentCardActions
+                      item={item}
+                      token={token}
+                      onOpen={handleQuickOpen}
+                      onToggleFavorite={toggleFavorite}
+                    />
+                  }
+                />
+              ))}
 
-        {payload && payload.total > payload.pageSize && (
-          <Stack spacing={1} alignItems="center" sx={{ mt: 2.2 }}>
-            <Pagination
-              count={Math.max(1, Math.ceil(payload.total / payload.pageSize))}
-              page={page}
-              shape="rounded"
-              color="primary"
-              onChange={(_, nextPage) => updateParam({ page: String(nextPage) })}
-            />
-            <Typography variant="body2" color="text.secondary">
-              Страница {page} из {Math.max(1, Math.ceil(payload.total / payload.pageSize))}
-            </Typography>
-          </Stack>
-        )}
-      </ContentCard>
+              {payload && payload.items.length === 0 && (
+                <Box sx={{ p: 4, textAlign: "center", bgcolor: "action.hover", borderRadius: 2, mt: 2 }}>
+                  <Typography variant="h6" gutterBottom>Ничего не найдено</Typography>
+                  <Typography color="text.secondary" sx={{ mb: 3 }}>
+                    По вашему запросу не найдено ни одного документа. Не нашли нужный материал? Вы можете предложить свой!
+                  </Typography>
+                  {user?.role !== "admin" && (
+                    <Button component={Link} to="/submit" variant="contained">
+                      Предложить документ
+                    </Button>
+                  )}
+                </Box>
+              )}
+            </Stack>
 
-      <CatalogFiltersDialog
-        open={filtersOpen}
-        onClose={() => setFiltersOpen(false)}
-        onApply={applyFilters}
-        onReset={resetFilters}
-        idPrefix="browse"
-        documentTypes={documentTypes}
-        typeValue={draftFilters.type}
-        onTypeChange={(value) =>
-          setDraftFilters((current) => ({
-            ...current,
-            type: value,
-          }))
-        }
-        authorValue={draftFilters.author}
-        onAuthorChange={(value) =>
-          setDraftFilters((current) => ({
-            ...current,
-            author: value,
-          }))
-        }
-        yearFromValue={draftFilters.yearFrom}
-        onYearFromChange={(value) =>
-          setDraftFilters((current) => ({
-            ...current,
-            yearFrom: value,
-          }))
-        }
-        yearToValue={draftFilters.yearTo}
-        onYearToChange={(value) =>
-          setDraftFilters((current) => ({
-            ...current,
-            yearTo: value,
-          }))
-        }
-        tagsValue={draftFilters.tags}
-        onTagsChange={(value) =>
-          setDraftFilters((current) => ({
-            ...current,
-            tags: value,
-          }))
-        }
-        includeSort
-        sortValue={draftFilters.sort}
-        onSortChange={(value) =>
-          setDraftFilters((current) => ({
-            ...current,
-            sort: value,
-          }))
-        }
-      />
+            {payload && payload.total > payload.pageSize && (
+              <Stack spacing={1} alignItems="center" sx={{ mt: 4, mb: 2 }}>
+                <Pagination
+                  count={Math.max(1, Math.ceil(payload.total / payload.pageSize))}
+                  page={page}
+                  shape="rounded"
+                  color="primary"
+                  onChange={(_, nextPage) => {
+                    updateParam({ page: String(nextPage) });
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                />
+                <Typography variant="body2" color="text.secondary">
+                  Страница {page} из {Math.max(1, Math.ceil(payload.total / payload.pageSize))}
+                </Typography>
+              </Stack>
+            )}
+          </ContentCard>
+        </Box>
+      </Box>
     </PageShell>
   );
 };

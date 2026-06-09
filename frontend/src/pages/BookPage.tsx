@@ -12,19 +12,23 @@ import {
   Typography,
   alpha,
 } from "@mui/material";
-import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
-import FavoriteRoundedIcon from "@mui/icons-material/FavoriteRounded";
-import FavoriteBorderRoundedIcon from "@mui/icons-material/FavoriteBorderRounded";
-import { useParams } from "react-router-dom";
+import DownloadIcon from "@mui/icons-material/Download";
+import FavoriteIcon from "@mui/icons-material/Favorite";
+import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import { useParams, Link } from "react-router-dom";
 import {
   documentFileUrl,
   getDocument,
   markOpened,
   toggleDocumentFavorite,
+  getDocumentTypes,
+  updateDocument,
 } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
 import { ContentCard, PageShell } from "../components/mui-primitives";
-import EditDocumentDialog from "../components/EditDocumentDialog";
+import { AdminDocumentFullView } from "../components/AdminDocumentFullView";
+import type { AdminForm } from "../components/DocumentFormFields";
 import type { DocumentItem } from "../types";
 
 function formatFileSize(bytes: number) {
@@ -47,6 +51,14 @@ function formatFileSize(bytes: number) {
 const BookPage: React.FC = () => {
   const [document, setDocument] = useState<DocumentItem | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState<AdminForm>({
+    title: "", author: "", executor: "", scientificAdvisor: "", year: new Date().getFullYear(),
+    type: "", placeOfPublication: "", publisher: "", periodicalName: "", volume: "", description: "", tags: "", file: null
+  });
+  const [editFormError, setEditFormError] = useState("");
+  const [documentTypes, setDocumentTypes] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { token, user } = useAuth();
   const { id } = useParams();
   const isAdmin = user?.role === "admin";
@@ -86,13 +98,9 @@ const BookPage: React.FC = () => {
     document.updatedAt
   );
 
-  const primaryDetails = [
-    { label: "Автор", value: document.author },
+  const extraDetails = [
     { label: "Исполнитель", value: document.executor },
     { label: "Научный руководитель", value: document.scientificAdvisor },
-  ].filter((item) => item.value);
-
-  const extraDetails = [
     { label: "Место издания", value: document.placeOfPublication },
     { label: "Издательство", value: document.publisher },
     { label: "Периодическое издание", value: document.periodicalName },
@@ -111,10 +119,66 @@ const BookPage: React.FC = () => {
     setDocument(refreshed);
   }
 
+  function startEdit() {
+    if (!document) return;
+    setEditForm({
+      title: document.title, author: document.author, executor: document.executor ?? "",
+      scientificAdvisor: document.scientificAdvisor ?? "", year: document.year,
+      type: document.type, placeOfPublication: document.placeOfPublication ?? "",
+      publisher: document.publisher ?? "", periodicalName: document.periodicalName ?? "",
+      volume: document.volume ?? "", description: document.description,
+      tags: document.tags.join(", "), file: null
+    });
+    setEditFormError("");
+    setIsEditing(true);
+    getDocumentTypes().then(r => setDocumentTypes(r.items)).catch(console.error);
+  }
+
+  function validate(form: AdminForm) {
+    const missing: string[] = [];
+    if (!form.title.trim()) missing.push("название");
+    if (!Number.isFinite(form.year) || form.year <= 0) missing.push("год");
+    return missing;
+  }
+
+  async function handleUpdateDocument(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token || !document) return;
+    const missing = validate(editForm);
+    if (missing.length > 0) {
+      setEditFormError(`Заполните обязательные поля: ${missing.join(", ")}.`);
+      return;
+    }
+    const fd = new FormData();
+    fd.set("title", editForm.title.trim());
+    fd.set("author", editForm.author.trim());
+    fd.set("executor", editForm.executor.trim());
+    fd.set("scientificAdvisor", editForm.scientificAdvisor.trim());
+    fd.set("year", String(editForm.year));
+    fd.set("type", editForm.type.trim());
+    fd.set("placeOfPublication", editForm.placeOfPublication.trim());
+    fd.set("publisher", editForm.publisher.trim());
+    fd.set("periodicalName", editForm.periodicalName.trim());
+    fd.set("volume", editForm.volume.trim());
+    fd.set("description", editForm.description.trim());
+    fd.set("tags", editForm.tags);
+    if (editForm.file) fd.set("file", editForm.file);
+
+    setIsSubmitting(true);
+    try {
+      const updated = await updateDocument(token, document.id, fd);
+      setDocument(updated);
+      setIsEditing(false);
+    } catch (err) {
+      setEditFormError(err instanceof Error ? err.message : "Ошибка при сохранении");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <PageShell>
       <Grid container spacing={{ xs: 1.5, lg: 0 }} alignItems="stretch">
-        {/* Информация о документе */}
         <Grid size={{ xs: 12, lg: 6 }}>
           <ContentCard
             sx={{
@@ -140,7 +204,29 @@ const BookPage: React.FC = () => {
                     <Typography component="h1" variant="h3" fontWeight={800} sx={{ lineHeight: 1.08 }}>
                       {document.title}
                     </Typography>
-                    <Typography variant="body1" color="text.secondary" sx={{ mt: 1, maxWidth: "70ch" }}>
+                    {document.author && (
+                      <Typography
+                        component={Link}
+                        to={`/search?author=${encodeURIComponent(document.author)}`}
+                        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                        variant="h6"
+                        sx={{
+                          mt: 1,
+                          fontWeight: 500,
+                          color: "success.main",
+                          textDecoration: "none",
+                          display: "inline-block",
+                          width: "fit-content",
+                          "&:hover": {
+                            color: "success.dark",
+                            textDecoration: "underline",
+                          },
+                        }}
+                      >
+                        {document.author}
+                      </Typography>
+                    )}
+                    <Typography variant="body1" color="text.secondary" sx={{ mt: 1.5, maxWidth: "70ch" }}>
                       {document.description || "Описание документа пока не добавлено."}
                     </Typography>
                   </Box>
@@ -150,7 +236,7 @@ const BookPage: React.FC = () => {
                       component="a"
                       href={downloadUrl}
                       variant="contained"
-                      startIcon={<DownloadRoundedIcon />}
+                      startIcon={<DownloadIcon />}
                       sx={{ borderRadius: 0 }}
                     >
                       Скачать
@@ -161,7 +247,7 @@ const BookPage: React.FC = () => {
                       onClick={toggleFavorite}
                       variant={document.isFavorite ? "contained" : "outlined"}
                       startIcon={
-                        document.isFavorite ? <FavoriteRoundedIcon /> : <FavoriteBorderRoundedIcon />
+                        document.isFavorite ? <FavoriteIcon /> : <FavoriteBorderIcon />
                       }
                       sx={{ borderRadius: 0 }}
                     >
@@ -178,39 +264,20 @@ const BookPage: React.FC = () => {
                     </Button>
                   </Stack>
 
-                  <Stack
-                    direction={{ xs: "column", sm: "row" }}
-                    spacing={1}
-                    useFlexGap
-                    flexWrap="wrap"
-                  >
-                    {primaryDetails.map((item) => (
-                      <Paper
-                        key={item.label}
-                        variant="outlined"
-                        sx={{
-                          p: 1.35,
-                          borderRadius: 0,
-                          minWidth: { xs: "100%", sm: 160 },
-                          flex: "1 1 0",
-                          bgcolor: (theme: any) => alpha(theme.palette.background.paper, 0.78),
-                        }}
-                      >
-                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                          {item.label}
-                        </Typography>
-                        <Typography fontWeight={700}>{item.value}</Typography>
-                      </Paper>
-                    ))}
-                  </Stack>
+
 
                   {isAdmin && (
                     <Box sx={{ maxWidth: 260 }}>
-                      <EditDocumentDialog
-                        token={token}
-                        document={document}
-                        onSaved={(updated) => setDocument(updated)}
-                      />
+                      <Button
+                        type="button"
+                        fullWidth
+                        variant="outlined"
+                        startIcon={<EditRoundedIcon />}
+                        onClick={startEdit}
+                        sx={{ borderRadius: 0 }}
+                      >
+                        Редактировать
+                      </Button>
                     </Box>
                   )}
                 </Stack>
@@ -218,23 +285,15 @@ const BookPage: React.FC = () => {
               <Collapse in={detailsOpen} timeout="auto" unmountOnExit>
                 <Stack spacing={1.5}>
                   <Divider />
-                  <Grid container spacing={1}>
+                  <Grid container spacing={1.5}>
                     {extraDetails.map((item) => (
                       <Grid key={item.label} size={{ xs: 12, sm: 6, xl: 4 }}>
-                        <Paper
-                          variant="outlined"
-                          sx={{
-                            p: 1.35,
-                            height: "100%",
-                            borderRadius: 0,
-                            bgcolor: (theme: any) => alpha(theme.palette.background.default, 0.52),
-                          }}
-                        >
+                        <Box sx={{ p: 0.5 }}>
                           <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
                             {item.label}
                           </Typography>
-                          <Typography fontWeight={650}>{item.value}</Typography>
-                        </Paper>
+                          <Typography fontWeight={500}>{item.value}</Typography>
+                        </Box>
                       </Grid>
                     ))}
                   </Grid>
@@ -252,7 +311,6 @@ const BookPage: React.FC = () => {
           </ContentCard>
         </Grid>
 
-        {/* Ридер */}
         <Grid size={{ xs: 12, lg: 6 }}>
           <ContentCard
             sx={{
@@ -280,6 +338,25 @@ const BookPage: React.FC = () => {
           </ContentCard>
         </Grid>
       </Grid>
+
+      {document && token && (
+        <AdminDocumentFullView
+          open={isEditing}
+          title="Редактировать документ"
+          subtitle={document.title}
+          pdfUrl={documentFileUrl(document.id, token, false, document.updatedAt)}
+          onClose={() => setIsEditing(false)}
+          form={editForm}
+          setForm={setEditForm}
+          error={editFormError}
+          onSubmit={handleUpdateDocument}
+          submitLabel="Сохранить изменения"
+          isSubmitting={isSubmitting}
+          fileLabel="Заменить PDF (необязательно)"
+          idPrefix="book-edit"
+          documentTypes={documentTypes}
+        />
+      )}
     </PageShell>
   );
 };

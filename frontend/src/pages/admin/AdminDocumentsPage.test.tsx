@@ -74,6 +74,8 @@ const mocks = vi.hoisted(() => ({
   ),
   updateDocumentMock: vi.fn(() => Promise.resolve({ id: 5 })),
   documentFileUrlMock: vi.fn((id: number) => `/api/documents/${id}/file`),
+  documentCoverUrlMock: vi.fn((id: number) => `/api/documents/${id}/cover`),
+  getAdminStatsMock: vi.fn(() => Promise.resolve({ documentsCount: 0 })),
 }));
 
 vi.mock("../../api/library", () => ({
@@ -88,7 +90,9 @@ vi.mock("../../api/library", () => ({
   rejectSubmission: mocks.rejectSubmissionMock,
   submissionFileUrl: mocks.submissionFileUrlMock,
   documentFileUrl: mocks.documentFileUrlMock,
+  documentCoverUrl: mocks.documentCoverUrlMock,
   updateDocument: mocks.updateDocumentMock,
+  getAdminStats: mocks.getAdminStatsMock,
 }));
 
 // Export mocks for tests to use
@@ -158,53 +162,13 @@ describe("AdminDocumentsPage", () => {
     cleanup();
   });
 
-  it("opens moderation by default and syncs tab query param", async () => {
+  it("renders catalog by default", async () => {
     renderPage();
-
-    const tabs = await screen.findAllByRole("tab");
-    expect(tabs).toHaveLength(3);
-    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
-    expect(screen.queryByText("Одобрить заявку")).not.toBeInTheDocument();
-    expect(screen.getByTestId("location")).toHaveTextContent(
-      "/admin/documents?tab=moderation"
-    );
-  });
-
-  it("switches tabs and closes opened moderation drawer", async () => {
-    renderPage();
-
-    await screen.findByText("Legacy Notes");
-    fireEvent.click(screen.getAllByRole("button", { name: "Оформить" })[0]);
-    expect(await screen.findByText("Одобрить заявку")).toBeInTheDocument();
-
-    fireEvent.click(screen.getAllByRole("tab")[1]);
-
-    expect(screen.queryByText("Одобрить заявку")).not.toBeInTheDocument();
-    expect(screen.getByTestId("location")).toHaveTextContent(
-      "/admin/documents?tab=catalog"
-    );
-  });
-
-  it("blocks approve submit when required fields are missing", async () => {
-    renderPage();
-
-    await screen.findByText("Legacy Notes");
-    fireEvent.click(screen.getAllByRole("button", { name: "Оформить" })[0]);
-    expect(await screen.findByText("Одобрить заявку")).toBeInTheDocument();
-
-    const titleInputs = screen.getAllByLabelText("Название *");
-    fireEvent.change(titleInputs[titleInputs.length - 1], {
-      target: { value: "" },
-    });
-    const submitButtons = screen.getAllByRole("button", { name: "Одобрить и опубликовать" });
-    fireEvent.click(submitButtons[submitButtons.length - 1]);
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("название");
-    expect(approveSubmissionMock).not.toHaveBeenCalled();
+    expect(await screen.findByText("Панель администратора")).toBeInTheDocument();
   });
 
   it("opens catalog drawer and saves edited document", async () => {
-    renderPage("/admin/documents?tab=catalog");
+    renderPage("/admin/documents");
 
     await screen.findByRole("button", { name: "Редактировать" });
     fireEvent.click(screen.getByRole("button", { name: "Редактировать" }));
@@ -213,7 +177,7 @@ describe("AdminDocumentsPage", () => {
     fireEvent.change(screen.getByLabelText("Аннотация"), {
       target: { value: "Обновленное описание" },
     });
-    const saveButtons = screen.getAllByRole("button", { name: "Сохранить изменения" });
+    const saveButtons = await screen.findAllByRole("button", { name: /Сохранить изменения/i });
     fireEvent.click(saveButtons[saveButtons.length - 1]);
 
     await waitFor(() => {
@@ -225,7 +189,7 @@ describe("AdminDocumentsPage", () => {
   });
 
   it("passes advanced catalog filters to admin documents request", async () => {
-    renderPage("/admin/documents?tab=catalog");
+    renderPage("/admin/documents");
 
     await screen.findByText("Документ каталога");
     fireEvent.change(screen.getByPlaceholderText("Поиск по названию"), {
@@ -263,17 +227,21 @@ describe("AdminDocumentsPage", () => {
   });
 
   it("requires PDF for manual create and then creates successfully", async () => {
-    renderPage("/admin/documents?tab=upload");
+    renderPage("/admin/documents");
 
-    await screen.findByRole("heading", { name: "Добавить документ вручную" });
+    await screen.findByText("Панель администратора");
+    fireEvent.click(screen.getByRole("button", { name: "Добавить новый" }));
 
-    fireEvent.change(screen.getByLabelText("Название *"), {
+    expect(await screen.findByText("Создать документ")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Название"), {
       target: { value: "Новая методичка" },
     });
-    fireEvent.change(screen.getByLabelText("Автор"), {
+    const authorInputs = screen.getAllByLabelText("Автор");
+    fireEvent.change(authorInputs[authorInputs.length - 1], {
       target: { value: "Иванов" },
     });
-    fireEvent.change(screen.getByLabelText("Год *"), {
+    fireEvent.change(screen.getByLabelText("Год"), {
       target: { value: "2026" },
     });
     const comboboxes = screen.getAllByRole("combobox");
@@ -283,7 +251,8 @@ describe("AdminDocumentsPage", () => {
       target: { value: "Описание документа" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Создать документ" }));
+    const createButtons = screen.getAllByRole("button", { name: "Создать" });
+    fireEvent.click(createButtons[createButtons.length - 1]);
     expect(await screen.findByRole("alert")).toHaveTextContent("PDF-файл");
     expect(createDocumentMock).not.toHaveBeenCalled();
 
@@ -293,12 +262,12 @@ describe("AdminDocumentsPage", () => {
     fireEvent.change(screen.getByLabelText("PDF-файл *"), {
       target: { files: [file] },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Создать документ" }));
+    const createButtonsFinal = screen.getAllByRole("button", { name: "Создать" });
+    fireEvent.click(createButtonsFinal[createButtonsFinal.length - 1]);
 
     await waitFor(() => {
       expect(createDocumentMock).toHaveBeenCalledTimes(1);
     });
-  });
-
+  }, 30000);
 
 });

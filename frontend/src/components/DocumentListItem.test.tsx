@@ -37,7 +37,7 @@ describe("DocumentListItem", () => {
 
     expect(screen.getByText("PDF")).toBeInTheDocument();
     expect(screen.getAllByText("Учебник")).toHaveLength(1);
-    expect(screen.queryByText("Demo Author")).not.toBeInTheDocument();
+    expect(screen.getByText("Demo Author")).toBeInTheDocument();
     expect(screen.queryByText("Generated demo PDF set")).not.toBeInTheDocument();
     expect(screen.queryByText(/Alias:/i)).not.toBeInTheDocument();
   });

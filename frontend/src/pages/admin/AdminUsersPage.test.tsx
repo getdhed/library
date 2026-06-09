@@ -4,6 +4,17 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthContext } from "../../auth/AuthContext";
 import AdminUsersPage from "./AdminUsersPage";
+import * as libraryApi from "../../api/library";
+
+vi.mock("../../api/library", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../api/library")>();
+  return {
+    ...actual,
+    getAdminSubmissions: vi.fn().mockResolvedValue({ items: [], totalCount: 0 }),
+    getAdminUsers: vi.fn(),
+    createAdminUser: vi.fn(),
+  };
+});
 
 const users = [
   {
@@ -17,21 +28,33 @@ const users = [
   },
 ];
 
-const getAdminUsersMock = vi.fn(() => Promise.resolve({ items: users }));
-const createAdminUserMock = vi.fn(() =>
-  Promise.resolve({
-    user: users[0],
-    temporaryPassword: "tmp-pass",
-  })
-);
-const updateAdminUserMock = vi.fn(() => Promise.resolve(users[0]));
-const setAdminUserStatusMock = vi.fn(() => Promise.resolve(users[0]));
-const resetAdminUserPasswordMock = vi.fn(() =>
-  Promise.resolve({
-    user: users[0],
-    temporaryPassword: "reset-pass",
-  })
-);
+const {
+  getAdminUsersMock,
+  createAdminUserMock,
+  updateAdminUserMock,
+  setAdminUserStatusMock,
+  resetAdminUserPasswordMock,
+  getAdminStatsMock,
+  getAdminSubmissionsMock,
+} = vi.hoisted(() => ({
+  getAdminUsersMock: vi.fn(() => Promise.resolve({ items: users })),
+  createAdminUserMock: vi.fn(() =>
+    Promise.resolve({
+      user: users[0],
+      temporaryPassword: "tmp-pass",
+    })
+  ),
+  updateAdminUserMock: vi.fn(() => Promise.resolve(users[0])),
+  setAdminUserStatusMock: vi.fn(() => Promise.resolve(users[0])),
+  resetAdminUserPasswordMock: vi.fn(() =>
+    Promise.resolve({
+      user: users[0],
+      temporaryPassword: "reset-pass",
+    })
+  ),
+  getAdminStatsMock: vi.fn(() => Promise.resolve({ documentsCount: 0 })),
+  getAdminSubmissionsMock: vi.fn(() => Promise.resolve({ total: 0 })),
+}));
 
 vi.mock("../../api/library", () => ({
   createAdminUser: (...args: unknown[]) => createAdminUserMock(...args),
@@ -40,6 +63,8 @@ vi.mock("../../api/library", () => ({
     resetAdminUserPasswordMock(...args),
   setAdminUserStatus: (...args: unknown[]) => setAdminUserStatusMock(...args),
   updateAdminUser: (...args: unknown[]) => updateAdminUserMock(...args),
+  getAdminStats: (...args: unknown[]) => getAdminStatsMock(...args),
+  getAdminSubmissions: (...args: unknown[]) => getAdminSubmissionsMock(...args),
 }));
 
 function renderPage() {

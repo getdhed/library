@@ -1,36 +1,26 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Box,
-  Button,
-  FormControl,
-  IconButton,
-  InputLabel,
-  MenuItem,
-  Paper,
-  Select,
+  Pagination,
   Stack,
-  TextField,
   Typography,
+  Button,
+  Alert,
 } from "@mui/material";
-import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import {
   getDocuments,
   getDocumentTypes,
-  getSuggestions,
   markOpened,
   toggleDocumentFavorite,
 } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
+import CatalogFilters from "../components/CatalogFilters";
 import DocumentCardActions from "../components/DocumentCardActions";
 import DocumentListItem from "../components/DocumentListItem";
-import { searchSortOptions } from "../constants/documentFilters";
-import {
-  ContentCard,
-  PageHeader,
-  PageShell,
-} from "../components/mui-primitives";
-import type { DocumentItem, PagedDocuments } from "../types";
+import SearchBar from "../components/SearchBar";
+import { ContentCard, PageShell } from "../components/mui-primitives";
+import type { PagedDocuments } from "../types";
 
 type FilterDraft = {
   type: string;
@@ -38,6 +28,7 @@ type FilterDraft = {
   yearFrom: string;
   yearTo: string;
   tags: string;
+  sort: string;
 };
 
 const emptyDraft: FilterDraft = {
@@ -46,27 +37,25 @@ const emptyDraft: FilterDraft = {
   yearFrom: "",
   yearTo: "",
   tags: "",
+  sort: "date_desc",
 };
 
 const SearchResultsPage: React.FC = () => {
-  const { token } = useAuth();
-  const navigate = useNavigate();
+  const { token, user } = useAuth();
   const [params, setParams] = useSearchParams();
   const [payload, setPayload] = useState<PagedDocuments | null>(null);
-  const [searchInput, setSearchInput] = useState(params.get("q") ?? "");
-  const [suggestions, setSuggestions] = useState<DocumentItem[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const [documentTypes, setDocumentTypes] = useState<string[]>([]);
-  const blurTimeoutRef = useRef<number | null>(null);
 
   const query = params.get("q") ?? "";
-  const sort = params.get("sort") ?? "relevance";
   const type = params.get("type") ?? "";
   const author = params.get("author") ?? "";
   const yearFrom = params.get("yearFrom") ?? "";
   const yearTo = params.get("yearTo") ?? "";
   const tags = params.get("tags") ?? "";
+  const sort = params.get("sort") ?? "date_desc";
   const page = Number(params.get("page") ?? 1);
+
+  const [searchInput, setSearchInput] = useState(query);
 
   const [draftFilters, setDraftFilters] = useState<FilterDraft>({
     type,
@@ -74,9 +63,8 @@ const SearchResultsPage: React.FC = () => {
     yearFrom,
     yearTo,
     tags,
+    sort,
   });
-
-  const [draftSort, setDraftSort] = useState(sort);
 
   useEffect(() => {
     setSearchInput(query);
@@ -89,8 +77,8 @@ const SearchResultsPage: React.FC = () => {
       yearFrom,
       yearTo,
       tags,
+      sort,
     });
-    setDraftSort(sort);
   }, [author, sort, tags, type, yearFrom, yearTo]);
 
   useEffect(() => {
@@ -113,6 +101,7 @@ const SearchResultsPage: React.FC = () => {
       yearTo,
       tags,
       page,
+      pageSize: 20,
     });
     setPayload(response);
   }, [author, page, query, sort, tags, token, type, yearFrom, yearTo]);
@@ -120,32 +109,6 @@ const SearchResultsPage: React.FC = () => {
   useEffect(() => {
     loadDocuments().catch(console.error);
   }, [loadDocuments]);
-
-  useEffect(() => {
-    const trimmed = searchInput.trim();
-    if (!token || trimmed.length < 2) {
-      setSuggestions([]);
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      getSuggestions(token, trimmed)
-        .then((response) => setSuggestions(response.items.slice(0, 5)))
-        .catch(console.error);
-    }, 300);
-
-    return () => window.clearTimeout(timeout);
-  }, [searchInput, token]);
-
-  useEffect(() => {
-    return () => {
-      if (blurTimeoutRef.current) {
-        window.clearTimeout(blurTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const showDropdown = showSuggestions && suggestions.length > 0;
 
   function updateParam(next: Record<string, string>) {
     const copy = new URLSearchParams(params);
@@ -157,329 +120,182 @@ const SearchResultsPage: React.FC = () => {
       }
     });
 
-    if (!next.page) {
+    if (!copy.get("sort")) {
+      copy.set("sort", "date_desc");
+    }
+    if (!copy.get("page")) {
       copy.set("page", "1");
     }
 
     setParams(copy);
   }
 
-  function submitSearch(event: React.FormEvent) {
-    event.preventDefault();
-    if (showDropdown && suggestions.length > 0) {
-      void openSuggestedDocument(suggestions[0]);
-    } else {
-      updateParam({ q: searchInput.trim(), page: "1" });
-      setShowSuggestions(false);
-    }
-  }
-
-  async function openSuggestedDocument(item: DocumentItem) {
-    if (!token) {
-      return;
-    }
-
-    await markOpened(token, item.id);
-    navigate(`/documents/${item.id}`);
+  function handleQuickOpen(id: number) {
+    if (!token) return;
+    void markOpened(token, id).catch(console.error);
   }
 
   async function toggleFavorite(id: number, isFavorite: boolean) {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     await toggleDocumentFavorite(token, id, isFavorite);
     await loadDocuments();
   }
 
-  function handleQuickOpen(id: number) {
-    if (!token) {
-      return;
-    }
-
-    void markOpened(token, id).catch(console.error);
-  }
-
   function applyFilters() {
     updateParam({
+      q: searchInput.trim(),
       type: draftFilters.type,
       author: draftFilters.author.trim(),
       yearFrom: draftFilters.yearFrom,
       yearTo: draftFilters.yearTo,
       tags: draftFilters.tags.trim(),
-      sort: draftSort,
+      sort: draftFilters.sort,
+      page: "1",
     });
   }
 
+  function applySearch() {
+    applyFilters();
+  }
+
   function resetFilters() {
+    setSearchInput("");
     setDraftFilters(emptyDraft);
-    setDraftSort("relevance");
     updateParam({
+      q: "",
       type: "",
       author: "",
       yearFrom: "",
       yearTo: "",
       tags: "",
-      sort: "relevance",
+      sort: "date_desc",
+      page: "1",
     });
   }
 
+  const getSearchTitle = () => {
+    const parts = [];
+    if (query) parts.push(`"${query}"`);
+    if (author) parts.push(`автору "${author}"`);
+    if (type) parts.push(`типу "${type}"`);
+    if (yearFrom || yearTo) {
+      if (yearFrom && yearTo) parts.push(`годам ${yearFrom}-${yearTo}`);
+      else if (yearFrom) parts.push(`годам от ${yearFrom}`);
+      else parts.push(`годам до ${yearTo}`);
+    }
+    if (tags) parts.push(`тегам "${tags}"`);
+
+    if (parts.length === 0) return "Все документы";
+    return `Результаты по ${parts.join(", ")}`;
+  };
+
   return (
     <PageShell>
-      <PageHeader
-        eyebrow="Поиск"
-        title={query ? `Результаты по запросу "${query}"` : "Все документы"}
-        side={<Typography fontWeight={700}>{payload?.total ?? 0} документов</Typography>}
-      />
+      <Box sx={{ display: "flex", gap: { xs: 3, md: 5 }, alignItems: "flex-start", flexDirection: { xs: "column", md: "row" } }}>
+        <Box
+          sx={{
+            width: { xs: "100%", md: "33.333%" },
+            minWidth: { md: 320 },
+            maxWidth: { md: 400 },
+            position: { md: "sticky" },
+            top: { md: 105 },
+            maxHeight: { md: "calc(100vh - 125px)" },
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: 3,
+            flexShrink: 0,
+            bgcolor: "action.hover",
+            p: 3,
+            borderRadius: 2,
+            border: (theme) => `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <Typography variant="h4" fontWeight={700}>
+            Поиск <Typography component="span" variant="h5" color="text.secondary">({payload?.total ?? 0})</Typography>
+          </Typography>
 
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: { xs: "1fr", md: "minmax(260px, 1fr) 2fr" },
-          gap: 1.5,
-          alignItems: "start",
-        }}
-      >
-        {/* Фильтры */}
-        <ContentCard sx={{ position: "sticky", top: 75 }}>
-          <Stack spacing={1.5}>
-            <Typography variant="h6">Фильтры</Typography>
+          <SearchBar
+            value={searchInput}
+            onChange={setSearchInput}
+            onSubmit={applySearch}
+            placeholder="Искать документы..."
+            hideButton
+          />
 
-            <FormControl fullWidth>
-              <InputLabel id="filter-type-label">Тип документа</InputLabel>
-              <Select
-                labelId="filter-type-label"
-                value={draftFilters.type}
-                label="Тип документа"
-                onChange={(e) =>
-                  setDraftFilters((current) => ({
-                    ...current,
-                    type: e.target.value,
-                  }))
-                }
-              >
-                <MenuItem value="">Все типы</MenuItem>
-                {documentTypes.map((item) => (
-                  <MenuItem key={item} value={item}>
-                    {item}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <TextField
-              label="Автор"
-              value={draftFilters.author}
-              onChange={(e) =>
-                setDraftFilters((current) => ({
-                  ...current,
-                  author: e.target.value,
-                }))
+          <Box>
+            <Typography variant="h6" sx={{ mb: 2 }}>Фильтры</Typography>
+            <CatalogFilters
+              onApply={applyFilters}
+              onReset={resetFilters}
+              idPrefix="search"
+              documentTypes={documentTypes}
+              typeValue={draftFilters.type}
+              onTypeChange={(value) =>
+                setDraftFilters((current) => ({ ...current, type: value }))
               }
-              placeholder="Введите автора"
-              fullWidth
-              inputProps={{ "aria-label": "Автор" }}
-            />
-
-            <Stack direction="row" spacing={1.2}>
-              <TextField
-                label="Год с"
-                value={draftFilters.yearFrom}
-                onChange={(e) =>
-                  setDraftFilters((current) => ({
-                    ...current,
-                    yearFrom: e.target.value,
-                  }))
-                }
-                type="number"
-                placeholder="2010"
-                fullWidth
-                inputProps={{ "aria-label": "Год с", min: 1900, max: 2100 }}
-              />
-              <TextField
-                label="Год по"
-                value={draftFilters.yearTo}
-                onChange={(e) =>
-                  setDraftFilters((current) => ({
-                    ...current,
-                    yearTo: e.target.value,
-                  }))
-                }
-                type="number"
-                placeholder="2025"
-                fullWidth
-                inputProps={{ "aria-label": "Год по", min: 1900, max: 2100 }}
-              />
-            </Stack>
-
-            <TextField
-              label="Ключевые слова"
-              value={draftFilters.tags}
-              onChange={(e) =>
-                setDraftFilters((current) => ({
-                  ...current,
-                  tags: e.target.value,
-                }))
+              authorValue={draftFilters.author}
+              onAuthorChange={(value) =>
+                setDraftFilters((current) => ({ ...current, author: value }))
               }
-              placeholder="Теги через пробел или запятую"
-              fullWidth
-              inputProps={{ "aria-label": "Ключевые слова" }}
+              yearFromValue={draftFilters.yearFrom}
+              onYearFromChange={(value) =>
+                setDraftFilters((current) => ({ ...current, yearFrom: value }))
+              }
+              yearToValue={draftFilters.yearTo}
+              onYearToChange={(value) =>
+                setDraftFilters((current) => ({ ...current, yearTo: value }))
+              }
+              tagsValue={draftFilters.tags}
+              onTagsChange={(value) =>
+                setDraftFilters((current) => ({ ...current, tags: value }))
+              }
+              includeSort
+              sortValue={draftFilters.sort}
+              onSortChange={(value) =>
+                setDraftFilters((current) => ({ ...current, sort: value }))
+              }
             />
+          </Box>
+        </Box>
 
-            <FormControl fullWidth>
-              <InputLabel id="filter-sort-label">Сортировка</InputLabel>
-              <Select
-                labelId="filter-sort-label"
-                value={draftSort}
-                label="Сортировка"
-                onChange={(e) => setDraftSort(e.target.value)}
-              >
-                {searchSortOptions.map((item) => (
-                  <MenuItem key={item.value} value={item.value}>
-                    {item.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <Stack direction="row" spacing={1.2}>
-              <Button variant="contained" onClick={applyFilters} fullWidth sx={{ borderRadius: 0 }}>
-                Применить
-              </Button>
-              <Button variant="outlined" onClick={resetFilters} fullWidth sx={{ borderRadius: 0 }}>
-                Сбросить
-              </Button>
-            </Stack>
-          </Stack>
-        </ContentCard>
-
-        {/* Результаты */}
-        <Box>
-          <ContentCard>
-            <Box component="form" onSubmit={submitSearch} sx={{ position: "relative", mb: 1.8 }}>
-              <Stack direction="row" spacing={1.1}>
-                <TextField
-                  label="Поиск документов"
-                  value={searchInput}
-                  onChange={(event) => setSearchInput(event.target.value)}
-                  onFocus={() => setShowSuggestions(true)}
-                  onBlur={() => {
-                    if (blurTimeoutRef.current) {
-                      window.clearTimeout(blurTimeoutRef.current);
-                    }
-                    blurTimeoutRef.current = window.setTimeout(
-                      () => setShowSuggestions(false),
-                      150
-                    );
-                  }}
-                  placeholder="Название, автор, кафедра"
-                  fullWidth
-                />
-                <IconButton
-                  type="submit"
-                  aria-label="Поиск"
-                  title="Поиск"
-                  sx={{
-                    width: 54,
-                    height: 54,
-                    borderRadius: 2,
-                    bgcolor: "primary.main",
-                    color: "primary.contrastText",
-                    "&:hover": {
-                      bgcolor: "primary.dark",
-                    },
-                  }}
-                >
-                  <SearchRoundedIcon />
-                </IconButton>
-              </Stack>
-
-              {showDropdown && (
-                <Paper
-                  sx={{
-                    position: "absolute",
-                    top: "calc(100% + 10px)",
-                    left: 0,
-                    right: 78,
-                    zIndex: 20,
-                    borderRadius: 2.25,
-                    maxHeight: 320,
-                    overflowY: "auto",
-                  }}
-                >
-                  {suggestions.map((item) => (
-                    <Button
-                      key={item.id}
-                      type="button"
-                      color="inherit"
-                      fullWidth
-                      sx={{
-                        justifyContent: "flex-start",
-                        borderRadius: 0,
-                        px: 1.6,
-                        py: 1.1,
-                        textAlign: "left",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "flex-start",
-                        borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
-                        "&:last-child": { borderBottom: "none" },
-                      }}
-                      onClick={() => void openSuggestedDocument(item)}
-                    >
-                      <Typography
-                        component="span"
-                        sx={{
-                          fontSize: 14,
-                          fontWeight: 500,
-                          lineHeight: 1.3,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          width: "100%",
-                        }}
-                      >
-                        {item.title}
-                      </Typography>
-                      {item.type && (
-                        <Typography
-                          component="span"
-                          sx={{
-                            fontSize: 11,
-                            color: "text.secondary",
-                            lineHeight: 1.2,
-                            mt: 0.2,
-                          }}
-                        >
-                          {item.type}
-                        </Typography>
-                      )}
-                    </Button>
-                  ))}
-                </Paper>
-              )}
-            </Box>
-
-            <Paper sx={{ p: 2, borderRadius: 3, mb: 1.8 }}>
-              <Stack
-                direction={{ xs: "column", md: "row" }}
-                spacing={1.2}
-                alignItems={{ xs: "flex-start", md: "center" }}
-                justifyContent="space-between"
-              >
-                <Box>
-                  <Typography fontWeight={700}>Не нашли нужный PDF?</Typography>
-                  <Typography color="text.secondary">
-                    Отправьте файл на модерацию, и после проверки он появится в каталоге.
-                  </Typography>
-                </Box>
-                <Button component={Link} to="/submit" variant="contained">
+        <Box sx={{ flex: 1, minWidth: 0, width: "100%" }}>
+          <ContentCard sx={{ minHeight: "100%", p: { xs: 0 }, bgcolor: "transparent", border: "none", boxShadow: "none" }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2, px: { xs: 2, md: 0 }, pt: { xs: 2, md: 0 } }}>
+              <Typography variant="h5">
+                {getSearchTitle()}
+              </Typography>
+              {user?.role !== "admin" && (
+                <Button component={Link} to="/submit" variant="outlined" size="small">
                   Предложить документ
                 </Button>
-              </Stack>
-            </Paper>
+              )}
+            </Stack>
 
-            <Stack spacing={1.4}>
+            {author && (
+              <Box sx={{ px: { xs: 2, md: 0 }, mb: 3 }}>
+                <Alert
+                  severity="info"
+                  onClose={() => {
+                    setDraftFilters((cur) => ({ ...cur, author: "" }));
+                    updateParam({ author: "", page: "1" });
+                  }}
+                  sx={{
+                    borderRadius: 2,
+                    alignItems: "center",
+                    border: (theme) => `1px solid ${theme.palette.info.light}`,
+                    backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(2, 136, 209, 0.15)" : "info.50",
+                    "& .MuiAlert-message": { width: "100%" }
+                  }}
+                >
+                  <Typography variant="body1">
+                    Показаны только документы автора: <strong>{author}</strong>
+                  </Typography>
+                </Alert>
+              </Box>
+            )}
+
+            <Stack spacing={0}>
               {(payload?.items ?? []).map((item) => (
                 <DocumentListItem
                   key={item.id}
@@ -495,31 +311,37 @@ const SearchResultsPage: React.FC = () => {
                   }
                 />
               ))}
+
+              {payload && payload.items.length === 0 && (
+                <Box sx={{ p: 4, textAlign: "center", bgcolor: "action.hover", borderRadius: 2, mt: 2 }}>
+                  <Typography variant="h6" gutterBottom>Ничего не найдено</Typography>
+                  <Typography color="text.secondary" sx={{ mb: 3 }}>
+                    По вашему запросу не найдено ни одного документа. Не нашли нужный материал? Вы можете предложить свой!
+                  </Typography>
+                  {user?.role !== "admin" && (
+                    <Button component={Link} to="/submit" variant="contained">
+                      Предложить документ
+                    </Button>
+                  )}
+                </Box>
+              )}
             </Stack>
 
             {payload && payload.total > payload.pageSize && (
-              <Stack
-                direction="row"
-                spacing={1.2}
-                alignItems="center"
-                justifyContent="center"
-                sx={{ mt: 2.2 }}
-              >
-                <Button
-                  variant="outlined"
-                  disabled={page <= 1}
-                  onClick={() => updateParam({ page: String(page - 1) })}
-                >
-                  Назад
-                </Button>
-                <Typography>Страница {page}</Typography>
-                <Button
-                  variant="outlined"
-                  disabled={page * payload.pageSize >= payload.total}
-                  onClick={() => updateParam({ page: String(page + 1) })}
-                >
-                  Вперёд
-                </Button>
+              <Stack spacing={1} alignItems="center" sx={{ mt: 4, mb: 2 }}>
+                <Pagination
+                  count={Math.max(1, Math.ceil(payload.total / payload.pageSize))}
+                  page={page}
+                  shape="rounded"
+                  color="primary"
+                  onChange={(_, nextPage) => {
+                    updateParam({ page: String(nextPage) });
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                />
+                <Typography variant="body2" color="text.secondary">
+                  Страница {page} из {Math.max(1, Math.ceil(payload.total / payload.pageSize))}
+                </Typography>
               </Stack>
             )}
           </ContentCard>

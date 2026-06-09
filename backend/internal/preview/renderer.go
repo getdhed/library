@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -15,6 +16,13 @@ type Renderer struct {
 }
 
 func New() (*Renderer, error) {
+	if execPath := os.Getenv("RENDERER_EXEC"); execPath != "" {
+		return &Renderer{
+			command:    []string{execPath},
+			scriptPath: "",
+		}, nil
+	}
+
 	command, err := findPython()
 	if err != nil {
 		return nil, err
@@ -32,7 +40,12 @@ func New() (*Renderer, error) {
 }
 
 func (r *Renderer) RenderFirstPage(ctx context.Context, pdfPath, outputPath string) error {
-	args := append(append([]string{}, r.command[1:]...), r.scriptPath, pdfPath, outputPath)
+	args := append([]string{}, r.command[1:]...)
+	if r.scriptPath != "" {
+		args = append(args, r.scriptPath)
+	}
+	args = append(args, pdfPath, outputPath)
+	
 	command := exec.CommandContext(ctx, r.command[0], args...)
 	output, err := command.CombinedOutput()
 	if err != nil {

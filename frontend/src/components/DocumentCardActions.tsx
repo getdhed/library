@@ -1,6 +1,6 @@
 import React from "react";
-import FavoriteBorderRoundedIcon from "@mui/icons-material/FavoriteBorderRounded";
-import FavoriteRoundedIcon from "@mui/icons-material/FavoriteRounded";
+import FavoriteIcon from "@mui/icons-material/Favorite";
+import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import { IconButton, Stack, Tooltip } from "@mui/material";
 import { Link } from "react-router-dom";
@@ -61,7 +61,7 @@ const DocumentCardActions: React.FC<DocumentCardActionsProps> = ({
           aria-label={favoriteLabel}
           sx={(item.isFavorite ? { ...cardActionIconButtonSx, ...cardActionIconButtonActiveSx } : cardActionIconButtonSx) as any}
         >
-          {item.isFavorite ? <FavoriteRoundedIcon /> : <FavoriteBorderRoundedIcon />}
+          {item.isFavorite ? <FavoriteIcon /> : <FavoriteBorderIcon />}
         </IconButton>
       </Tooltip>
     </Stack>

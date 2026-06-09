@@ -102,11 +102,11 @@ describe("BrowsePage", () => {
     cleanup();
   });
 
-  it("renders catalog list without search input", async () => {
+  it("renders catalog list with search input", async () => {
     renderPage();
 
     expect(await screen.findByText("DevOps Playbook")).toBeInTheDocument();
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /Поиск документов/i })).toBeInTheDocument();
 
     expect(getDocumentsMock).toHaveBeenCalledWith(
       "token",
@@ -122,34 +122,30 @@ describe("BrowsePage", () => {
     );
   });
 
-  it("applies and resets filters via MUI dialog", async () => {
+  it("applies and resets inline filters", async () => {
     renderPage();
 
     expect(await screen.findByText("DevOps Playbook")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Фильтры/ }));
-
-    const dialog = screen.getByRole("dialog");
-    const selects = within(dialog).getAllByRole("combobox");
+    const selects = screen.getAllByRole("combobox");
     expect(selects).toHaveLength(2);
 
     await selectMUIOption(selects[0], 1);
     await selectMUIOption(selects[1], 4);
-    fireEvent.change(within(dialog).getByLabelText("Автор"), {
+    fireEvent.change(screen.getByLabelText("Автор"), {
       target: { value: "Demo Author" },
     });
-    fireEvent.change(within(dialog).getByLabelText("Год с"), {
+    fireEvent.change(screen.getByLabelText("Год с"), {
       target: { value: "2020" },
     });
-    fireEvent.change(within(dialog).getByLabelText("Год по"), {
-      target: { value: "2026" },
+    fireEvent.change(screen.getByLabelText("Год по"), {
+      target: { value: "2024" },
     });
-    fireEvent.change(within(dialog).getByLabelText("Ключевые слова"), {
-      target: { value: "devops, pdf" },
+    fireEvent.change(screen.getByLabelText("Ключевые слова"), {
+      target: { value: "test" },
     });
 
-    const dialogButtons = within(dialog).getAllByRole("button");
-    fireEvent.click(dialogButtons[dialogButtons.length - 1]);
+    fireEvent.click(screen.getByRole("button", { name: "Поиск" }));
 
     await waitFor(() => {
       expect(getDocumentsMock).toHaveBeenLastCalledWith(
@@ -160,20 +156,13 @@ describe("BrowsePage", () => {
           type: "Textbook",
           author: "Demo Author",
           yearFrom: "2020",
-          yearTo: "2026",
-          tags: "devops, pdf",
+          yearTo: "2024",
+          tags: "test",
         })
       );
     });
 
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /Фильтры/ }));
-    const resetDialog = screen.getByRole("dialog");
-    const resetButtons = within(resetDialog).getAllByRole("button");
-    fireEvent.click(resetButtons[resetButtons.length - 2]);
+    fireEvent.click(screen.getByRole("button", { name: "Сбросить" }));
 
     await waitFor(() => {
       expect(getDocumentsMock).toHaveBeenLastCalledWith(
