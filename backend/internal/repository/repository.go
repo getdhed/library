@@ -53,8 +53,11 @@ func scanUser(row rowScanner) (domain.User, error) {
 		&user.Role,
 		&user.AvatarURL,
 		&user.IsActive,
+		&user.LastLoginAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
+		&user.DeletedAt,
+		&user.DeactivationReason,
 	)
 	return user, err
 }
@@ -62,11 +65,11 @@ func scanUser(row rowScanner) (domain.User, error) {
 func (r *Repository) EnsureSeedData(ctx context.Context, adminUsername, adminName, adminPasswordHash string) error {
 	if _, err := r.db.ExecContext(ctx, `
 		INSERT INTO users(username, password_hash, full_name, role)
-		VALUES ($1, $2, $3, 'admin')
+		VALUES ($1, $2, $3, 'superadmin')
 		ON CONFLICT (username) DO UPDATE
 		SET password_hash = EXCLUDED.password_hash,
 			full_name = EXCLUDED.full_name,
-			role = 'admin',
+			role = 'superadmin',
 			is_active = TRUE,
 			updated_at = NOW()
 	`, strings.ToLower(strings.TrimSpace(adminUsername)), adminPasswordHash, strings.TrimSpace(adminName)); err != nil {
@@ -80,15 +83,15 @@ func (r *Repository) EnsureSystemUser(ctx context.Context, username, fullName, p
 	var user domain.User
 	err := r.db.QueryRowContext(ctx, `
 		INSERT INTO users(username, password_hash, full_name, role)
-		VALUES ($1, $2, $3, 'admin')
+		VALUES ($1, $2, $3, 'superadmin')
 		ON CONFLICT (username) DO UPDATE
 		SET full_name = EXCLUDED.full_name,
-			role = 'admin',
+			role = 'superadmin',
 			is_active = TRUE,
 			updated_at = NOW()
-		RETURNING id, username, full_name, role, avatar_url, is_active, created_at, updated_at
+		RETURNING id, username, full_name, role, avatar_url, is_active, last_login_at, created_at, updated_at, deleted_at
 	`, strings.ToLower(strings.TrimSpace(username)), passwordHash, strings.TrimSpace(fullName)).
-		Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.CreatedAt, &user.UpdatedAt)
+		Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt)
 	if err != nil {
 		return domain.User{}, err
 	}
@@ -100,9 +103,9 @@ func (r *Repository) CreateUser(ctx context.Context, input domain.RegisterInput,
 	err := r.db.QueryRowContext(ctx, `
 		INSERT INTO users(username, password_hash, full_name, role)
 		VALUES ($1, $2, $3, 'user')
-		RETURNING id, username, full_name, role, avatar_url, is_active, created_at, updated_at
+		RETURNING id, username, full_name, role, avatar_url, is_active, last_login_at, created_at, updated_at, deleted_at
 	`, strings.ToLower(strings.TrimSpace(input.Username)), passwordHash, strings.TrimSpace(input.FullName)).
-		Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.CreatedAt, &user.UpdatedAt)
+		Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") {
 			return domain.User{}, apperror.ErrConflict
@@ -115,11 +118,11 @@ func (r *Repository) CreateUser(ctx context.Context, input domain.RegisterInput,
 func (r *Repository) GetUserByUsername(ctx context.Context, username string) (domain.User, error) {
 	var user domain.User
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, username, full_name, role, avatar_url, is_active, password_hash, created_at, updated_at
+		SELECT id, username, full_name, role, avatar_url, is_active, password_hash, last_login_at, created_at, updated_at, deleted_at, deactivation_reason
 		FROM users
 		WHERE username = $1
 	`, strings.ToLower(strings.TrimSpace(username))).
-		Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.PasswordHash, &user.CreatedAt, &user.UpdatedAt)
+		Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.PasswordHash, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt, &user.DeactivationReason)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.User{}, apperror.ErrNotFound
 	}
@@ -129,10 +132,10 @@ func (r *Repository) GetUserByUsername(ctx context.Context, username string) (do
 func (r *Repository) GetUserByID(ctx context.Context, id int64) (domain.User, error) {
 	var user domain.User
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, username, full_name, role, avatar_url, is_active, created_at, updated_at
+		SELECT id, username, full_name, role, avatar_url, is_active, last_login_at, created_at, updated_at, deleted_at, deactivation_reason
 		FROM users
 		WHERE id = $1
-	`, id).Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.CreatedAt, &user.UpdatedAt)
+	`, id).Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt, &user.DeactivationReason)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.User{}, apperror.ErrNotFound
 	}
@@ -166,9 +169,13 @@ func (r *Repository) ListUsers(ctx context.Context, filters domain.UserFilters) 
 	}
 	switch filters.Status {
 	case "active":
-		conditions = append(conditions, "is_active = TRUE")
+		conditions = append(conditions, "is_active = TRUE", "deleted_at IS NULL")
 	case "inactive":
-		conditions = append(conditions, "is_active = FALSE")
+		conditions = append(conditions, "is_active = FALSE", "deleted_at IS NULL")
+	case "archived":
+		conditions = append(conditions, "deleted_at IS NOT NULL")
+	default:
+		conditions = append(conditions, "deleted_at IS NULL")
 	}
 
 	var total int
@@ -184,7 +191,7 @@ func (r *Repository) ListUsers(ctx context.Context, filters domain.UserFilters) 
 	args = append(args, pageSize, offset)
 
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, username, full_name, role, avatar_url, is_active, created_at, updated_at
+		SELECT id, username, full_name, role, avatar_url, is_active, last_login_at, created_at, updated_at, deleted_at, deactivation_reason
 		FROM users
 		WHERE `+strings.Join(conditions, " AND ")+`
 		ORDER BY created_at DESC, id DESC
@@ -220,7 +227,7 @@ func (r *Repository) CreateAdminUser(ctx context.Context, input domain.AdminUser
 	user, err := scanUser(r.db.QueryRowContext(ctx, `
 		INSERT INTO users(username, password_hash, full_name, role)
 		VALUES ($1, $2, $3, $4)
-		RETURNING id, username, full_name, role, avatar_url, is_active, created_at, updated_at
+		RETURNING id, username, full_name, role, avatar_url, is_active, last_login_at, created_at, updated_at, deleted_at, deactivation_reason
 	`, strings.ToLower(strings.TrimSpace(input.Username)), passwordHash, strings.TrimSpace(input.FullName), input.Role))
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") {
@@ -239,7 +246,7 @@ func (r *Repository) UpdateUser(ctx context.Context, id int64, input domain.Admi
 			role = $4,
 			updated_at = NOW()
 		WHERE id = $1
-		RETURNING id, username, full_name, role, avatar_url, is_active, created_at, updated_at
+		RETURNING id, username, full_name, role, avatar_url, is_active, last_login_at, created_at, updated_at, deleted_at, deactivation_reason
 	`, id, strings.ToLower(strings.TrimSpace(input.Username)), strings.TrimSpace(input.FullName), input.Role))
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.User{}, apperror.ErrNotFound
@@ -253,32 +260,61 @@ func (r *Repository) UpdateUser(ctx context.Context, id int64, input domain.Admi
 	return user, nil
 }
 
-func (r *Repository) SetUserActive(ctx context.Context, id int64, isActive bool) (domain.User, error) {
+func (r *Repository) SetUserActive(ctx context.Context, id int64, isActive bool, reason string) (domain.User, error) {
 	user, err := scanUser(r.db.QueryRowContext(ctx, `
 		UPDATE users
 		SET is_active = $2,
+			deactivation_reason = $3,
 			updated_at = NOW()
 		WHERE id = $1
-		RETURNING id, username, full_name, role, avatar_url, is_active, created_at, updated_at
-	`, id, isActive))
+		RETURNING id, username, full_name, role, avatar_url, is_active, last_login_at, created_at, updated_at, deleted_at, deactivation_reason
+	`, id, isActive, reason))
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.User{}, apperror.ErrNotFound
 	}
 	return user, err
 }
 
-func (r *Repository) ResetUserPassword(ctx context.Context, id int64, passwordHash string) (domain.User, error) {
-	user, err := scanUser(r.db.QueryRowContext(ctx, `
-		UPDATE users
-		SET password_hash = $2,
-			updated_at = NOW()
-		WHERE id = $1
-		RETURNING id, username, full_name, role, avatar_url, is_active, created_at, updated_at
-	`, id, passwordHash))
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.User{}, apperror.ErrNotFound
+
+
+func (r *Repository) UpdateLastLoginAt(ctx context.Context, id int64) error {
+	_, err := r.db.ExecContext(ctx, "UPDATE users SET last_login_at = NOW() WHERE id = $1", id)
+	return err
+}
+
+func (r *Repository) DeleteUser(ctx context.Context, id int64) error {
+	res, err := r.db.ExecContext(ctx, "UPDATE users SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL", id)
+	if err != nil {
+		return err
 	}
-	return user, err
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return apperror.ErrNotFound
+	}
+	return nil
+}
+
+func (r *Repository) RestoreUser(ctx context.Context, id int64) error {
+	res, err := r.db.ExecContext(ctx, "UPDATE users SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL", id)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return apperror.ErrNotFound
+	}
+	return nil
+}
+
+func (r *Repository) DeactivateInactiveUsers(ctx context.Context, threshold time.Time) error {
+	_, err := r.db.ExecContext(ctx, "UPDATE users SET is_active = false, deactivation_reason = 'Автоматическая деактивация (более 6 месяцев бездействия)' WHERE last_login_at < $1 AND is_active = true", threshold)
+	return err
 }
 
 func (r *Repository) CreateSubmission(ctx context.Context, userID int64, input domain.CreateSubmissionInput) (domain.DocumentSubmission, error) {
@@ -305,9 +341,10 @@ func (r *Repository) CreateSubmission(ctx context.Context, userID int64, input d
 			mime_type,
 			cover_path,
 			status,
-			source
+			source,
+			is_local
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 'pending', $20)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 'pending', $20, $21)
 		RETURNING id
 	`,
 		userID,
@@ -330,6 +367,7 @@ func (r *Repository) CreateSubmission(ctx context.Context, userID int64, input d
 		input.MimeType,
 		input.CoverPath,
 		input.Source,
+		input.IsLocal,
 	).Scan(&id)
 	if err != nil {
 		return domain.DocumentSubmission{}, err
@@ -363,6 +401,7 @@ func (r *Repository) GetSubmissionByID(ctx context.Context, id int64) (domain.Do
 			s.cover_path,
 			s.status,
 			s.source,
+			s.is_local,
 			s.moderation_note,
 			COALESCE(s.approved_document_id, 0),
 			COALESCE(s.reviewed_by, 0),
@@ -412,6 +451,7 @@ func (r *Repository) ListSubmissionsByUser(ctx context.Context, userID int64) ([
 			s.cover_path,
 			s.status,
 			s.source,
+			s.is_local,
 			s.moderation_note,
 			COALESCE(s.approved_document_id, 0),
 			COALESCE(s.reviewed_by, 0),
@@ -469,6 +509,7 @@ func (r *Repository) ListSubmissions(ctx context.Context, status domain.Submissi
 			s.cover_path,
 			s.status,
 			s.source,
+			s.is_local,
 			s.moderation_note,
 			COALESCE(s.approved_document_id, 0),
 			COALESCE(s.reviewed_by, 0),
@@ -641,6 +682,7 @@ func scanSubmission(row rowScanner) (domain.DocumentSubmission, error) {
 		&item.CoverPath,
 		&item.Status,
 		&item.Source,
+		&item.IsLocal,
 		&item.ModerationNote,
 		&item.ApprovedDocumentID,
 		&item.ReviewedBy,
@@ -693,6 +735,16 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 	} else {
 		queryConditions = append(queryConditions, "d.deleted_at IS NULL")
 		countConditions = append(countConditions, "d.deleted_at IS NULL")
+	}
+
+	if filters.IsLocal != nil {
+		queryConditions = append(queryConditions, fmt.Sprintf("d.is_local = $%d", queryArgIndex))
+		queryArgs = append(queryArgs, *filters.IsLocal)
+		queryArgIndex++
+
+		countConditions = append(countConditions, fmt.Sprintf("d.is_local = $%d", countArgIndex))
+		countArgs = append(countArgs, *filters.IsLocal)
+		countArgIndex++
 	}
 
 	if requestedQuery != "" {
@@ -868,6 +920,7 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			d.created_at,
 			d.updated_at,
 			d.deleted_at,
+			d.is_local,
 			COALESCE(array_to_string(array_agg(DISTINCT t.name), ','), '') AS tags,
 			CASE WHEN $1 > 0 THEN EXISTS (
 				SELECT 1 FROM favorites fav WHERE fav.user_id = $1 AND fav.document_id = d.id
@@ -917,6 +970,7 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			&item.CreatedAt,
 			&item.UpdatedAt,
 			&item.DeletedAt,
+			&item.IsLocal,
 			&tags,
 			&item.IsFavorite,
 			&item.Similarity,
@@ -972,6 +1026,7 @@ func (r *Repository) GetDocumentByID(ctx context.Context, userID, id int64, admi
 			d.created_at,
 			d.updated_at,
 			d.deleted_at,
+			d.is_local,
 			COALESCE(array_to_string(array_agg(DISTINCT t.name), ','), '') AS tags,
 			CASE WHEN $1 > 0 THEN EXISTS (
 				SELECT 1 FROM favorites fav WHERE fav.user_id = $1 AND fav.document_id = d.id
@@ -1010,6 +1065,7 @@ func (r *Repository) GetDocumentByID(ctx context.Context, userID, id int64, admi
 		&document.CreatedAt,
 		&document.UpdatedAt,
 		&document.DeletedAt,
+		&document.IsLocal,
 		&tags,
 		&document.IsFavorite,
 		&document.Similarity,
@@ -1105,6 +1161,7 @@ func (r *Repository) listDocumentsByRelation(ctx context.Context, relationTable,
 			d.created_at,
 			d.updated_at,
 			d.deleted_at,
+			d.is_local,
 			COALESCE(array_to_string(array_agg(DISTINCT t.name), ','), '') AS tags,
 			EXISTS (
 				SELECT 1 FROM favorites fav WHERE fav.user_id = $1 AND fav.document_id = d.id
@@ -1133,7 +1190,7 @@ func (r *Repository) listDocumentsByRelation(ctx context.Context, relationTable,
 			&item.Year, &item.Type, &item.PlaceOfPublication, &item.Publisher, &item.PeriodicalName,
 			&item.Volume, &item.Description,
 			&item.FilePath, &item.FileName, &item.FileSizeBytes, &item.MimeType, &item.CoverPath,
-			&item.CreatedAt, &item.UpdatedAt, &item.DeletedAt, &tags, &item.IsFavorite, &item.Similarity,
+			&item.CreatedAt, &item.UpdatedAt, &item.DeletedAt, &item.IsLocal, &tags, &item.IsFavorite, &item.Similarity,
 		); err != nil {
 			return nil, err
 		}
@@ -1160,12 +1217,12 @@ func (r *Repository) CreateDocument(ctx context.Context, input domain.UpsertDocu
 
 	var id int64
 	if err := tx.QueryRowContext(ctx, `
-		INSERT INTO documents(title, author, executor, scientific_advisor, year, type, place_of_publication, publisher, periodical_name, volume, description, file_path, file_name, file_size_bytes, mime_type, cover_path)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		INSERT INTO documents(title, author, executor, scientific_advisor, year, type, place_of_publication, publisher, periodical_name, volume, description, file_path, file_name, file_size_bytes, mime_type, cover_path, is_local)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 
 		RETURNING id
 
-	`, input.Title, input.Author, input.Executor, input.ScientificAdvisor, input.Year, input.Type, input.PlaceOfPublication, input.Publisher, input.PeriodicalName, input.Volume, input.Description, input.FilePath, input.FileName, input.FileSize, input.MimeType, input.CoverPath).Scan(&id); err != nil {
+	`, input.Title, input.Author, input.Executor, input.ScientificAdvisor, input.Year, input.Type, input.PlaceOfPublication, input.Publisher, input.PeriodicalName, input.Volume, input.Description, input.FilePath, input.FileName, input.FileSize, input.MimeType, input.CoverPath, input.IsLocal).Scan(&id); err != nil {
 		return domain.Document{}, err
 	}
 
@@ -1205,9 +1262,10 @@ func (r *Repository) UpdateDocument(ctx context.Context, id int64, input domain.
 			file_size_bytes = CASE WHEN $15 = 0 THEN file_size_bytes ELSE $15 END,
 			mime_type = CASE WHEN $16 = '' THEN mime_type ELSE $16 END,
 			cover_path = CASE WHEN $17 = '' THEN cover_path ELSE $17 END,
+			is_local = $18,
 			updated_at = NOW()
 		WHERE id = $1
-	`, id, input.Title, input.Author, input.Executor, input.ScientificAdvisor, input.Year, input.Type, input.PlaceOfPublication, input.Publisher, input.PeriodicalName, input.Volume, input.Description, input.FilePath, input.FileName, input.FileSize, input.MimeType, input.CoverPath)
+	`, id, input.Title, input.Author, input.Executor, input.ScientificAdvisor, input.Year, input.Type, input.PlaceOfPublication, input.Publisher, input.PeriodicalName, input.Volume, input.Description, input.FilePath, input.FileName, input.FileSize, input.MimeType, input.CoverPath, input.IsLocal)
 	if err != nil {
 		return domain.Document{}, err
 	}
@@ -1728,6 +1786,9 @@ func (r *Repository) Stats(ctx context.Context, filters domain.StatsFilters) (do
 	`, dateFrom, dateTo).Scan(&stats.UploadedInPeriod); err != nil {
 		return stats, err
 	}
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM site_visits WHERE created_at >= $1 AND created_at < $2`, dateFrom, dateTo).Scan(&stats.VisitsInPeriod); err != nil {
+		return stats, err
+	}
 
 	queryRows, err := r.db.QueryContext(ctx, `
 		SELECT query, COUNT(*) AS count
@@ -1789,24 +1850,73 @@ func (r *Repository) Stats(ctx context.Context, filters domain.StatsFilters) (do
 		stats.DocumentsByType = append(stats.DocumentsByType, item)
 	}
 
-	loadRows, err := r.db.QueryContext(ctx, `
-		SELECT TO_CHAR(DATE_TRUNC('hour', created_at), 'YYYY-MM-DD HH24:00') AS name, COUNT(*) AS count
+	duration := dateTo.Sub(dateFrom)
+	var interval, format, sqlFormat string
+	if duration <= 48*time.Hour {
+		interval = "hour"
+		format = "2006-01-02 15:00"
+		sqlFormat = "YYYY-MM-DD HH24:00"
+	} else if duration <= 60*24*time.Hour {
+		interval = "day"
+		format = "2006-01-02"
+		sqlFormat = "YYYY-MM-DD"
+	} else {
+		interval = "month"
+		format = "2006-01"
+		sqlFormat = "YYYY-MM"
+	}
+
+	query := fmt.Sprintf(`
+		SELECT TO_CHAR(DATE_TRUNC('%s', created_at), '%s') AS name, COUNT(*) AS count
 		FROM api_requests_log
 		WHERE created_at >= $1 AND created_at < $2
-		GROUP BY DATE_TRUNC('hour', created_at)
-		ORDER BY DATE_TRUNC('hour', created_at) ASC
-	`, dateFrom, dateTo)
+		GROUP BY DATE_TRUNC('%s', created_at)
+	`, interval, sqlFormat, interval)
+
+	loadRows, err := r.db.QueryContext(ctx, query, dateFrom, dateTo)
 	if err != nil {
 		return stats, err
 	}
 	defer loadRows.Close()
+
+	countsMap := make(map[string]int)
 	for loadRows.Next() {
-		var item domain.NamedStat
-		if err := loadRows.Scan(&item.Name, &item.Count); err != nil {
+		var name string
+		var count int
+		if err := loadRows.Scan(&name, &count); err != nil {
 			return stats, err
 		}
-		stats.AppLoadByHour = append(stats.AppLoadByHour, item)
+		countsMap[name] = count
+	}
+
+	stats.AppLoadByHour = make([]domain.NamedStat, 0)
+	var curr time.Time
+	if interval == "hour" {
+		curr = dateFrom.Truncate(time.Hour)
+	} else if interval == "day" {
+		curr = time.Date(dateFrom.Year(), dateFrom.Month(), dateFrom.Day(), 0, 0, 0, 0, dateFrom.Location())
+	} else {
+		curr = time.Date(dateFrom.Year(), dateFrom.Month(), 1, 0, 0, 0, 0, dateFrom.Location())
+	}
+
+	for curr.Before(dateTo) {
+		name := curr.Format(format)
+		count := countsMap[name]
+		stats.AppLoadByHour = append(stats.AppLoadByHour, domain.NamedStat{Name: name, Count: int64(count)})
+
+		if interval == "hour" {
+			curr = curr.Add(time.Hour)
+		} else if interval == "day" {
+			curr = curr.AddDate(0, 0, 1)
+		} else {
+			curr = curr.AddDate(0, 1, 0)
+		}
 	}
 
 	return stats, nil
+}
+
+func (r *Repository) LogVisit(ctx context.Context) error {
+	_, err := r.db.ExecContext(ctx, "INSERT INTO site_visits DEFAULT VALUES")
+	return err
 }

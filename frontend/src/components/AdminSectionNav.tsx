@@ -5,6 +5,7 @@ import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
 import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
 import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import ArchiveOutlinedIcon from "@mui/icons-material/ArchiveOutlined";
 import { NavLink } from "react-router-dom";
 import CheckCircleOutlineRoundedIcon from "@mui/icons-material/CheckCircleOutlineRounded";
 import { useAuth } from "../auth/AuthContext";
@@ -13,7 +14,7 @@ import { getAdminSubmissions } from "../api/library";
 const sections = [
   {
     to: "/admin/moderation",
-    label: "Модерация",
+    label: "Заявки",
     icon: <CheckCircleOutlineRoundedIcon fontSize="small" />,
   },
   {
@@ -37,9 +38,9 @@ const sections = [
     icon: <HistoryRoundedIcon fontSize="small" />,
   },
   {
-    to: "/admin/trash",
-    label: "Корзина",
-    icon: <DeleteOutlineIcon fontSize="small" />,
+    to: "/admin/archive",
+    label: "Архив",
+    icon: <ArchiveOutlinedIcon fontSize="small" />,
   },
 ];
 
@@ -48,12 +49,16 @@ const AdminSectionNav: React.FC = () => {
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
-    if (!token) return;
-    getAdminSubmissions(token, "pending")
-      .then((data) => {
-        setPendingCount(data.items.length);
-      })
-      .catch(console.error);
+    const fetchCount = () => {
+      if (!token) return;
+      getAdminSubmissions(token, "pending")
+        .then((data) => setPendingCount(data.items.length))
+        .catch(console.error);
+    };
+
+    fetchCount();
+    window.addEventListener("admin_submissions_changed", fetchCount);
+    return () => window.removeEventListener("admin_submissions_changed", fetchCount);
   }, [token]);
 
   return (
@@ -69,7 +74,7 @@ const AdminSectionNav: React.FC = () => {
             variant="outlined"
             startIcon={
               isModeration ? (
-                <Badge badgeContent={pendingCount} color="error">
+                <Badge badgeContent={pendingCount} color="error" invisible={pendingCount === 0}>
                   {section.icon}
                 </Badge>
               ) : (

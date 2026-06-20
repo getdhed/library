@@ -7,8 +7,9 @@ type SubmissionStatus string
 type SubmissionSource string
 
 const (
-	RoleUser  UserRole = "user"
-	RoleAdmin UserRole = "admin"
+	RoleUser       UserRole = "user"
+	RoleAdmin      UserRole = "admin"
+	RoleSuperAdmin UserRole = "superadmin"
 
 	SubmissionStatusPending  SubmissionStatus = "pending"
 	SubmissionStatusApproved SubmissionStatus = "approved"
@@ -23,11 +24,14 @@ type User struct {
 	Username     string    `json:"username"`
 	FullName     string    `json:"fullName"`
 	Role         UserRole  `json:"role"`
-	AvatarURL    string    `json:"avatarUrl,omitempty"`
-	IsActive     bool      `json:"isActive"`
-	PasswordHash string    `json:"-"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	AvatarURL    string     `json:"avatarUrl,omitempty"`
+	IsActive     bool       `json:"isActive"`
+	PasswordHash string     `json:"-"`
+	LastLoginAt  time.Time  `json:"lastLoginAt"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	UpdatedAt    time.Time  `json:"updatedAt"`
+	DeletedAt    *time.Time `json:"deletedAt,omitempty"`
+	DeactivationReason string `json:"deactivationReason,omitempty"`
 }
 
 type Document struct {
@@ -52,6 +56,7 @@ type Document struct {
 	UpdatedAt          time.Time `json:"updatedAt"`
 	Tags               []string  `json:"tags"`
 	IsFavorite         bool       `json:"isFavorite"`
+	IsLocal            bool       `json:"isLocal"`
 	Similarity         float64    `json:"similarity,omitempty"`
 	DeletedAt          *time.Time `json:"deletedAt,omitempty"`
 }
@@ -79,6 +84,7 @@ type DocumentSubmission struct {
 	CoverPath          string           `json:"coverPath,omitempty"`
 	Status             SubmissionStatus `json:"status"`
 	Source             SubmissionSource `json:"source"`
+	IsLocal            bool             `json:"isLocal"`
 	ModerationNote     string           `json:"moderationNote,omitempty"`
 	ApprovedDocumentID int64            `json:"approvedDocumentId,omitempty"`
 	ReviewedBy         int64            `json:"reviewedBy,omitempty"`
@@ -99,6 +105,7 @@ type SearchHistoryItem struct {
 
 type Stats struct {
 	DocumentsCount        int64       `json:"documentsCount"`
+	VisitsInPeriod        int64       `json:"visitsInPeriod"`
 	ViewsToday            int64       `json:"viewsToday"`
 	DownloadsToday        int64       `json:"downloadsToday"`
 	SearchesToday         int64       `json:"searchesToday"`
@@ -129,6 +136,7 @@ type DocumentFilters struct {
 	TagsQuery      string
 	Sort           string
 	IncludeDeleted bool
+	IsLocal        *bool
 	Page           int
 	PageSize       int
 	YearFrom       int
@@ -188,7 +196,8 @@ type AdminUserInput struct {
 }
 
 type UserStatusInput struct {
-	IsActive bool `json:"isActive"`
+	IsActive           bool   `json:"isActive"`
+	DeactivationReason string `json:"deactivationReason,omitempty"`
 }
 
 type UpsertDocumentInput struct {
@@ -210,6 +219,7 @@ type UpsertDocumentInput struct {
 	MimeType           string
 	CoverPath          string
 	Source             SubmissionSource
+	IsLocal            bool
 }
 
 type DocumentAuditEvent struct {
@@ -280,4 +290,5 @@ type CreateSubmissionInput struct {
 	MimeType           string
 	CoverPath          string
 	Source             SubmissionSource
+	IsLocal            bool
 }

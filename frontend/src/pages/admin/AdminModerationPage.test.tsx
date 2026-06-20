@@ -36,7 +36,7 @@ describe("AdminModerationPage", () => {
       </ThemeProvider>
     );
 
-    expect(screen.getByText("Модерация")).toBeInTheDocument();
+    expect(screen.getByText("Заявки")).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText("В данной категории заявок нет.")).toBeInTheDocument();

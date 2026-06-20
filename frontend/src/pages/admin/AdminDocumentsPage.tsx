@@ -30,7 +30,7 @@ import {
   type AdminForm,
   createEmptyForm,
 } from "../../components/DocumentFormFields";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import ArchiveOutlinedIcon from "@mui/icons-material/ArchiveOutlined";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import {
@@ -88,7 +88,6 @@ function validateDocumentForm(form: AdminForm, requireFile: boolean) {
   if (!form.title.trim()) missing.push("название");
   if (!Number.isFinite(form.year) || form.year <= 0) missing.push("год");
   if (!form.type.trim()) missing.push("тип");
-  if (!form.description.trim()) missing.push("описание");
   if (requireFile && !form.file) missing.push("PDF-файл");
   return missing;
 }
@@ -137,6 +136,30 @@ const AdminDocumentsPage: React.FC = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [createForm, setCreateForm] = useState<AdminForm>(() => createEmptyForm());
   const [createFormError, setCreateFormError] = useState("");
+
+  const [createPreviewUrl, setCreatePreviewUrl] = useState("");
+  useEffect(() => {
+    if (createForm.file) {
+      const blob = new Blob([createForm.file], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      setCreatePreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setCreatePreviewUrl("");
+    }
+  }, [createForm.file]);
+
+  const [editPreviewUrl, setEditPreviewUrl] = useState("");
+  useEffect(() => {
+    if (editForm.file) {
+      const blob = new Blob([editForm.file], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      setEditPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setEditPreviewUrl("");
+    }
+  }, [editForm.file]);
 
   const isDesktop = useMediaQuery("(min-width:960px)", {
     defaultMatches: true,
@@ -373,9 +396,9 @@ const AdminDocumentsPage: React.FC = () => {
                                 <EditRoundedIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="Удалить">
+                            <Tooltip title="В архив">
                               <IconButton size="small" onClick={() => void removeDocument(item.id)} sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonDangerSx } as any}>
-                                <DeleteOutlineIcon fontSize="small" />
+                                <ArchiveOutlinedIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
                           </Stack>
@@ -407,9 +430,9 @@ const AdminDocumentsPage: React.FC = () => {
                           <EditRoundedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Удалить">
+                      <Tooltip title="В архив">
                         <IconButton size="small" onClick={() => void removeDocument(item.id)} sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonDangerSx } as any}>
-                          <DeleteOutlineIcon fontSize="small" />
+                          <ArchiveOutlinedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                     </CardActions>
@@ -444,7 +467,7 @@ const AdminDocumentsPage: React.FC = () => {
       <AdminDocumentFullView
         open={isCreating}
         title="Создать документ"
-        pdfUrl=""
+        pdfUrl={createPreviewUrl}
         onClose={resetCreating}
         form={createForm}
         setForm={setCreateForm}
@@ -460,7 +483,7 @@ const AdminDocumentsPage: React.FC = () => {
         open={!!editingDocument}
         title="Редактировать документ"
         subtitle={editingDocument?.title}
-        pdfUrl={editingDocument ? documentFileUrl(editingDocument.id, token ?? "", false, editingDocument.updatedAt) : ""}
+        pdfUrl={editPreviewUrl || (editingDocument ? documentFileUrl(editingDocument.id, token ?? "", false, editingDocument.updatedAt) : "")}
         onClose={resetEditing}
         form={editForm}
         setForm={setEditForm}
@@ -472,9 +495,8 @@ const AdminDocumentsPage: React.FC = () => {
         documentTypes={documentTypes}
         secondaryActions={
           <Button
-            variant="outlined"
+            variant="contained"
             color="error"
-            size="large"
             onClick={() => editingDocument && void removeDocument(editingDocument.id)}
           >
             Удалить документ

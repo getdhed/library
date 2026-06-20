@@ -4,6 +4,7 @@ import DescriptionIcon from "@mui/icons-material/Description";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import DownloadIcon from "@mui/icons-material/Download";
 import SearchIcon from "@mui/icons-material/Search";
+import PersonIcon from "@mui/icons-material/Person";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer
 } from "recharts";
@@ -71,9 +72,9 @@ function daysAgo(days: number) {
 const AdminStatsPage: React.FC = () => {
   const { token } = useAuth();
   const [stats, setStats] = useState<AdminStats | null>(null);
-  const [periodType, setPeriodType] = useState("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [periodType, setPeriodType] = useState("day");
+  const [dateFrom, setDateFrom] = useState(() => formatDate(new Date()));
+  const [dateTo, setDateTo] = useState(() => formatDate(new Date()));
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -103,6 +104,12 @@ const AdminStatsPage: React.FC = () => {
       setDateTo(formatDate(new Date()));
     } else if (newPeriod === "month") {
       setDateFrom(daysAgo(30));
+      setDateTo(formatDate(new Date()));
+    } else if (newPeriod === "week") {
+      setDateFrom(daysAgo(7));
+      setDateTo(formatDate(new Date()));
+    } else if (newPeriod === "day") {
+      setDateFrom(formatDate(new Date()));
       setDateTo(formatDate(new Date()));
     }
   };
@@ -152,6 +159,8 @@ const AdminStatsPage: React.FC = () => {
             <ToggleButton value="all">За все время</ToggleButton>
             <ToggleButton value="year">За год</ToggleButton>
             <ToggleButton value="month">За месяц</ToggleButton>
+            <ToggleButton value="week">За неделю</ToggleButton>
+            <ToggleButton value="day">За сегодня</ToggleButton>
             <ToggleButton value="custom">Свой промежуток</ToggleButton>
           </ToggleButtonGroup>
         </Stack>
@@ -160,7 +169,7 @@ const AdminStatsPage: React.FC = () => {
       <Box
         sx={{
           display: "grid",
-          gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", lg: "repeat(4, 1fr)" },
+          gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(3, 1fr)", lg: "repeat(5, 1fr)" },
           gap: 2,
           mb: 3
         }}
@@ -189,6 +198,12 @@ const AdminStatsPage: React.FC = () => {
           icon={<SearchIcon fontSize="large" />}
           color="#9c27b0"
         />
+        <MetricCard
+          value={stats.visitsInPeriod}
+          label="ПОСЕТИТЕЛЕЙ ЗА ПЕРИОД"
+          icon={<PersonIcon fontSize="large" />}
+          color="#0288d1"
+        />
       </Box>
 
       <Grid container spacing={2}>
@@ -204,7 +219,26 @@ const AdminStatsPage: React.FC = () => {
             </Box>
             <Box sx={{ flexGrow: 1, minHeight: 0 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={stats.appLoadByHour}>
+                <AreaChart data={(stats.appLoadByHour || []).map(item => {
+                  let dString = item.name;
+                  if (item.name.length === 16) { // YYYY-MM-DD HH:00
+                    const d = new Date(item.name.replace(' ', 'T') + ':00Z');
+                    if (!Number.isNaN(d.getTime())) {
+                      if (dateFrom === dateTo) {
+                        dString = `${String(d.getHours()).padStart(2, '0')}:00`;
+                      } else {
+                        dString = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:00`;
+                      }
+                    }
+                  } else if (item.name.length === 10) { // YYYY-MM-DD
+                    const parts = item.name.split('-');
+                    if (parts.length === 3) dString = `${parts[2]}.${parts[1]}.${parts[0]}`;
+                  } else if (item.name.length === 7) { // YYYY-MM
+                    const parts = item.name.split('-');
+                    if (parts.length === 2) dString = `${parts[1]}.${parts[0]}`;
+                  }
+                  return { ...item, name: dString };
+                })}>
                   <defs>
                     <linearGradient id="colorLoad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#d32f2f" stopOpacity={0.8}/>
@@ -230,7 +264,7 @@ const AdminStatsPage: React.FC = () => {
               Документы по типам
             </Typography>
             <Box sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto' }}>
-              <SimpleList items={stats.documentsByType} />
+              <SimpleList items={stats.documentsByType || []} />
             </Box>
           </ContentCard>
         </Grid>
@@ -241,7 +275,7 @@ const AdminStatsPage: React.FC = () => {
               Популярные запросы
             </Typography>
             <Box sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto' }}>
-              <SimpleList items={stats.topQueries} />
+              <SimpleList items={stats.topQueries || []} />
             </Box>
           </ContentCard>
         </Grid>
@@ -252,7 +286,7 @@ const AdminStatsPage: React.FC = () => {
               Популярные документы
             </Typography>
             <Box sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto' }}>
-              <SimpleList items={stats.topDocuments} labelCount="Открытий" />
+              <SimpleList items={stats.topDocuments || []} labelCount="Открытий" />
             </Box>
           </ContentCard>
         </Grid>

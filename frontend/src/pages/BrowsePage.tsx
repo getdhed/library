@@ -28,6 +28,7 @@ type FilterDraft = {
   yearTo: string;
   tags: string;
   sort: string;
+  isLocal: string;
 };
 
 const emptyDraft: FilterDraft = {
@@ -37,6 +38,7 @@ const emptyDraft: FilterDraft = {
   yearTo: "",
   tags: "",
   sort: "date_desc",
+  isLocal: "",
 };
 
 const BrowsePage: React.FC = () => {
@@ -52,6 +54,7 @@ const BrowsePage: React.FC = () => {
   const yearTo = params.get("yearTo") ?? "";
   const tags = params.get("tags") ?? "";
   const sort = params.get("sort") ?? "date_desc";
+  const isLocal = params.get("isLocal") ?? "";
   const page = Number(params.get("page") ?? 1);
 
   const [searchQuery, setSearchQuery] = useState(q);
@@ -63,6 +66,7 @@ const BrowsePage: React.FC = () => {
     yearTo,
     tags,
     sort,
+    isLocal,
   });
 
   useEffect(() => {
@@ -77,8 +81,9 @@ const BrowsePage: React.FC = () => {
       yearTo,
       tags,
       sort,
+      isLocal,
     });
-  }, [author, sort, tags, type, yearFrom, yearTo]);
+  }, [author, sort, tags, type, yearFrom, yearTo, isLocal]);
 
   useEffect(() => {
     getDocumentTypes()
@@ -99,10 +104,11 @@ const BrowsePage: React.FC = () => {
       yearFrom,
       yearTo,
       tags,
+      isLocal,
       page,
     });
     setPayload(response);
-  }, [q, author, page, sort, tags, token, type, yearFrom, yearTo]);
+  }, [q, author, page, sort, tags, token, type, yearFrom, yearTo, isLocal]);
 
   useEffect(() => {
     loadDocuments().catch(console.error);
@@ -148,6 +154,7 @@ const BrowsePage: React.FC = () => {
       yearTo: draftFilters.yearTo,
       tags: draftFilters.tags.trim(),
       sort: draftFilters.sort,
+      isLocal: draftFilters.isLocal,
       page: "1",
     });
   }
@@ -167,6 +174,7 @@ const BrowsePage: React.FC = () => {
       yearTo: "",
       tags: "",
       sort: "date_desc",
+      isLocal: "",
       page: "1",
     });
   }
@@ -248,6 +256,10 @@ const BrowsePage: React.FC = () => {
               onTagsChange={(value) =>
                 setDraftFilters((current) => ({ ...current, tags: value }))
               }
+              isLocalValue={draftFilters.isLocal}
+              onIsLocalChange={(value) =>
+                setDraftFilters((current) => ({ ...current, isLocal: value }))
+              }
               includeSort
               sortValue={draftFilters.sort}
               onSortChange={(value) =>
@@ -263,7 +275,7 @@ const BrowsePage: React.FC = () => {
               <Typography variant="h5">
                 {getSearchTitle()}
               </Typography>
-              {user?.role !== "admin" && (
+              {user?.role === "user" && (
                 <Button component={Link} to="/submit" variant="outlined" size="small">
                   Предложить документ
                 </Button>
@@ -292,7 +304,7 @@ const BrowsePage: React.FC = () => {
                   <Typography color="text.secondary" sx={{ mb: 3 }}>
                     По вашему запросу не найдено ни одного документа. Не нашли нужный материал? Вы можете предложить свой!
                   </Typography>
-                  {user?.role !== "admin" && (
+                  {user?.role === "user" && (
                     <Button component={Link} to="/submit" variant="contained">
                       Предложить документ
                     </Button>

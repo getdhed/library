@@ -10,6 +10,8 @@ import {
   Typography,
 } from "@mui/material";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import { alpha } from "@mui/material/styles";
 import { DocumentFormFields, type AdminForm } from "./DocumentFormFields";
 
 export type AdminDocumentFullViewProps = {
@@ -47,6 +49,17 @@ export const AdminDocumentFullView: React.FC<AdminDocumentFullViewProps> = ({
   fileLabel,
   documentTypes,
 }) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setForm((current) => {
+      const updates: Partial<AdminForm> = { file };
+      if (file && !current.title.trim()) {
+        updates.title = file.name.replace(/\.[^/.]+$/, "");
+      }
+      return { ...current, ...updates };
+    });
+  };
+
   if (!open) return null;
 
   return (
@@ -89,6 +102,7 @@ export const AdminDocumentFullView: React.FC<AdminDocumentFullViewProps> = ({
           </Stack>
 
           <Stack direction="row" spacing={1}>
+            {secondaryActions}
             <Button variant="outlined" onClick={onClose}>
               Отмена
             </Button>
@@ -122,9 +136,21 @@ export const AdminDocumentFullView: React.FC<AdminDocumentFullViewProps> = ({
         >
           <Stack spacing={3} component="form" onSubmit={onSubmit} noValidate>
             <Box>
-              <Typography variant="h6" sx={{ mb: 0.5 }}>
-                Метаданные документа
-              </Typography>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                <Typography variant="h6">Метаданные документа</Typography>
+                {pdfUrl && (
+                  <Button component="label" size="small" variant="outlined" color="primary">
+                    Заменить PDF
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      disabled={isSubmitting}
+                      onChange={handleFileChange}
+                      style={{ display: "none" }}
+                    />
+                  </Button>
+                )}
+              </Stack>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
                 Проверьте и заполните данные на основе содержимого PDF справа.
               </Typography>
@@ -132,36 +158,68 @@ export const AdminDocumentFullView: React.FC<AdminDocumentFullViewProps> = ({
               <DocumentFormFields
                 form={form}
                 setForm={setForm}
-                fileLabel={fileLabel}
                 idPrefix={idPrefix}
                 documentTypes={documentTypes}
               />
             </Box>
 
             {error && <Alert severity="error">{error}</Alert>}
-
-            <Stack spacing={1}>
-              <Button variant="contained" size="large" type="submit" fullWidth disabled={isSubmitting}>
-                {submitLabel}
-              </Button>
-              {secondaryActions}
-            </Stack>
           </Stack>
         </Box>
 
         {/* Right: PDF Reader */}
-        <Box sx={{ bgcolor: "grey.100", minHeight: 0, minWidth: 0, position: "relative" }}>
-          <Box
-            component="iframe"
-            src={pdfUrl}
-            title="PDF Preview"
-            sx={{
-              width: "100%",
-              height: "100%",
-              border: 0,
-              bgcolor: "common.white",
-            }}
-          />
+        <Box sx={{ bgcolor: "grey.100", minHeight: 0, minWidth: 0, position: "relative", display: "flex", flexDirection: "column" }}>
+          {pdfUrl ? (
+            <Box
+              component="iframe"
+              src={pdfUrl}
+              title="PDF Preview"
+              sx={{
+                flexGrow: 1,
+                width: "100%",
+                border: 0,
+                bgcolor: "common.white",
+              }}
+            />
+          ) : (
+            <Box
+              component="label"
+              sx={{
+                flexGrow: 1,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                p: { xs: 4, md: 6 },
+                border: "2px dashed",
+                borderColor: "primary.main",
+                borderRadius: 4,
+                bgcolor: (theme: any) => alpha(theme.palette.primary.main, 0.03),
+                cursor: "pointer",
+                transition: "all 0.2s",
+                m: { xs: 2, md: 4 },
+                "&:hover": {
+                  bgcolor: (theme: any) => alpha(theme.palette.primary.main, 0.08),
+                  borderColor: "primary.dark",
+                },
+              }}
+            >
+              <input
+                type="file"
+                accept=".pdf,application/pdf"
+                disabled={isSubmitting}
+                onChange={handleFileChange}
+                style={{ display: "none" }}
+              />
+              <CloudUploadIcon sx={{ fontSize: 80, color: "primary.main", mb: 3 }} />
+              <Typography variant="h5" fontWeight={700} color="primary.main" textAlign="center" gutterBottom>
+                Загрузить PDF-файл
+              </Typography>
+              <Typography variant="body1" color="text.secondary" textAlign="center" sx={{ mb: 2 }}>
+                Нажмите сюда, чтобы выбрать файл с компьютера
+              </Typography>
+            </Box>
+          )}
         </Box>
       </Box>
     </Box>

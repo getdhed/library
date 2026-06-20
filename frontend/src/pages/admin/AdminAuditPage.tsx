@@ -192,7 +192,9 @@ const AdminAuditPage: React.FC = () => {
                       <TableCell>{formatActionLabel(event.action)}</TableCell>
                       <TableCell>{event.documentTitle || event.fileName}</TableCell>
                       <TableCell>
-                        {event.actorName || event.actorUsername || "—"}
+                        {event.actorName && event.actorUsername 
+                          ? `${event.actorName} (@${event.actorUsername})` 
+                          : event.actorUsername || event.actorName || "—"}
                       </TableCell>
                       <TableCell>
                         {new Date(event.createdAt).toLocaleString("ru-RU")}

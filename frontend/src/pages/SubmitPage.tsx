@@ -17,8 +17,14 @@ import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 
 const SubmitPage: React.FC = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user && user.role !== "user") {
+      navigate("/");
+    }
+  }, [user, navigate]);
   const [form, setForm] = useState<AdminForm>(() => createEmptyForm());
   const [comment, setComment] = useState("");
   const [error, setError] = useState("");
@@ -34,13 +40,25 @@ const SubmitPage: React.FC = () => {
 
   useEffect(() => {
     if (form.file) {
-      const url = URL.createObjectURL(form.file);
+      const blob = new Blob([form.file], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
       setPdfPreviewUrl(url);
       return () => URL.revokeObjectURL(url);
     } else {
       setPdfPreviewUrl("");
     }
   }, [form.file]);
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    setForm((current) => {
+      const updates: Partial<AdminForm> = { file };
+      if (file && !current.title.trim()) {
+        updates.title = file.name.replace(/\.[^/.]+$/, "");
+      }
+      return { ...current, ...updates };
+    });
+  };
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -136,68 +154,28 @@ const SubmitPage: React.FC = () => {
               onSubmit={handleSubmit}
               sx={{ display: "flex", flexDirection: "column", gap: 3.5 }}
             >
-              {/* Файл */}
-              <Box
-                component="label"
-                sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  p: { xs: 4, md: 5 },
-                  border: "2px dashed",
-                  borderColor: form.file ? "primary.main" : "divider",
-                  borderRadius: 3,
-                  bgcolor: form.file
-                    ? (theme: any) => alpha(theme.palette.primary.main, 0.08)
-                    : "background.default",
-                  cursor: "pointer",
-                  transition: "all 0.2s",
-                  "&:hover": {
-                    borderColor: "primary.main",
-                    bgcolor: (theme: any) =>
-                      alpha(theme.palette.primary.main, 0.04),
-                  },
-                }}
-              >
-                <input
-                  type="file"
-                  accept=".pdf,application/pdf"
-                  disabled={isSubmitting}
-                  onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
-                    const file = event.target.files?.[0] ?? null;
-                    setForm((current) => {
-                      const updates: Partial<AdminForm> = { file };
-                      if (file && !current.title.trim()) {
-                        updates.title = file.name.replace(/\.[^/.]+$/, "");
-                      }
-                      return { ...current, ...updates };
-                    });
-                  }}
-                  style={{ display: "none" }}
-                />
-                <CloudUploadIcon
-                  sx={{
-                    fontSize: 48,
-                    color: form.file ? "primary.main" : "text.secondary",
-                    mb: 1.5,
-                  }}
-                />
-                <Typography
-                  variant="h6"
-                  fontWeight={600}
-                  color={form.file ? "primary.main" : "text.primary"}
-                  textAlign="center"
-                >
-                  {form.file ? form.file.name : "Нажмите, чтобы выбрать PDF-файл"}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  Максимальный размер: не ограничен
-                </Typography>
-              </Box>
-
-              {form.file && (
+              {!form.file ? (
+                <Box sx={{ p: 4, textAlign: "center", bgcolor: "background.default", borderRadius: 3, border: "1px dashed", borderColor: "divider" }}>
+                  <Typography variant="body1" color="text.secondary">
+                    Сначала выберите PDF-файл справа, чтобы заполнить данные документа.
+                  </Typography>
+                </Box>
+              ) : (
                 <>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between">
+                    <Typography variant="h6">Метаданные документа</Typography>
+                    <Button component="label" size="small" variant="outlined" color="primary">
+                      Заменить PDF
+                      <input
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        disabled={isSubmitting}
+                        onChange={handleFileChange}
+                        style={{ display: "none" }}
+                      />
+                    </Button>
+                  </Stack>
+
                   <DocumentFormFields
                     form={form}
                     setForm={setForm}
@@ -227,7 +205,7 @@ const SubmitPage: React.FC = () => {
                     sx={{ pt: 1 }}
                   >
                     <Button component={Link} to="/account/pdfs" color="inherit">
-                      К моим загрузкам
+                      Отмена
                     </Button>
                     <Button
                       variant="contained"
@@ -255,6 +233,8 @@ const SubmitPage: React.FC = () => {
             bgcolor: "grey.100",
             minHeight: { xs: 500, lg: 0 },
             position: "relative",
+            display: "flex",
+            flexDirection: "column",
           }}
         >
           {pdfPreviewUrl ? (
@@ -262,23 +242,49 @@ const SubmitPage: React.FC = () => {
               component="iframe"
               src={pdfPreviewUrl}
               title="Предпросмотр PDF"
-              sx={{ width: "100%", height: "100%", border: 0, bgcolor: "common.white" }}
+              sx={{ flexGrow: 1, width: "100%", border: 0, bgcolor: "common.white" }}
             />
           ) : (
-            <Stack
-              alignItems="center"
-              justifyContent="center"
-              height="100%"
-              color="text.secondary"
-              spacing={2}
-              p={4}
-              textAlign="center"
+            <Box
+              component="label"
+              sx={{
+                flexGrow: 1,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                p: { xs: 4, md: 6 },
+                border: "2px dashed",
+                borderColor: "primary.main",
+                borderRadius: 4,
+                bgcolor: (theme: any) => alpha(theme.palette.primary.main, 0.03),
+                cursor: "pointer",
+                transition: "all 0.2s",
+                m: { xs: 2, md: 4 },
+                "&:hover": {
+                  bgcolor: (theme: any) => alpha(theme.palette.primary.main, 0.08),
+                  borderColor: "primary.dark",
+                },
+              }}
             >
-              <PictureAsPdfRoundedIcon sx={{ fontSize: 64, opacity: 0.3 }} />
-              <Typography variant="body1">
-                Выберите PDF-файл в форме слева, чтобы увидеть предпросмотр
+              <input
+                type="file"
+                accept=".pdf,application/pdf"
+                disabled={isSubmitting}
+                onChange={handleFileChange}
+                style={{ display: "none" }}
+              />
+              <CloudUploadIcon sx={{ fontSize: 80, color: "primary.main", mb: 3 }} />
+              <Typography variant="h5" fontWeight={700} color="primary.main" textAlign="center" gutterBottom>
+                Загрузить PDF-файл
               </Typography>
-            </Stack>
+              <Typography variant="body1" color="text.secondary" textAlign="center" sx={{ mb: 2 }}>
+                Нажмите сюда, чтобы выбрать файл с компьютера
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ opacity: 0.7 }}>
+                Максимальный размер: не ограничен
+              </Typography>
+            </Box>
           )}
         </Box>
       </Box>

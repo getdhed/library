@@ -8,8 +8,10 @@ import {
   Paper,
   Select,
   Stack,
+  Switch,
   TextField,
   Typography,
+  FormControlLabel,
 } from "@mui/material";
 
 export type AdminForm = {
@@ -25,6 +27,7 @@ export type AdminForm = {
   volume: string;
   description: string;
   tags: string;
+  isLocal: boolean;
   file: File | null;
 };
 
@@ -50,6 +53,7 @@ export const createEmptyForm = (defaultType = "Учебник"): AdminForm => {
     volume: "",
     description: "",
     tags: "",
+    isLocal: true,
     file: null,
   };
 };
@@ -98,30 +102,41 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
             onChange={(e) => handleChange("year", Number(e.target.value))}
             placeholder="Год"
             type="number"
-            sx={{ width: "120px" }}
+            required
+            fullWidth
             inputProps={{ "aria-label": "Год" }}
           />
 
-          <FormControl fullWidth>
-            <InputLabel id={`${idPrefix}-type-label`}>Тип документа</InputLabel>
+          <FormControl fullWidth required>
+            <InputLabel id={`${idPrefix}-type-label`}>Тип</InputLabel>
             <Select
               labelId={`${idPrefix}-type-label`}
               id={`${idPrefix}-type`}
               value={form.type}
-              label="Тип документа"
+              label="Тип"
               onChange={(e) => handleChange("type", e.target.value)}
+              inputProps={{ "aria-label": "Тип документа" }}
             >
               {documentTypes.map((t) => (
                 <MenuItem key={t} value={t}>
                   {t}
                 </MenuItem>
               ))}
-              {!documentTypes.includes(form.type) && form.type && (
-                <MenuItem value={form.type}>{form.type}</MenuItem>
-              )}
             </Select>
           </FormControl>
         </Stack>
+
+        <FormControlLabel
+          control={
+            <Switch
+              checked={form.isLocal}
+              onChange={(e) => handleChange("isLocal", e.target.checked)}
+              name="isLocal"
+              color="primary"
+            />
+          }
+          label="Локальный файл (Собственность библиотеки)"
+        />
 
         <TextField
           label="Ключевые слова"
@@ -138,7 +153,7 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
           label="Аннотация"
           value={form.description}
           onChange={(e) => handleChange("description", e.target.value)}
-          placeholder="Краткое описание"
+          placeholder="Краткая аннотация"
           multiline
           minRows={4}
           fullWidth
@@ -216,10 +231,10 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
             inputProps={{ maxLength: 150 }}
           />
           <TextField
-            label="Том/Выпуск"
+            label="Количество страниц"
             value={form.volume}
             onChange={(e) => handleChange("volume", e.target.value)}
-            placeholder="№"
+            placeholder="Например: 120"
             sx={{ minWidth: "120px" }}
             inputProps={{ maxLength: 50 }}
           />

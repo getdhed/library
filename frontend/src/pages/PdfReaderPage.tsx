@@ -50,6 +50,18 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
   const [saveError, setSaveError] = useState("");
   const [documentTypes, setDocumentTypes] = useState<string[]>([]);
 
+  const [editPreviewUrl, setEditPreviewUrl] = useState("");
+  useEffect(() => {
+    if (editForm.file) {
+      const blob = new Blob([editForm.file], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      setEditPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setEditPreviewUrl("");
+    }
+  }, [editForm.file]);
+
   const numericId = Number(id ?? 0);
 
   useEffect(() => {
@@ -343,11 +355,11 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
               <Alert severity="error">{error}</Alert>
             </Box>
           )}
-          {!isLoading && !error && fileUrl && (
+          {!isLoading && !error && (editPreviewUrl || fileUrl) && (
             <Box
               component="iframe"
               title={title || "PDF"}
-              src={fileUrl}
+              src={isEditing && editPreviewUrl ? editPreviewUrl : fileUrl}
               sx={{
                 display: "block",
                 width: "100%",

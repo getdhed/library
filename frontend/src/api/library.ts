@@ -24,9 +24,10 @@ export type DocumentQuery = {
   yearFrom?: string | number;
   yearTo?: string | number;
   includeDeleted?: string | number;
+  isLocal?: boolean | string;
 }
 
-function buildQuery(params: Record<string, string | number | undefined>) {
+function buildQuery(params: Record<string, string | number | boolean | undefined>) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== "" && value !== 0) {
@@ -174,6 +175,15 @@ export function deleteDocument(token: string, id: number) {
   });
 }
 
+export async function deleteAdminUser(token: string, id: number): Promise<void> {
+  await request(`/api/admin/users/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+
+
 export function restoreDocument(token: string, id: number) {
   return request<void>(`/admin/documents/${id}/restore`, {
     method: "POST",
@@ -243,24 +253,16 @@ export function updateAdminUser(
 export function setAdminUserStatus(
   token: string,
   id: number,
-  isActive: boolean
+  isActive: boolean,
+  reason?: string
 ) {
   return request<User>(`/admin/users/${id}/status`, {
     method: "PATCH",
-    body: JSON.stringify({ isActive }),
+    body: JSON.stringify({ isActive, deactivationReason: reason }),
     token,
   });
 }
 
-export function resetAdminUserPassword(token: string, id: number) {
-  return request<{ user: User; temporaryPassword: string }>(
-    `/admin/users/${id}/reset-password`,
-    {
-      method: "POST",
-      token,
-    }
-  );
-}
 
 export function approveSubmission(token: string, id: number, formData: FormData) {
   return request<DocumentItem>(`/admin/submissions/${id}/approve`, {

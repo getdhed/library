@@ -94,3 +94,39 @@ func (s *FileStorage) newPDFPath(fileName string) (string, string) {
 	relativePath := filepath.Join("pdfs", fmt.Sprintf("%d-%s%s", time.Now().UnixNano(), filename, ext))
 	return relativePath, filepath.Join(s.basePath, relativePath)
 }
+
+func (s *FileStorage) Archive(relativePath string) error {
+	if strings.TrimSpace(relativePath) == "" {
+		return nil
+	}
+	src := s.Resolve(relativePath)
+	dst := filepath.Join(s.basePath, "archives", filepath.FromSlash(relativePath))
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	
+	err := os.Rename(src, dst)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+func (s *FileStorage) Restore(relativePath string) error {
+	if strings.TrimSpace(relativePath) == "" {
+		return nil
+	}
+	src := filepath.Join(s.basePath, "archives", filepath.FromSlash(relativePath))
+	dst := s.Resolve(relativePath)
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	
+	err := os.Rename(src, dst)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}

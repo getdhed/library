@@ -59,7 +59,7 @@ func TestService_Users(t *testing.T) {
 	}
 
 	// CreateAdminUser
-	admin, _, err := svc.CreateAdminUser(ctx, domain.AdminUserInput{
+	admin, _, err := svc.CreateAdminUser(ctx, domain.RoleSuperAdmin, domain.AdminUserInput{
 		Username: "admin_test",
 		FullName: "Admin Test",
 		Role:     domain.RoleAdmin,
@@ -70,7 +70,7 @@ func TestService_Users(t *testing.T) {
 	}
 
 	// UpdateUser
-	updated, err := svc.UpdateUser(ctx, admin.ID, authData.User.ID, domain.AdminUserInput{
+	updated, err := svc.UpdateUser(ctx, admin.ID, domain.RoleSuperAdmin, authData.User.ID, domain.AdminUserInput{
 		Username: "newuser_updated",
 		FullName: "Updated User",
 		Role:     domain.RoleUser,
@@ -83,7 +83,7 @@ func TestService_Users(t *testing.T) {
 	}
 
 	// SetUserActive
-	inactive, err := svc.SetUserActive(ctx, admin.ID, authData.User.ID, false)
+	inactive, err := svc.SetUserActive(ctx, admin.ID, domain.RoleSuperAdmin, authData.User.ID, domain.UserStatusInput{IsActive: false})
 	if err != nil {
 		t.Fatalf("SetUserActive: %v", err)
 	}
@@ -91,14 +91,7 @@ func TestService_Users(t *testing.T) {
 		t.Fatalf("expected user to be inactive")
 	}
 
-	// ResetUserPassword
-	_, tempPwd, err := svc.ResetUserPassword(ctx, admin.ID)
-	if err != nil {
-		t.Fatalf("ResetUserPassword: %v", err)
-	}
-	if tempPwd == "" {
-		t.Fatalf("expected temporary password")
-	}
+
 }
 
 func TestService_DocumentsAndHome(t *testing.T) {
@@ -219,7 +212,7 @@ func TestService_SubmissionsAndStats(t *testing.T) {
 		Password: "pwd",
 		FullName: "Sub User",
 	})
-	admin, _, _ := svc.CreateAdminUser(ctx, domain.AdminUserInput{
+	admin, _, _ := svc.CreateAdminUser(ctx, domain.RoleSuperAdmin, domain.AdminUserInput{
 		Username: "subadmin",
 		FullName: "Sub Admin",
 		Role:     domain.RoleAdmin,

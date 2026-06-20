@@ -2,11 +2,14 @@ export interface User {
   id: number;
   username: string;
   fullName: string;
-  role: "user" | "admin";
+  role: "user" | "admin" | "superadmin";
   avatarUrl?: string;
   isActive: boolean;
+  deactivationReason?: string;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string;
+  lastLoginAt?: string;
 }
 
 export interface DocumentItem {
@@ -32,6 +35,7 @@ export interface DocumentItem {
   isFavorite: boolean;
   similarity?: number;
   deletedAt?: string;
+  isLocal?: boolean;
 }
 
 export type SubmissionStatus = "pending" | "approved" | "rejected";
@@ -69,6 +73,7 @@ export interface SubmissionItem {
   updatedAt: string;
   uploaderName?: string;
   uploaderUsername?: string;
+  isLocal?: boolean;
 }
 
 
@@ -110,6 +115,7 @@ export interface NamedStat {
 
 export interface AdminStats {
   documentsCount: number;
+  visitsInPeriod: number;
   viewsToday: number;
   downloadsToday: number;
   searchesToday: number;

@@ -23,6 +23,18 @@ func New() (*Renderer, error) {
 		}, nil
 	}
 
+	// Try to find the compiled executable first
+	exePath, err := defaultExePath()
+	if err == nil {
+		if _, err := os.Stat(exePath); err == nil {
+			return &Renderer{
+				command:    []string{exePath},
+				scriptPath: "",
+			}, nil
+		}
+	}
+
+	// Fallback to Python script
 	command, err := findPython()
 	if err != nil {
 		return nil, err
@@ -37,6 +49,21 @@ func New() (*Renderer, error) {
 		command:    command,
 		scriptPath: scriptPath,
 	}, nil
+}
+
+func defaultExePath() (string, error) {
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		return "", errors.New("resolve renderer path")
+	}
+
+	// On Windows, use .exe extension
+	exeName := "render_pdf_cover"
+	if runtime.GOOS == "windows" {
+		exeName += ".exe"
+	}
+
+	return filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", "..", "scripts", exeName)), nil
 }
 
 func (r *Renderer) RenderFirstPage(ctx context.Context, pdfPath, outputPath string) error {

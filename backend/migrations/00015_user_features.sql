@@ -1,0 +1,11 @@
+-- +goose Up
+ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+ALTER TABLE users ADD COLUMN deleted_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE documents ADD COLUMN is_local BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE document_submissions ADD COLUMN is_local BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- +goose Down
+ALTER TABLE document_submissions DROP COLUMN is_local;
+ALTER TABLE documents DROP COLUMN is_local;
+ALTER TABLE users DROP COLUMN deleted_at;
+ALTER TABLE users DROP COLUMN last_login_at;

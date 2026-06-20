@@ -29,6 +29,7 @@ type FilterDraft = {
   yearTo: string;
   tags: string;
   sort: string;
+  isLocal: string;
 };
 
 const emptyDraft: FilterDraft = {
@@ -38,6 +39,7 @@ const emptyDraft: FilterDraft = {
   yearTo: "",
   tags: "",
   sort: "date_desc",
+  isLocal: "",
 };
 
 const SearchResultsPage: React.FC = () => {
@@ -53,6 +55,7 @@ const SearchResultsPage: React.FC = () => {
   const yearTo = params.get("yearTo") ?? "";
   const tags = params.get("tags") ?? "";
   const sort = params.get("sort") ?? "date_desc";
+  const isLocal = params.get("isLocal") ?? "";
   const page = Number(params.get("page") ?? 1);
 
   const [searchInput, setSearchInput] = useState(query);
@@ -64,6 +67,7 @@ const SearchResultsPage: React.FC = () => {
     yearTo,
     tags,
     sort,
+    isLocal,
   });
 
   useEffect(() => {
@@ -78,8 +82,9 @@ const SearchResultsPage: React.FC = () => {
       yearTo,
       tags,
       sort,
+      isLocal,
     });
-  }, [author, sort, tags, type, yearFrom, yearTo]);
+  }, [author, sort, tags, type, yearFrom, yearTo, isLocal]);
 
   useEffect(() => {
     getDocumentTypes()
@@ -100,11 +105,12 @@ const SearchResultsPage: React.FC = () => {
       yearFrom,
       yearTo,
       tags,
+      isLocal,
       page,
       pageSize: 20,
     });
     setPayload(response);
-  }, [author, page, query, sort, tags, token, type, yearFrom, yearTo]);
+  }, [author, page, query, sort, tags, token, type, yearFrom, yearTo, isLocal]);
 
   useEffect(() => {
     loadDocuments().catch(console.error);
@@ -150,6 +156,7 @@ const SearchResultsPage: React.FC = () => {
       yearTo: draftFilters.yearTo,
       tags: draftFilters.tags.trim(),
       sort: draftFilters.sort,
+      isLocal: draftFilters.isLocal,
       page: "1",
     });
   }
@@ -169,6 +176,7 @@ const SearchResultsPage: React.FC = () => {
       yearTo: "",
       tags: "",
       sort: "date_desc",
+      isLocal: "",
       page: "1",
     });
   }
@@ -250,6 +258,10 @@ const SearchResultsPage: React.FC = () => {
               onTagsChange={(value) =>
                 setDraftFilters((current) => ({ ...current, tags: value }))
               }
+              isLocalValue={draftFilters.isLocal}
+              onIsLocalChange={(value) =>
+                setDraftFilters((current) => ({ ...current, isLocal: value }))
+              }
               includeSort
               sortValue={draftFilters.sort}
               onSortChange={(value) =>
@@ -265,35 +277,14 @@ const SearchResultsPage: React.FC = () => {
               <Typography variant="h5">
                 {getSearchTitle()}
               </Typography>
-              {user?.role !== "admin" && (
+              {user?.role === "user" && (
                 <Button component={Link} to="/submit" variant="outlined" size="small">
                   Предложить документ
                 </Button>
               )}
             </Stack>
 
-            {author && (
-              <Box sx={{ px: { xs: 2, md: 0 }, mb: 3 }}>
-                <Alert
-                  severity="info"
-                  onClose={() => {
-                    setDraftFilters((cur) => ({ ...cur, author: "" }));
-                    updateParam({ author: "", page: "1" });
-                  }}
-                  sx={{
-                    borderRadius: 2,
-                    alignItems: "center",
-                    border: (theme) => `1px solid ${theme.palette.info.light}`,
-                    backgroundColor: (theme) => theme.palette.mode === "dark" ? "rgba(2, 136, 209, 0.15)" : "info.50",
-                    "& .MuiAlert-message": { width: "100%" }
-                  }}
-                >
-                  <Typography variant="body1">
-                    Показаны только документы автора: <strong>{author}</strong>
-                  </Typography>
-                </Alert>
-              </Box>
-            )}
+
 
             <Stack spacing={0}>
               {(payload?.items ?? []).map((item) => (
@@ -318,7 +309,7 @@ const SearchResultsPage: React.FC = () => {
                   <Typography color="text.secondary" sx={{ mb: 3 }}>
                     По вашему запросу не найдено ни одного документа. Не нашли нужный материал? Вы можете предложить свой!
                   </Typography>
-                  {user?.role !== "admin" && (
+                  {user?.role === "user" && (
                     <Button component={Link} to="/submit" variant="contained">
                       Предложить документ
                     </Button>

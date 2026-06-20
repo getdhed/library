@@ -31,7 +31,7 @@ import {
   Typography,
 } from "@mui/material";
 import BlockRoundedIcon from "@mui/icons-material/BlockRounded";
-import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
+import RestoreRoundedIcon from "@mui/icons-material/RestoreRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import {
   createAdminUser,
@@ -95,6 +95,7 @@ const AdminUsersPage: React.FC = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [userToToggle, setUserToToggle] = useState<User | null>(null);
+  const [deactivationReason, setDeactivationReason] = useState("");
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form, setForm] = useState<UserForm>(() => createEmptyForm());
   const [error, setError] = useState("");
@@ -186,6 +187,7 @@ const AdminUsersPage: React.FC = () => {
 
   function handleCloseToggle() {
     setUserToToggle(null);
+    setDeactivationReason("");
     setError("");
   }
 
@@ -194,7 +196,10 @@ const AdminUsersPage: React.FC = () => {
 
     setError("");
     try {
-      await setAdminUserStatus(token, userToToggle.id, !userToToggle.isActive);
+      const isBlocking = userToToggle.isActive;
+      const reason = isBlocking ? deactivationReason.trim() : "";
+      
+      await setAdminUserStatus(token, userToToggle.id, !userToToggle.isActive, reason);
       await loadUsers();
       handleCloseToggle();
     } catch (statusError) {
@@ -205,6 +210,8 @@ const AdminUsersPage: React.FC = () => {
       );
     }
   }
+
+
 
   return (
     <AdminFrame
@@ -262,6 +269,7 @@ const AdminUsersPage: React.FC = () => {
                   <MenuItem value="">Все роли</MenuItem>
                   <MenuItem value="user">Читатель</MenuItem>
                   <MenuItem value="admin">Библиотекарь</MenuItem>
+                  <MenuItem value="superadmin">Супер-админ</MenuItem>
                 </Select>
               </FormControl>
               <FormControl fullWidth>
@@ -301,8 +309,11 @@ const AdminUsersPage: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {items.map((item) => {
+                {items
+                  .filter((item) => currentUser?.role === "superadmin" || item.role !== "superadmin")
+                  .map((item) => {
                   const isSelf = currentUser?.id === item.id;
+                  const canEdit = item.role === "user" || currentUser?.role === "superadmin";
                   return (
                     <TableRow key={item.id} hover>
                       <TableCell>
@@ -314,7 +325,7 @@ const AdminUsersPage: React.FC = () => {
                       <TableCell>
                         <Chip
                           size="small"
-                          label={item.role === "admin" ? "Библиотекарь" : "Читатель"}
+                          label={item.role === "superadmin" ? "Супер-админ" : item.role === "admin" ? "Библиотекарь" : "Читатель"}
                         />
                       </TableCell>
                       <TableCell>
@@ -327,40 +338,49 @@ const AdminUsersPage: React.FC = () => {
                       <TableCell>{formatDate(item.createdAt)}</TableCell>
                       <TableCell align="right">
                         <Stack direction="row" spacing={0.6} justifyContent="flex-end">
-                          <Tooltip title="Редактировать">
-                            <IconButton
-                              type="button"
-                              size="small"
-                              aria-label="Редактировать"
-                              onClick={() => handleOpenEdit(item)}
-                              sx={[cardActionIconButtonSx, cardActionIconButtonPrimarySx] as any}
-                            >
-                              <EditRoundedIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title={item.isActive ? "Отключить" : "Включить"}>
-                            <span>
-                              <IconButton
-                                type="button"
-                                size="small"
-                                aria-label={item.isActive ? "Отключить" : "Включить"}
-                                disabled={isSelf && item.isActive}
-                                onClick={() => handleOpenToggle(item)}
-                                sx={[
-                                  cardActionIconButtonSx,
-                                  item.isActive
-                                    ? cardActionIconButtonDangerSx
-                                    : cardActionIconButtonPrimarySx,
-                                ] as any}
-                              >
-                                {item.isActive ? (
-                                  <BlockRoundedIcon fontSize="small" />
-                                ) : (
-                                  <CheckCircleRoundedIcon fontSize="small" />
-                                )}
-                              </IconButton>
-                            </span>
-                          </Tooltip>
+                          {canEdit && (
+                            <>
+                              <Tooltip title="Редактировать">
+                                <span>
+                                  <IconButton
+                                    type="button"
+                                    size="small"
+                                    aria-label="Редактировать"
+                                    onClick={() => handleOpenEdit(item)}
+                                    sx={[cardActionIconButtonSx, cardActionIconButtonPrimarySx] as any}
+                                  >
+                                    <EditRoundedIcon fontSize="small" />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+
+                            </>
+                          )}
+                          {(canEdit || (isSelf && !item.isActive)) && (
+                            <Tooltip title={item.isActive ? "Отключить" : "Восстановить"}>
+                              <span>
+                                <IconButton
+                                  type="button"
+                                  size="small"
+                                  aria-label={item.isActive ? "Отключить" : "Восстановить"}
+                                  disabled={isSelf && item.isActive}
+                                  onClick={() => handleOpenToggle(item)}
+                                  sx={[
+                                    cardActionIconButtonSx,
+                                    item.isActive
+                                      ? cardActionIconButtonDangerSx
+                                      : cardActionIconButtonPrimarySx,
+                                  ] as any}
+                                >
+                                  {item.isActive ? (
+                                    <BlockRoundedIcon fontSize="small" />
+                                  ) : (
+                                    <RestoreRoundedIcon fontSize="small" />
+                                  )}
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          )}
                         </Stack>
                       </TableCell>
                     </TableRow>
@@ -399,16 +419,30 @@ const AdminUsersPage: React.FC = () => {
         <DialogTitle>Подтверждение действия</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Вы уверены, что хотите {userToToggle?.isActive ? "отключить" : "включить"} пользователя <strong>{userToToggle?.fullName}</strong>?
+            Вы уверены, что хотите {userToToggle?.isActive ? "отключить" : "восстановить"} пользователя <strong>{userToToggle?.fullName}</strong>?
           </DialogContentText>
+          {userToToggle?.isActive && (
+            <TextField
+              sx={{ mt: 2 }}
+              fullWidth
+              label="Причина деактивации"
+              placeholder="Укажите причину (опционально)"
+              value={deactivationReason}
+              onChange={(e) => setDeactivationReason(e.target.value)}
+              multiline
+              rows={3}
+            />
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseToggle}>Отмена</Button>
           <Button variant="contained" color={userToToggle?.isActive ? "error" : "primary"} onClick={() => void confirmToggleStatus()}>
-            {userToToggle?.isActive ? "Отключить" : "Включить"}
+            {userToToggle?.isActive ? "Отключить" : "Восстановить"}
           </Button>
         </DialogActions>
       </Dialog>
+
+
 
       <Dialog open={isModalOpen} onClose={handleCloseModal} maxWidth="sm" fullWidth>
         <form onSubmit={handleSubmit}>
@@ -439,26 +473,26 @@ const AdminUsersPage: React.FC = () => {
                 fullWidth
                 inputProps={{ "aria-label": "Логин" }}
               />
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={form.role === "admin"}
-                    onChange={(event) => {
-                      if (event.target.checked) {
-                        if (!window.confirm("Вы уверены, что хотите выдать этому пользователю права администратора?")) {
-                          return;
-                        }
-                      }
+              {currentUser?.role === "superadmin" && (
+                <FormControl fullWidth>
+                  <InputLabel id="role-select-label">Роль</InputLabel>
+                  <Select
+                    labelId="role-select-label"
+                    value={form.role}
+                    label="Роль"
+                    onChange={(event) =>
                       setForm((current) => ({
                         ...current,
-                        role: event.target.checked ? "admin" : "user",
-                      }));
-                    }}
-                    color="primary"
-                  />
-                }
-                label="Права администратора"
-              />
+                        role: event.target.value as User["role"],
+                      }))
+                    }
+                  >
+                    <MenuItem value="user">Читатель</MenuItem>
+                    <MenuItem value="admin">Библиотекарь</MenuItem>
+                    <MenuItem value="superadmin">Супер-админ</MenuItem>
+                  </Select>
+                </FormControl>
+              )}
               
               {!editingUser && (
                 <TextField

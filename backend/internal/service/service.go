@@ -92,8 +92,20 @@ func (s *Service) Login(ctx context.Context, input domain.LoginInput) (domain.Au
 	if err != nil {
 		return domain.AuthPayload{}, apperror.ErrUnauthorized
 	}
+	if user.IsActive && !user.LastLoginAt.IsZero() {
+		months := int(time.Since(user.LastLoginAt).Hours() / 24 / 30)
+		if months >= 6 {
+			user.IsActive = false
+			user.DeactivationReason = fmt.Sprintf("Автоматическая деактивация (бездействие %d мес.)", months)
+			_, _ = s.repo.SetUserActive(ctx, user.ID, false, user.DeactivationReason)
+		}
+	}
+
 	if !user.IsActive {
-		return domain.AuthPayload{}, apperror.ErrUnauthorized
+		if user.DeactivationReason != "" {
+			return domain.AuthPayload{}, fmt.Errorf("account_deactivated_reason:%s", user.DeactivationReason)
+		}
+		return domain.AuthPayload{}, fmt.Errorf("account_deactivated:Администратор не указал причину")
 	}
 	if err := auth.ComparePassword(user.PasswordHash, input.Password); err != nil {
 		return domain.AuthPayload{}, apperror.ErrUnauthorized
@@ -152,13 +164,18 @@ func (s *Service) Users(ctx context.Context, filters domain.UserFilters) (domain
 	return s.repo.ListUsers(ctx, filters)
 }
 
-func (s *Service) CreateAdminUser(ctx context.Context, input domain.AdminUserInput) (domain.User, string, error) {
+func (s *Service) CreateAdminUser(ctx context.Context, actorRole domain.UserRole, input domain.AdminUserInput) (domain.User, string, error) {
 	if input.Role == "" {
 		input.Role = domain.RoleUser
 	}
 
 	password := strings.TrimSpace(input.Password)
 	requirePassword := password != ""
+	
+	if input.Role != domain.RoleUser && actorRole != domain.RoleSuperAdmin {
+		return domain.User{}, "", apperror.ErrForbidden
+	}
+
 	if err := validateAdminUserInput(input, requirePassword); err != nil {
 		return domain.User{}, "", err
 	}
@@ -181,37 +198,69 @@ func (s *Service) CreateAdminUser(ctx context.Context, input domain.AdminUserInp
 	return user, password, nil
 }
 
-func (s *Service) UpdateUser(ctx context.Context, actorID, id int64, input domain.AdminUserInput) (domain.User, error) {
+func (s *Service) UpdateUser(ctx context.Context, actorID int64, actorRole domain.UserRole, id int64, input domain.AdminUserInput) (domain.User, error) {
 	if err := validateAdminUserInput(input, false); err != nil {
 		return domain.User{}, err
 	}
-	if actorID == id && input.Role != domain.RoleAdmin {
-		return domain.User{}, apperror.ErrForbidden
+	
+	targetUser, err := s.repo.GetUserByID(ctx, id)
+	if err != nil {
+		return domain.User{}, err
 	}
+
+	if input.Role != targetUser.Role && actorRole != domain.RoleSuperAdmin {
+		return domain.User{}, apperror.ErrForbidden // Only superadmin can change roles
+	}
+
+	if targetUser.Role != domain.RoleUser && actorRole != domain.RoleSuperAdmin && actorID != id {
+		return domain.User{}, apperror.ErrForbidden // Admin cannot edit another admin
+	}
+
 	return s.repo.UpdateUser(ctx, id, input)
 }
 
-func (s *Service) SetUserActive(ctx context.Context, actorID, id int64, isActive bool) (domain.User, error) {
-	if actorID == id && !isActive {
+func (s *Service) SetUserActive(ctx context.Context, actorID int64, actorRole domain.UserRole, id int64, input domain.UserStatusInput) (domain.User, error) {
+	if actorID == id && !input.IsActive {
 		return domain.User{}, apperror.ErrForbidden
 	}
-	return s.repo.SetUserActive(ctx, id, isActive)
+	targetUser, err := s.repo.GetUserByID(ctx, id)
+	if err != nil {
+		return domain.User{}, err
+	}
+	if targetUser.Role != domain.RoleUser && actorRole != domain.RoleSuperAdmin {
+		return domain.User{}, apperror.ErrForbidden // Only superadmin can deactivate an admin
+	}
+	return s.repo.SetUserActive(ctx, id, input.IsActive, input.DeactivationReason)
 }
 
-func (s *Service) ResetUserPassword(ctx context.Context, id int64) (domain.User, string, error) {
-	password, err := generateTemporaryPassword()
-	if err != nil {
-		return domain.User{}, "", err
+
+
+func (s *Service) DeleteUser(ctx context.Context, actorID int64, actorRole domain.UserRole, id int64) error {
+	if actorID == id {
+		return apperror.ErrForbidden // Cannot delete yourself
 	}
-	hash, err := auth.HashPassword(password)
+	
+	targetUser, err := s.repo.GetUserByID(ctx, id)
 	if err != nil {
-		return domain.User{}, "", err
+		return err
 	}
-	user, err := s.repo.ResetUserPassword(ctx, id, hash)
+	if targetUser.Role != domain.RoleUser && actorRole != domain.RoleSuperAdmin {
+		return apperror.ErrForbidden // Only superadmin can delete an admin
+	}
+	
+	return s.repo.DeleteUser(ctx, id)
+}
+
+func (s *Service) RestoreUser(ctx context.Context, actorID int64, actorRole domain.UserRole, id int64) error {
+	targetUser, err := s.repo.GetUserByID(ctx, id)
 	if err != nil {
-		return domain.User{}, "", err
+		return err
 	}
-	return user, password, nil
+	if targetUser.Role != domain.RoleUser && actorRole != domain.RoleSuperAdmin {
+		return apperror.ErrForbidden // Only superadmin can restore an admin
+	}
+
+	return s.repo.RestoreUser(ctx, id)
 }
 
 func (s *Service) Home(ctx context.Context, userID int64) (domain.HomePayload, error) {
@@ -901,4 +950,8 @@ func (s *Service) ArchiveOldLogs(ctx context.Context) error {
 	}
 	
 	return nil
+}
+
+func (s *Service) LogVisit(ctx context.Context) error {
+	return s.repo.LogVisit(ctx)
 }

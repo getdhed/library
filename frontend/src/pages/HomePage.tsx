@@ -169,18 +169,6 @@ const HomePage: React.FC = () => {
             alignItems: "flex-start",
           }}
         >
-          <Box
-            component="img"
-            src="/ips-logo.jpg"
-            alt="Логотип ИПС"
-            sx={{
-              flexShrink: 0,
-              width: { xs: 80, sm: 120, md: 160 },
-              height: { xs: 80, sm: 120, md: 160 },
-              objectFit: "contain",
-            }}
-          />
-
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography
               component="h1"
@@ -192,7 +180,9 @@ const HomePage: React.FC = () => {
                 mb: 1.8,
               }}
             >
-              Онлайн библиотека института пограничной службы
+              Онлайн-библиотека
+              <br />
+              Института пограничной службы
             </Typography>
 
             <Paper
@@ -358,7 +348,7 @@ const HomePage: React.FC = () => {
         </Box>
       </ContentCard>
 
-      {user?.role !== "admin" && (
+      {user?.role === "user" && (
         <Paper
           sx={{
             p: { xs: 2.5, md: 3 },

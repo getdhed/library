@@ -3,8 +3,8 @@ import {
   Box,
   Button,
   Chip,
-  Collapse,
   CircularProgress,
+  Collapse,
   Divider,
   Grid,
   Paper,
@@ -99,15 +99,13 @@ const BookPage: React.FC = () => {
   );
 
   const extraDetails = [
+    { label: "Источник", value: document.isLocal !== undefined ? (document.isLocal ? "Локальный архив библиотеки" : "Внешний документ") : undefined },
     { label: "Исполнитель", value: document.executor },
     { label: "Научный руководитель", value: document.scientificAdvisor },
     { label: "Место издания", value: document.placeOfPublication },
     { label: "Издательство", value: document.publisher },
     { label: "Периодическое издание", value: document.periodicalName },
-    { label: "Объём", value: document.volume },
-    { label: "Имя файла", value: document.fileName },
     { label: "Размер файла", value: formatFileSize(document.fileSizeBytes) },
-    { label: "Тип файла", value: document.mimeType },
     { label: "Обновлено", value: new Date(document.updatedAt).toLocaleDateString("ru-RU") },
   ].filter((item) => item.value);
 
@@ -127,7 +125,7 @@ const BookPage: React.FC = () => {
       type: document.type, placeOfPublication: document.placeOfPublication ?? "",
       publisher: document.publisher ?? "", periodicalName: document.periodicalName ?? "",
       volume: document.volume ?? "", description: document.description,
-      tags: document.tags.join(", "), file: null
+      tags: document.tags.join(", "), isLocal: document.isLocal ?? true, file: null
     });
     setEditFormError("");
     setIsEditing(true);
@@ -162,6 +160,7 @@ const BookPage: React.FC = () => {
     fd.set("volume", editForm.volume.trim());
     fd.set("description", editForm.description.trim());
     fd.set("tags", editForm.tags);
+    fd.set("isLocal", String(editForm.isLocal));
     if (editForm.file) fd.set("file", editForm.file);
 
     setIsSubmitting(true);
@@ -190,123 +189,136 @@ const BookPage: React.FC = () => {
                 `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.08)}, transparent 42%), ${theme.palette.background.paper}`,
             }}
           >
-            <Stack spacing={2.4}>
-              <Stack spacing={1.7}>
-                  <Stack direction="row" spacing={0.8} alignItems="center" flexWrap="wrap" useFlexGap>
-                    <Chip label={document.type} size="small" color="primary" />
-                    <Chip label={`${document.year}`} size="small" variant="outlined" />
-                    {document.tags.slice(0, 3).map((tag) => (
-                      <Chip key={tag} label={tag} size="small" variant="outlined" />
+            <Stack spacing={3}>
+              <Box>
+                <Typography component="h1" variant="h4" fontWeight={800} sx={{ lineHeight: 1.2, mb: 1 }}>
+                  {document.title}
+                </Typography>
+                {document.author ? (
+                  <Typography
+                    component={Link}
+                    to={`/search?author=${encodeURIComponent(document.author)}`}
+                    onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                    variant="h6"
+                    sx={{
+                      fontWeight: 500,
+                      color: "text.secondary",
+                      textDecoration: "none",
+                      display: "inline-block",
+                      "&:hover": {
+                        color: "success.main",
+                      },
+                    }}
+                  >
+                    {document.author}
+                  </Typography>
+                ) : (
+                  <Typography variant="h6" sx={{ fontWeight: 500, color: "text.secondary" }}>
+                    не указан
+                  </Typography>
+                )}
+              </Box>
+
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap" useFlexGap>
+                <Button
+                  component="a"
+                  href={downloadUrl}
+                  variant="contained"
+                  startIcon={<DownloadIcon />}
+                  sx={{ borderRadius: 0, px: 3 }}
+                >
+                  Скачать
+                </Button>
+
+                <Button
+                  type="button"
+                  onClick={toggleFavorite}
+                  variant={document.isFavorite ? "contained" : "outlined"}
+                  color={document.isFavorite ? "primary" : "inherit"}
+                  startIcon={
+                    document.isFavorite ? <FavoriteIcon /> : <FavoriteBorderIcon />
+                  }
+                  sx={{ borderRadius: 0, px: 3 }}
+                >
+                  {document.isFavorite ? "В избранном" : "В избранное"}
+                </Button>
+
+                {isAdmin && (
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    color="inherit"
+                    startIcon={<EditRoundedIcon />}
+                    onClick={startEdit}
+                    sx={{ borderRadius: 0, px: 3 }}
+                  >
+                    Редактировать
+                  </Button>
+                )}
+              </Stack>
+
+              <Divider />
+
+              <Box>
+                <Typography variant="body1" sx={{ color: "text.secondary", lineHeight: 1.6, whiteSpace: "pre-line" }}>
+                  {document.description || "Аннотация документа пока не добавлена."}
+                </Typography>
+              </Box>
+
+              {document.tags.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 1, color: "text.secondary" }}>
+                    Ключевые слова
+                  </Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    {document.tags.map((tag) => (
+                      <Chip key={tag} label={tag} variant="outlined" sx={{ borderRadius: 1 }} />
                     ))}
                   </Stack>
+                </Box>
+              )}
 
+              <Box sx={{ mt: 1 }}>
+                <Stack spacing={0.8}>
                   <Box>
-                    <Typography component="h1" variant="h3" fontWeight={800} sx={{ lineHeight: 1.08 }}>
-                      {document.title}
-                    </Typography>
-                    {document.author && (
-                      <Typography
-                        component={Link}
-                        to={`/search?author=${encodeURIComponent(document.author)}`}
-                        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-                        variant="h6"
-                        sx={{
-                          mt: 1,
-                          fontWeight: 500,
-                          color: "success.main",
-                          textDecoration: "none",
-                          display: "inline-block",
-                          width: "fit-content",
-                          "&:hover": {
-                            color: "success.dark",
-                            textDecoration: "underline",
-                          },
-                        }}
-                      >
-                        {document.author}
-                      </Typography>
-                    )}
-                    <Typography variant="body1" color="text.secondary" sx={{ mt: 1.5, maxWidth: "70ch" }}>
-                      {document.description || "Описание документа пока не добавлено."}
-                    </Typography>
+                    <Typography component="span" sx={{ color: "text.secondary", mr: 1 }}>Тип документа:</Typography>
+                    <Typography component="span" sx={{ color: "text.primary" }}>{document.type}</Typography>
                   </Box>
-
-                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap" useFlexGap>
-                    <Button
-                      component="a"
-                      href={downloadUrl}
-                      variant="contained"
-                      startIcon={<DownloadIcon />}
-                      sx={{ borderRadius: 0 }}
-                    >
-                      Скачать
-                    </Button>
-
-                    <Button
-                      type="button"
-                      onClick={toggleFavorite}
-                      variant={document.isFavorite ? "contained" : "outlined"}
-                      startIcon={
-                        document.isFavorite ? <FavoriteIcon /> : <FavoriteBorderIcon />
-                      }
-                      sx={{ borderRadius: 0 }}
-                    >
-                      {document.isFavorite ? "В избранном" : "В избранное"}
-                    </Button>
-
-                    <Button
-                      type="button"
-                      variant="outlined"
-                      onClick={() => setDetailsOpen((current) => !current)}
-                      sx={{ borderRadius: 0 }}
-                    >
-                      {detailsOpen ? "Скрыть подробности" : "Подробнее"}
-                    </Button>
-                  </Stack>
-
-
-
-                  {isAdmin && (
-                    <Box sx={{ maxWidth: 260 }}>
+                  <Box>
+                    <Typography component="span" sx={{ color: "text.secondary", mr: 1 }}>Год издания:</Typography>
+                    <Typography component="span" sx={{ color: "text.primary" }}>{document.year}</Typography>
+                  </Box>
+                  {document.volume && (
+                    <Box>
+                      <Typography component="span" sx={{ color: "text.secondary", mr: 1 }}>Количество страниц:</Typography>
+                      <Typography component="span" sx={{ color: "text.primary" }}>{document.volume}</Typography>
+                    </Box>
+                  )}
+                  {extraDetails.length > 0 && (
+                    <Box sx={{ mt: 1 }}>
                       <Button
-                        type="button"
-                        fullWidth
-                        variant="outlined"
-                        startIcon={<EditRoundedIcon />}
-                        onClick={startEdit}
-                        sx={{ borderRadius: 0 }}
+                        variant="text"
+                        size="small"
+                        color="inherit"
+                        onClick={() => setDetailsOpen(!detailsOpen)}
+                        sx={{ ml: -1, mb: 0.5, color: "text.secondary", "&:hover": { color: "text.primary", bgcolor: "transparent" } }}
                       >
-                        Редактировать
+                        {detailsOpen ? "Скрыть подробности" : "Подробнее..."}
                       </Button>
+                      <Collapse in={detailsOpen} timeout="auto" unmountOnExit>
+                        <Stack spacing={0.8}>
+                          {extraDetails.map((item) => (
+                            <Box key={item.label}>
+                              <Typography component="span" sx={{ color: "text.secondary", mr: 1 }}>{item.label}:</Typography>
+                              <Typography component="span" sx={{ color: "text.primary" }}>{item.value}</Typography>
+                            </Box>
+                          ))}
+                        </Stack>
+                      </Collapse>
                     </Box>
                   )}
                 </Stack>
-
-              <Collapse in={detailsOpen} timeout="auto" unmountOnExit>
-                <Stack spacing={1.5}>
-                  <Divider />
-                  <Grid container spacing={1.5}>
-                    {extraDetails.map((item) => (
-                      <Grid key={item.label} size={{ xs: 12, sm: 6, xl: 4 }}>
-                        <Box sx={{ p: 0.5 }}>
-                          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                            {item.label}
-                          </Typography>
-                          <Typography fontWeight={500}>{item.value}</Typography>
-                        </Box>
-                      </Grid>
-                    ))}
-                  </Grid>
-
-                  {document.tags.length > 3 && (
-                    <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
-                      {document.tags.slice(3).map((tag) => (
-                        <Chip key={tag} label={tag} size="small" variant="outlined" />
-                      ))}
-                    </Stack>
-                  )}
-                </Stack>
-              </Collapse>
+              </Box>
             </Stack>
           </ContentCard>
         </Grid>

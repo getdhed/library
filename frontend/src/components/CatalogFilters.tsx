@@ -22,6 +22,8 @@ type CatalogFiltersProps = {
   onAuthorChange?: (value: string) => void;
   tagsValue?: string;
   onTagsChange?: (value: string) => void;
+  isLocalValue?: string;
+  onIsLocalChange?: (value: string) => void;
   includeSort?: boolean;
   sortValue?: string;
   onSortChange?: (value: string) => void;
@@ -42,6 +44,8 @@ const CatalogFilters: React.FC<CatalogFiltersProps> = ({
   onAuthorChange,
   tagsValue = "",
   onTagsChange,
+  isLocalValue = "",
+  onIsLocalChange,
   includeSort = false,
   sortValue = "date_desc",
   onSortChange,
@@ -71,6 +75,20 @@ const CatalogFilters: React.FC<CatalogFiltersProps> = ({
               {item}
             </MenuItem>
           ))}
+        </Select>
+      </FormControl>
+
+      <FormControl fullWidth>
+        <InputLabel id={`${idPrefix}-local-label`}>Источник документа</InputLabel>
+        <Select
+          labelId={`${idPrefix}-local-label`}
+          value={isLocalValue}
+          label="Источник документа"
+          onChange={(event) => onIsLocalChange?.(event.target.value)}
+        >
+          <MenuItem value="">Все источники</MenuItem>
+          <MenuItem value="true">Только локальные архивы</MenuItem>
+          <MenuItem value="false">Внешние материалы</MenuItem>
         </Select>
       </FormControl>
 

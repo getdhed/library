@@ -73,7 +73,7 @@ function submissionStatusLabel(status: SubmissionStatus) {
     case "rejected":
       return "Отклонено";
     default:
-      return "На модерации";
+      return "Ожидает";
   }
 }
 
@@ -103,7 +103,6 @@ function validateDocumentForm(form: AdminForm, requireFile: boolean) {
   if (!form.title.trim()) missing.push("название");
   if (!Number.isFinite(form.year) || form.year <= 0) missing.push("год");
   if (!form.type.trim()) missing.push("тип");
-  if (!form.description.trim()) missing.push("описание");
   if (requireFile && !form.file) missing.push("PDF-файл");
   return missing;
 }
@@ -142,10 +141,25 @@ const AdminModerationPage: React.FC = () => {
   const [approveFormError, setApproveFormError] = useState("");
   const [isApprovingSubmission, setIsApprovingSubmission] = useState(false);
 
+  const [approvePreviewUrl, setApprovePreviewUrl] = useState("");
+  useEffect(() => {
+    if (approveForm.file) {
+      const blob = new Blob([approveForm.file], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      setApprovePreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setApprovePreviewUrl("");
+    }
+  }, [approveForm.file]);
+
+  const [filterStatus, setFilterStatus] = useState<string>("pending");
+  
   async function loadSubmissions() {
     if (!token) return;
     const response = await getAdminSubmissions(token);
     setSubmissions(response.items);
+    window.dispatchEvent(new Event("admin_submissions_changed"));
   }
 
   useEffect(() => {
@@ -263,9 +277,15 @@ const AdminModerationPage: React.FC = () => {
           </Stack>
 
           {filteredSubmissions.length === 0 ? (
-            <Alert severity="info" sx={{ mt: 2 }}>
-              В данной категории заявок нет.
-            </Alert>
+            moderationStatus === "pending" ? (
+              <Alert severity="success" sx={{ mt: 2 }}>
+                Все заявки обработаны!
+              </Alert>
+            ) : (
+              <Alert severity="info" sx={{ mt: 2 }}>
+                В данной категории заявок нет.
+              </Alert>
+            )
           ) : (
             <TableContainer sx={tableSurfaceSx}>
               <Table size="small">
@@ -325,7 +345,6 @@ const AdminModerationPage: React.FC = () => {
                       <TableCell align="right">
                         {item.status === "pending" ? (
                           <Button size="small" variant="contained" onClick={() => startApprove(item)}>
-                            <CheckCircleRoundedIcon fontSize="small" />
                             Рассмотреть
                           </Button>
                         ) : (
@@ -369,7 +388,7 @@ const AdminModerationPage: React.FC = () => {
         open={!!approvingSubmission}
         title="Одобрить заявку"
         subtitle={approvingSubmission?.title}
-        pdfUrl={approvingSubmission ? submissionFileUrl(approvingSubmission.id, token ?? "", false, approvingSubmission.updatedAt) : ""}
+        pdfUrl={approvePreviewUrl || (approvingSubmission ? submissionFileUrl(approvingSubmission.id, token ?? "", false, approvingSubmission.updatedAt) : "")}
         onClose={resetApproving}
         form={approveForm}
         setForm={setApproveForm}
@@ -381,9 +400,8 @@ const AdminModerationPage: React.FC = () => {
         documentTypes={documentTypes}
         secondaryActions={
           <Button
-            variant="outlined"
+            variant="contained"
             color="error"
-            size="large"
             onClick={() => approvingSubmission && void handleRejectSubmission(approvingSubmission)}
           >
             Отклонить заявку

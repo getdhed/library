@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+
+  # Override backend to hide direct port exposure
+  backend:
+    ports: [] # Clear ports from base docker-compose
+    expose:
+      - "8080" # Only expose to internal docker network
+
+  # Override frontend to hide direct port exposure
+  frontend:
+    ports: [] # Clear ports from base docker-compose
+    expose:
+      - "5173" # Only expose to internal docker network
+    environment:
+      # In production, the browser calls the proxy on port 443
+      VITE_API_URL: /api
+      VITE_BACKEND_URL: /

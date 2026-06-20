@@ -65,6 +65,12 @@ const DocumentListItem: React.FC<Props> = ({
         <Stack spacing={0.75} minWidth={0}>
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
             <Chip size="small" label={item.type} />
+            {item.isLocal && (
+              <Chip size="small" color="primary" variant="outlined" label="Локальный" />
+            )}
+            {!item.isLocal && item.isLocal !== undefined && (
+              <Chip size="small" color="secondary" variant="outlined" label="Внешний" />
+            )}
             <Typography variant="caption" color="text.secondary">
               {item.year}
             </Typography>

@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { Box, CircularProgress, Typography } from "@mui/material";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
@@ -50,7 +50,7 @@ export const AdminRoute: React.FC<{ children: React.ReactNode }> = ({
     return <Navigate to="/login" replace />;
   }
 
-  if (auth.user?.role !== "admin") {
+  if (auth.user?.role !== "admin" && auth.user?.role !== "superadmin") {
     return <Navigate to="/" replace />;
   }
 

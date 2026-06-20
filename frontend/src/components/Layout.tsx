@@ -31,6 +31,11 @@ const adminItem: NavItem = {
   label: "Админка",
 };
 
+const myPdfsItem: NavItem = {
+  to: "/account/pdfs",
+  label: "Мои PDF",
+};
+
 const linkReset = {
   color: "inherit",
   textDecoration: "none",
@@ -43,10 +48,16 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [accountAnchor, setAccountAnchor] = useState<HTMLElement | null>(null);
 
   const tokens = getThemeTokens(muiTheme.palette.mode);
-  const items = useMemo(
-    () => (user?.role === "admin" ? [...navItems, adminItem] : navItems),
-    [user?.role]
-  );
+  const items = useMemo(() => {
+    const base = [...navItems];
+    if (user?.role === "user") {
+      base.push(myPdfsItem);
+    }
+    if (user?.role === "admin" || user?.role === "superadmin") {
+      base.push(adminItem);
+    }
+    return base;
+  }, [user?.role]);
   const accountMenuOpen = Boolean(accountAnchor);
 
   useSmartRoutePrefetch(location.pathname, user?.role);
@@ -104,45 +115,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         <Divider />
 
-        {user?.role === "user" && (
-          <Button
-            component={Link}
-            to="/account/pdfs"
-            onClick={closeAccountMenu}
-            onMouseEnter={() => handleNavIntent("/account/pdfs")}
-            onFocus={() => handleNavIntent("/account/pdfs")}
-            color="inherit"
-            sx={{
-              justifyContent: "flex-start",
-              width: "100%",
-              px: 2,
-              minHeight: 42,
-              borderRadius: 0,
-            }}
-          >
-            Мои PDF
-          </Button>
-        )}
-
-        <Button
-          component={Link}
-          to="/settings"
-          onClick={closeAccountMenu}
-          onMouseEnter={() => handleNavIntent("/settings")}
-          onFocus={() => handleNavIntent("/settings")}
-          color="inherit"
-          sx={{
-            justifyContent: "flex-start",
-            width: "100%",
-            px: 2,
-            minHeight: 42,
-            borderRadius: 0,
-          }}
-        >
-          Настройки
-        </Button>
-
-        <Divider />
 
         <Box sx={{ p: 1 }}>
           <Button
@@ -198,7 +170,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             backgroundColor: tokens.warm,
             transform: "scaleX(0)",
             transition: "transform 0.2s ease",
-            display: isSearchAccent ? "none" : "block",
           },
           "&.active": {
             color: tokens.headerInk,
@@ -283,21 +254,16 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               }}
             >
               <Box
+                component="img"
+                src="/ips-logo.png"
+                alt="Герб ИПС"
                 sx={{
-                  width: 40,
-                  height: 40,
-                  bgcolor: tokens.warm,
-                  color: tokens.accentStrong,
-                  clipPath: "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)",
-                  display: "grid",
-                  placeItems: "center",
-                  fontSize: 18,
-                  letterSpacing: "0.06em",
+                  width: 44,
+                  height: 44,
+                  objectFit: "contain",
                   flexShrink: 0,
                 }}
-              >
-                ПС
-              </Box>
+              />
 
               <Box>
                 <Typography

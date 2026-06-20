@@ -20,7 +20,7 @@ function getInitialTheme(): ThemeMode {
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setThemeState] = useState<ThemeMode>(() => getInitialTheme());
-  const muiTheme = useMemo(() => createAppTheme(theme), [theme]);
+  const muiTheme = useMemo(() => createAppTheme(), []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = "light";
@@ -41,7 +41,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     <ThemeContext.Provider value={value}>
       <MuiThemeProvider theme={muiTheme}>
         <CssBaseline />
-        <GlobalStyles styles={getGlobalStyles(theme)} />
+        <GlobalStyles styles={getGlobalStyles()} />
         {children}
       </MuiThemeProvider>
     </ThemeContext.Provider>

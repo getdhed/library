@@ -14,14 +14,16 @@ const AdminFrame: React.FC<AdminFrameProps> = ({ children }) => {
       <Paper
         sx={{
           borderRadius: 0,
-          p: 2.5,
+          px: 2.5,
+          pt: 1.5,
+          pb: 2,
           borderColor: (theme) => alpha(theme.palette.divider, 0.95),
           backgroundColor: (theme) => theme.palette.background.paper,
         }}
       >
         <Stack spacing={2}>
           <Box>
-            <Typography variant="h4" sx={{ mt: 0.5, mb: 0.5 }}>
+            <Typography variant="h4" sx={{ mt: 0, mb: 0 }}>
               Панель администратора
             </Typography>
           </Box>

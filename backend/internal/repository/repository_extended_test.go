@@ -104,12 +104,6 @@ func TestExtendedUsersCRUD(t *testing.T) {
 	if updated.Username != "updateduser" || updated.FullName != "Updated Full Name" {
 		t.Fatalf("user was not updated correctly: %+v", updated)
 	}
-
-	// ResetUserPassword
-	_, err = repo.ResetUserPassword(ctx, user.ID, "newhash")
-	if err != nil {
-		t.Fatalf("ResetUserPassword: %v", err)
-	}
 }
 
 func TestSearchHistoryAndStats(t *testing.T) {

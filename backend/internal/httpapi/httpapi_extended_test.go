@@ -69,7 +69,7 @@ func TestHTTP_ExtendedAdminUsers(t *testing.T) {
 	doReq("POST", "/api/admin/users", domain.AdminUserInput{Username: "newadmin", Password: "password123", FullName: "New Admin", Role: "admin"})
 	doReq("PUT", "/api/admin/users/2", domain.AdminUserInput{Username: "newadmin2", FullName: "New Admin 2", Role: "admin"})
 	doReq("POST", "/api/admin/users/2/status", domain.UserStatusInput{IsActive: false})
-	doReq("POST", "/api/admin/users/2/reset-password", nil)
+
 	doReq("POST", "/api/admin/documents", nil)
 	doReq("PUT", "/api/admin/documents/1", nil)
 	doReq("DELETE", "/api/admin/documents/1", nil)

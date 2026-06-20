@@ -7,13 +7,16 @@ import {
   Drawer,
   Paper,
   Stack,
+  Tooltip,
   Typography,
+  Pagination,
   alpha,
 } from "@mui/material";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   getDocument,
   getMySubmissions,
+  submissionFileUrl,
 } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
 import {
@@ -53,15 +56,7 @@ function formatDateTime(value: string) {
 
 function sortSubmissions(items: SubmissionItem[]) {
   return [...items].sort((left, right) => {
-    const updatedDiff =
-      new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
-    if (updatedDiff !== 0) {
-      return updatedDiff;
-    }
-
-    return (
-      new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
-    );
+    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
   });
 }
 
@@ -92,7 +87,8 @@ const MyPdfsPage: React.FC = () => {
     Boolean(locationState?.submissionCreated)
   );
   const [submissions, setSubmissions] = useState<SubmissionItem[]>([]);
-  const [filter, setFilter] = useState<SubmissionFilter>("all");
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [selectedSubmission, setSelectedSubmission] =
@@ -189,58 +185,10 @@ const MyPdfsPage: React.FC = () => {
     };
   }, [selectedSubmission, token]);
 
-  const stats = useMemo(
-    () => ({
-      pending: submissions.filter((item) => item.status === "pending").length,
-      approved: submissions.filter((item) => item.status === "approved").length,
-      rejected: submissions.filter((item) => item.status === "rejected").length,
-    }),
-    [submissions]
-  );
-
-  const filteredSubmissions = useMemo(() => {
-    if (filter === "all") {
-      return submissions;
-    }
-
-    return submissions.filter((item) => item.status === filter);
-  }, [filter, submissions]);
-
-  function renderFilterButton(value: SubmissionFilter, label: string, count: number) {
-    const active = filter === value;
-
-    return (
-      <Button
-        key={value}
-        type="button"
-        variant={active ? "contained" : "outlined"}
-        color="primary"
-        aria-pressed={active}
-        onClick={() => setFilter(value)}
-        sx={{
-          minHeight: 42,
-          borderRadius: 0,
-          px: 1.5,
-          textTransform: "none",
-          fontWeight: 700,
-          justifyContent: "flex-start",
-          ...(active
-            ? {
-                boxShadow: (theme) => `0 10px 24px ${alpha(theme.palette.primary.main, 0.22)}`,
-              }
-            : {
-                backgroundColor: "background.paper",
-                borderColor: (theme) => alpha(theme.palette.divider, 0.95),
-              }),
-        }}
-      >
-        <Stack direction="row" spacing={1} alignItems="center">
-          <span>{label}</span>
-          <Chip size="small" label={count} />
-        </Stack>
-      </Button>
-    );
-  }
+  const pageCount = Math.ceil(submissions.length / pageSize);
+  const paginatedSubmissions = useMemo(() => {
+    return submissions.slice((page - 1) * pageSize, page * pageSize);
+  }, [submissions, page]);
 
   function renderDetailField(label: string, value: React.ReactNode) {
     return (
@@ -353,12 +301,13 @@ const MyPdfsPage: React.FC = () => {
   return (
     <PageShell>
       <PageHeader
-        eyebrow="Аккаунт"
         title="Мои PDF"
         side={
-          <Button component={Link} to="/submit" variant="contained">
-            Загрузить новый PDF
-          </Button>
+          submissions.length > 0 && !isLoading && !loadError && (
+            <Button component={Link} to="/submit" variant="contained">
+              Загрузить новый PDF
+            </Button>
+          )
         }
       />
 
@@ -382,125 +331,148 @@ const MyPdfsPage: React.FC = () => {
       )}
 
       {!isLoading && !loadError && submissions.length === 0 ? (
-        <ContentCard>
-          <Stack spacing={2} alignItems="flex-start">
-            <Typography variant="h5">У вас пока нет отправленных PDF</Typography>
-            <Typography color="text.secondary">
-              Вы ещё не отправляли файлы на модерацию.
-            </Typography>
-          </Stack>
-        </ContentCard>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            minHeight: "50vh",
+            gap: 3,
+            textAlign: "center",
+          }}
+        >
+          <Typography variant="h5" color="text.secondary">
+            У вас пока нет загруженных PDF
+          </Typography>
+          <Button component={Link} to="/submit" variant="contained" size="large" sx={{ px: 4, py: 1.5 }}>
+            Загрузить новый PDF
+          </Button>
+        </Box>
       ) : (
         <Stack spacing={2.5}>
-
-              <Stack
-                direction="row"
-                spacing={1}
-                flexWrap="wrap"
-                useFlexGap
-                role="toolbar"
-                aria-label="Фильтр заявок"
-              >
-                {renderFilterButton("all", "Все", submissions.length)}
-                {renderFilterButton("pending", "В обработке", stats.pending)}
-                {renderFilterButton("approved", "Принято", stats.approved)}
-                {renderFilterButton("rejected", "Отказано", stats.rejected)}
-              </Stack>
-
               {isLoading && (
                 <Typography color="text.secondary">Загружаем ваши PDF...</Typography>
               )}
 
               {loadError && <Alert severity="error">{loadError}</Alert>}
 
-              {!isLoading && !loadError && filteredSubmissions.length === 0 && (
-                <Paper sx={{ p: 2.25, borderRadius: 0 }}>
-                  <Typography fontWeight={700}>Нет файлов.</Typography>
-                </Paper>
+              {!isLoading && !loadError && submissions.length === 0 && (
+                <ContentCard sx={{ p: 4, textAlign: "center" }}>
+                  <Typography fontWeight={600} color="text.secondary">У вас пока нет загруженных PDF.</Typography>
+                </ContentCard>
               )}
 
-              {!isLoading && !loadError && filteredSubmissions.length > 0 && (
-                <Stack spacing={0}>
-                  {filteredSubmissions.map((item) => (
-                    <Paper
-                      key={item.id}
-                      component="article"
-                      elevation={0}
-                      sx={{
-                        p: 1.8,
-                        borderRadius: 0,
-                        borderBottom: (theme) => `2px solid ${alpha(theme.palette.divider, 1)}`,
-                        display: "flex",
-                        flexDirection: { xs: "column", sm: "row" },
-                        alignItems: { xs: "flex-start", sm: "center" },
-                        justifyContent: "space-between",
-                        gap: 2,
-                        backgroundColor: "transparent",
-                        transition: "background-color 0.15s ease",
-                        "&:hover": {
-                          backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.05),
-                        },
-                        "&:last-of-type": {
-                          borderBottom: "none",
-                        }
-                      }}
-                    >
-                      <Stack spacing={0.75} flex={1} minWidth={0}>
-                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                          <Chip
-                            size="small"
-                            label={submissionStatusLabel(item.status)}
-                            sx={statusToneChipSx(submissionStatusTone(item.status))}
-                          />
-                          <Typography variant="caption" color="text.secondary">
-                            Обновлено: {formatDateTime(item.updatedAt)}
+              {!isLoading && !loadError && submissions.length > 0 && (
+                <ContentCard sx={{ p: 0, overflow: "hidden" }}>
+                  <Stack divider={<Box sx={{ borderBottom: (theme) => `1px solid ${theme.palette.divider}` }} />}>
+                    {paginatedSubmissions.map((item) => (
+                      <Box
+                        key={item.id}
+                        component="article"
+                        sx={{
+                          p: 2.5,
+                          display: "flex",
+                          flexDirection: { xs: "column", sm: "row" },
+                          alignItems: { xs: "flex-start", sm: "center" },
+                          justifyContent: "space-between",
+                          gap: 2,
+                          transition: "background-color 0.2s ease",
+                          "&:hover": {
+                            backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.03),
+                          },
+                        }}
+                      >
+                        <Stack spacing={0.75} flex={1} minWidth={0}>
+                          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                            <Chip
+                              size="small"
+                              label={submissionStatusLabel(item.status)}
+                              sx={statusToneChipSx(submissionStatusTone(item.status))}
+                            />
+                          </Stack>
+
+                          <Typography
+                            variant="h6"
+                            fontWeight={600}
+                            sx={{
+                              lineHeight: 1.3,
+                              letterSpacing: "0.01em",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                            }}
+                          >
+                            {item.title}
                           </Typography>
+
+                          <Typography variant="body2" color="text.secondary" noWrap>
+                            Отправлено: {formatDateTime(item.createdAt)}
+                          </Typography>
+
+                          {item.status === "rejected" && (
+                            <Typography variant="body2" color="error.main" sx={{ mt: 0.5, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                              <strong>Причина отказа:</strong> {item.moderationNote || "Не указана"}
+                            </Typography>
+                          )}
                         </Stack>
 
-                        <Typography
-                          variant="h6"
-                          fontWeight={700}
-                          sx={{
-                            lineHeight: 1.2,
-                            letterSpacing: "0.01em",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            display: "-webkit-box",
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: "vertical",
-                          }}
-                        >
-                          {item.title}
-                        </Typography>
+                        {item.status === "approved" && item.approvedDocumentId ? (
+                          <Button
+                            component={Link}
+                            variant="contained"
+                            color="primary"
+                            size="small"
+                            to={`/documents/${item.approvedDocumentId}`}
+                            sx={{ borderRadius: 2, mt: { xs: 1.5, sm: 0 } }}
+                          >
+                            Перейти на страницу файла
+                          </Button>
+                        ) : item.status === "rejected" ? (
+                          <Stack direction="row" spacing={1.5} sx={{ mt: { xs: 1.5, sm: 0 }, alignSelf: { sm: "flex-start" } }}>
+                            <Button
+                              href={submissionFileUrl(item.id, token ?? "")}
+                              variant="outlined"
+                              color="secondary"
+                              size="small"
+                              target="_blank"
+                              sx={{ borderRadius: 2 }}
+                            >
+                              Открыть PDF
+                            </Button>
+                          </Stack>
+                        ) : (
+                          <Stack direction="row" spacing={1.5} sx={{ mt: { xs: 1.5, sm: 0 }, alignSelf: { sm: "flex-start" } }}>
+                            <Button
+                              href={submissionFileUrl(item.id, token ?? "")}
+                              variant="outlined"
+                              color="secondary"
+                              size="small"
+                              target="_blank"
+                              sx={{ borderRadius: 2 }}
+                            >
+                              Открыть PDF
+                            </Button>
+                          </Stack>
+                        )}
+                      </Box>
+                    ))}
+                  </Stack>
+                </ContentCard>
+              )}
 
-                        <Typography variant="body2" color="text.secondary" noWrap>
-                          Файл: {item.fileName} • Отправлено: {formatDateTime(item.createdAt)}
-                        </Typography>
-                      </Stack>
-
-                      <Stack direction="row" spacing={1} sx={{ mt: { xs: 1, sm: 0 } }}>
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          type="button"
-                          onClick={() => setSelectedSubmission(item)}
-                          sx={{ borderRadius: 0 }}
-                        >
-                          Подробнее
-                        </Button>
-                        <Button
-                          component={Link}
-                          variant="outlined"
-                          size="small"
-                          to={`/submissions/${item.id}/read`}
-                          sx={{ borderRadius: 0 }}
-                        >
-                          PDF
-                        </Button>
-                      </Stack>
-                    </Paper>
-                  ))}
-                </Stack>
+              {!isLoading && !loadError && pageCount > 1 && (
+                <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
+                  <Pagination
+                    count={pageCount}
+                    page={page}
+                    onChange={(_, val) => setPage(val)}
+                    color="primary"
+                    shape="rounded"
+                  />
+                </Box>
               )}
             </Stack>
       )}

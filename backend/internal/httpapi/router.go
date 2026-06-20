@@ -64,6 +64,7 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 	{
 		api.POST("/auth/register", handler.register)
 		api.POST("/auth/login", handler.login)
+		api.POST("/stats/visit", handler.logVisit)
 		api.GET("/catalog/document-types", handler.listDocumentTypes)
 
 		authenticated := api.Group("/")
@@ -107,7 +108,9 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 			admin.PUT("/users/:id", handler.adminUpdateUser)
 			admin.PUT("/users", handler.adminUpdateUser)
 			admin.PATCH("/users/:id/status", handler.adminSetUserStatus)
-			admin.POST("/users/:id/reset-password", handler.adminResetUserPassword)
+
+			admin.DELETE("/users/:id", handler.adminDeleteUser)
+			admin.POST("/users/:id/restore", handler.adminRestoreUser)
 		}
 	}
 
@@ -144,6 +147,21 @@ func corsMiddleware(origins []string) gin.HandlerFunc {
 	}
 }
 
+// @Summary Log a site visit
+// @Description Logs a new unique visit from a user to the site
+// @Tags stats
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]string "status"
+// @Router /stats/visit [post]
+func (h *Handler) logVisit(c *gin.Context) {
+	if err := h.service.LogVisit(c.Request.Context()); err != nil {
+		h.logger.Error("failed to log visit", "error", err)
+		// We don't fail the request since this is just a background stat
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 func (h *Handler) requireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := strings.TrimSpace(c.GetHeader("Authorization"))
@@ -178,7 +196,15 @@ func (h *Handler) requireAuth() gin.HandlerFunc {
 func (h *Handler) requireRole(role domain.UserRole) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		currentRole := c.GetString(contextUserRoleKey)
-		if currentRole != string(role) {
+		
+		hasAccess := false
+		if currentRole == string(role) {
+			hasAccess = true
+		} else if role == domain.RoleAdmin && currentRole == string(domain.RoleSuperAdmin) {
+			hasAccess = true // SuperAdmin has all Admin permissions
+		}
+
+		if !hasAccess {
 			h.logger.Warn("forbidden request", "path", c.FullPath(), "method", c.Request.Method, "remote_addr", c.ClientIP(), "required_role", role)
 			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			c.Abort()
@@ -955,7 +981,7 @@ func (h *Handler) adminCreateUser(c *gin.Context) {
 		return
 	}
 
-	user, password, err := h.service.CreateAdminUser(c.Request.Context(), input)
+	user, password, err := h.service.CreateAdminUser(c.Request.Context(), currentUserRole(c), input)
 	if err != nil {
 		writeError(c, err)
 		return
@@ -989,7 +1015,7 @@ func (h *Handler) adminUpdateUser(c *gin.Context) {
 		return
 	}
 
-	user, err := h.service.UpdateUser(c.Request.Context(), currentUserID(c), userID, domain.AdminUserInput{
+	user, err := h.service.UpdateUser(c.Request.Context(), currentUserID(c), currentUserRole(c), userID, domain.AdminUserInput{
 		Username: input.Username,
 		FullName: input.FullName,
 		Role:     input.Role,
@@ -1014,7 +1040,7 @@ func (h *Handler) adminSetUserStatus(c *gin.Context) {
 		return
 	}
 
-	user, err := h.service.SetUserActive(c.Request.Context(), currentUserID(c), userID, input.IsActive)
+	user, err := h.service.SetUserActive(c.Request.Context(), currentUserID(c), currentUserRole(c), userID, input)
 	if err != nil {
 		writeError(c, err)
 		return
@@ -1022,19 +1048,36 @@ func (h *Handler) adminSetUserStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
-func (h *Handler) adminResetUserPassword(c *gin.Context) {
+
+
+func (h *Handler) adminDeleteUser(c *gin.Context) {
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		writeError(c, apperror.ErrInvalidInput)
 		return
 	}
 
-	user, password, err := h.service.ResetUserPassword(c.Request.Context(), userID)
+	err = h.service.DeleteUser(c.Request.Context(), currentUserID(c), currentUserRole(c), userID)
 	if err != nil {
 		writeError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"user": user, "temporaryPassword": password})
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *Handler) adminRestoreUser(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	err = h.service.RestoreUser(c.Request.Context(), currentUserID(c), currentUserRole(c), userID)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func parseFilters(c *gin.Context) domain.DocumentFilters {
@@ -1043,6 +1086,16 @@ func parseFilters(c *gin.Context) domain.DocumentFilters {
 	yearFrom, _ := strconv.Atoi(c.DefaultQuery("yearFrom", "0"))
 	yearTo, _ := strconv.Atoi(c.DefaultQuery("yearTo", "0"))
 
+	var isLocal *bool
+	isLocalQuery := c.Query("isLocal")
+	if isLocalQuery == "true" {
+		val := true
+		isLocal = &val
+	} else if isLocalQuery == "false" {
+		val := false
+		isLocal = &val
+	}
+
 	return domain.DocumentFilters{
 		Query:          strings.TrimSpace(c.Query("q")),
 		Type:           strings.TrimSpace(c.Query("type")),
@@ -1050,6 +1103,7 @@ func parseFilters(c *gin.Context) domain.DocumentFilters {
 		TagsQuery:      strings.TrimSpace(c.Query("tags")),
 		Sort:           strings.TrimSpace(c.DefaultQuery("sort", "relevance")),
 		IncludeDeleted: c.Query("includeDeleted") == "1",
+		IsLocal:        isLocal,
 		Page:           page,
 		PageSize:       pageSize,
 		YearFrom:       yearFrom,
@@ -1092,6 +1146,10 @@ func writeError(c *gin.Context, err error) {
 	default:
 		if errors.Is(err, apperror.ErrConflict) {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
+		if strings.HasPrefix(err.Error(), "account_deactivated:") || strings.HasPrefix(err.Error(), "account_deactivated_reason:") {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})

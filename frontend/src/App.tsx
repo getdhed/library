@@ -1,4 +1,5 @@
-import React, { Suspense, lazy } from "react";
+import React, { Suspense, lazy, useEffect } from "react";
+import { request } from "./api/client";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { AdminRoute, ProtectedRoute } from "./components/ProtectedRoute";
 import Seo, { type SeoProps } from "./components/Seo";
@@ -16,7 +17,7 @@ const MyPdfsPage = lazy(routeLoaders.myPdfs);
 const PdfReaderPage = lazy(routeLoaders.reader);
 const AdminModerationPage = lazy(routeLoaders.adminModeration);
 const AdminDocumentsPage = lazy(routeLoaders.adminDocuments);
-const AdminTrashPage = lazy(routeLoaders.adminTrash);
+const AdminArchivePage = lazy(routeLoaders.adminTrash);
 const AdminStatsPage = lazy(routeLoaders.adminStats);
 const AdminUsersPage = lazy(routeLoaders.adminUsers);
 const AdminAuditPage = lazy(routeLoaders.adminAudit);
@@ -57,6 +58,15 @@ function withSeo(page: React.ReactElement, config: SeoProps) {
 }
 
 const App: React.FC = () => {
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const lastVisit = localStorage.getItem('last_visit_date');
+    if (lastVisit !== today) {
+      request('/stats/visit', { method: 'POST' }).catch(() => {});
+      localStorage.setItem('last_visit_date', today);
+    }
+  }, []);
+
   return (
     <Suspense fallback={<RouteFallback />}>
       <Routes>
@@ -186,16 +196,16 @@ const App: React.FC = () => {
             )}
           />
           <Route
-            path="/admin/trash"
+            path="/admin/archive"
             element={withSeo(
               <AdminRoute>
-                <AdminTrashPage />
+                <AdminArchivePage />
               </AdminRoute>,
               {
-                title: "Админка: корзина",
+                title: "Админка: архив",
                 description: "Удаленные документы.",
                 noIndex: true,
-                canonicalPath: "/admin/trash",
+                canonicalPath: "/admin/archive",
               }
             )}
           />

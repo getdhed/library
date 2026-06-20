@@ -1,50 +1,30 @@
 import { alpha, createTheme, type CSSObject, type PaletteMode } from "@mui/material/styles";
 
 const tokens = {
-  light: {
-    bg: "#f0ede4",
-    panel: "#f3efe3",
-    surface: "#e8e3d5",
-    surfaceMuted: "#d9cfad",
-    ink: "#1a2e1a",
-    muted: "#4a5c3a",
-    line: "#c8bf9e",
-    accent: "#4a5c3a",
-    accentStrong: "#1a2e1a",
-    accentGlow: "#6b7c52",
-    warm: "#b8972a",
-    danger: "#8b2020",
-    headerBg: "#1a2e1a",
-    headerInk: "#f0ede4",
-    headerBorder: "#b8972a",
-    footerBg: "#0f1a0f",
-  },
-  dark: {
-    bg: "#f0ede4",
-    panel: "#f3efe3",
-    surface: "#e8e3d5",
-    surfaceMuted: "#d9cfad",
-    ink: "#1a2e1a",
-    muted: "#4a5c3a",
-    line: "#c8bf9e",
-    accent: "#4a5c3a",
-    accentStrong: "#1a2e1a",
-    accentGlow: "#6b7c52",
-    warm: "#b8972a",
-    danger: "#8b2020",
-    headerBg: "#1a2e1a",
-    headerInk: "#f0ede4",
-    headerBorder: "#b8972a",
-    footerBg: "#0f1a0f",
-  },
+  bg: "#f0ede4",
+  panel: "#f3efe3",
+  surface: "#e8e3d5",
+  surfaceMuted: "#d9cfad",
+  ink: "#1a2e1a",
+  muted: "#4a5c3a",
+  line: "#c8bf9e",
+  accent: "#4a5c3a",
+  accentStrong: "#1a2e1a",
+  accentGlow: "#6b7c52",
+  warm: "#b8972a",
+  danger: "#8b2020",
+  headerBg: "#1a2e1a",
+  headerInk: "#f0ede4",
+  headerBorder: "#b8972a",
+  footerBg: "#0f1a0f",
 } as const;
 
-export function createAppTheme(mode: PaletteMode) {
-  const t = tokens[mode];
+export function createAppTheme() {
+  const t = tokens;
 
   return createTheme({
     palette: {
-      mode,
+      mode: "light",
       primary: {
         main: t.accent,
         dark: t.accentStrong,
@@ -319,8 +299,8 @@ export function createAppTheme(mode: PaletteMode) {
   });
 }
 
-export function getGlobalStyles(mode: PaletteMode): CSSObject {
-  const t = tokens[mode];
+export function getGlobalStyles(): CSSObject {
+  const t = tokens;
   return {
     "*": {
       boxSizing: "border-box",
@@ -355,8 +335,8 @@ export function getGlobalStyles(mode: PaletteMode): CSSObject {
   };
 }
 
-export type ThemeTokens = (typeof tokens)["light"];
+export type ThemeTokens = typeof tokens;
 
-export function getThemeTokens(mode: PaletteMode): ThemeTokens {
-  return tokens[mode];
+export function getThemeTokens(): ThemeTokens {
+  return tokens;
 }

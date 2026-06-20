@@ -189,7 +189,7 @@ func TestCreateAndApproveAdminImportSubmission(t *testing.T) {
 	if !createdUser.IsActive {
 		t.Fatal("expected created user to be active")
 	}
-	inactiveUser, err := repo.SetUserActive(ctx, createdUser.ID, false)
+	inactiveUser, err := repo.SetUserActive(ctx, createdUser.ID, false, "")
 	if err != nil {
 		t.Fatalf("SetUserActive() error = %v", err)
 	}
@@ -284,8 +284,8 @@ func TestEnsureSeedDataUpsertsAdminCredentials(t *testing.T) {
 		t.Fatalf("expected full name to be updated, got %q", fullName)
 	}
 
-	if role != "admin" {
-		t.Fatalf("expected role admin, got %q", role)
+	if role != "superadmin" {
+		t.Fatalf("expected role superadmin, got %q", role)
 	}
 }
 

@@ -259,7 +259,8 @@ describe("AdminDocumentsPage", () => {
     const file = new File(["%PDF-1.4"], "manual.pdf", {
       type: "application/pdf",
     });
-    fireEvent.change(screen.getByLabelText("PDF-файл *"), {
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, {
       target: { files: [file] },
     });
     const createButtonsFinal = screen.getAllByRole("button", { name: "Создать" });

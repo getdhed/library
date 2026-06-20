@@ -11,6 +11,8 @@ import {
   Stack,
   TextField,
   Typography,
+  Switch,
+  FormControlLabel,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
@@ -36,6 +38,7 @@ type EditForm = {
   volume: string;
   description: string;
   tags: string;
+  isLocal: boolean;
   file: File | null;
 };
 
@@ -61,6 +64,7 @@ function fromDocument(item: DocumentItem): EditForm {
     volume: item.volume ?? "",
     description: item.description,
     tags: item.tags.join(", "),
+    isLocal: item.isLocal ?? true,
     file: null,
   };
 }
@@ -87,6 +91,7 @@ function buildFormData(form: EditForm) {
   fd.set("volume", form.volume.trim());
   fd.set("description", form.description.trim());
   fd.set("tags", form.tags);
+  fd.set("isLocal", String(form.isLocal));
   if (form.file) fd.set("file", form.file);
   return fd;
 }
@@ -250,6 +255,19 @@ const EditDocumentDialog: React.FC<Props> = ({ token, document, onSaved }) => {
               inputProps={{ "aria-label": "Год издания" }}
             />
 
+            <FormControlLabel
+              className="full"
+              control={
+                <Switch
+                  checked={form.isLocal}
+                  onChange={(e) => set("isLocal", e.target.checked)}
+                  name="isLocal"
+                  color="primary"
+                />
+              }
+              label="Локальный файл (Собственность библиотеки)"
+            />
+
             <TextField
               label="Место издания"
               value={form.placeOfPublication}
@@ -267,12 +285,12 @@ const EditDocumentDialog: React.FC<Props> = ({ token, document, onSaved }) => {
             />
 
             <TextField
-              label="Объём"
+              label="Количество страниц"
               value={form.volume}
               onChange={(e) => set("volume", e.target.value)}
-              placeholder="Например: 208 с."
+              placeholder="Например: 208"
               fullWidth
-              inputProps={{ "aria-label": "Объём" }}
+              inputProps={{ "aria-label": "Количество страниц" }}
             />
 
             <TextField

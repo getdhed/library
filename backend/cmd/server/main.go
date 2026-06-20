@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
+
+	"github.com/joho/godotenv"
 
 	"library-backend/internal/app"
 	"library-backend/internal/config"
@@ -25,7 +28,15 @@ import (
 // @host localhost:8080
 // @BasePath /api
 
+func pauseAndExit() {
+	fmt.Println("\nНажмите Enter для выхода...")
+	fmt.Scanln()
+	os.Exit(1)
+}
+
 func main() {
+	_ = godotenv.Load()
+	
 	cfg := config.Load()
 	logger := logging.New(cfg)
 	logger.Info("starting library-backend", "port", cfg.Port, "log_level", cfg.LogLevel, "log_format", cfg.LogFormat)
@@ -33,12 +44,12 @@ func main() {
 	application, err := app.New(context.Background(), cfg, logger)
 	if err != nil {
 		logger.Error("failed to start application", "error", err)
-		os.Exit(1)
+		pauseAndExit()
 	}
 	defer application.Close()
 
 	if err := application.Run(); err != nil {
 		logger.Error("server exited with error", "error", err)
-		os.Exit(1)
+		pauseAndExit()
 	}
 }

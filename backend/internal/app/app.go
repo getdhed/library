@@ -112,6 +112,9 @@ func (a *App) startArchiver(ctx context.Context) {
 		if err := a.svc.CleanupDeletedItems(ctx); err != nil {
 			a.logger.Error("failed to cleanup deleted items on startup", "error", err)
 		}
+		if err := a.svc.DeactivateInactiveUsers(ctx); err != nil {
+			a.logger.Error("failed to deactivate inactive users on startup", "error", err)
+		}
 
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
@@ -128,6 +131,9 @@ func (a *App) startArchiver(ctx context.Context) {
 				}
 				if err := a.svc.CleanupDeletedItems(ctx); err != nil {
 					a.logger.Error("failed to cleanup deleted items", "error", err)
+				}
+				if err := a.svc.DeactivateInactiveUsers(ctx); err != nil {
+					a.logger.Error("failed to deactivate inactive users", "error", err)
 				}
 			}
 		}
