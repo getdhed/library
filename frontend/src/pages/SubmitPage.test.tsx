@@ -7,7 +7,7 @@ import SubmitPage from "./SubmitPage";
 
 vi.mock("../api/library", () => ({
   createSubmission: vi.fn(),
-  getDocumentTypes: vi.fn().mockResolvedValue({ items: ["УЧЕБНИК"] }),
+  getDocumentTypes: vi.fn().mockResolvedValue({ items: ["Учебник"] }),
 }));
 
 import {

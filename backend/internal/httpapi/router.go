@@ -41,6 +41,7 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.MaxMultipartMemory = cfg.MaxUploadSizeBytes()
+	router.Use(bodySizeMiddleware(cfg.MaxUploadSizeBytes()))
 	router.Use(requestLogger(logger))
 	router.Use(recoveryLogger(logger))
 	router.Use(corsMiddleware(cfg.CORSOrigins))
@@ -62,13 +63,13 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 
 	api := router.Group("/api")
 	{
-		api.POST("/auth/register", handler.register)
-		api.POST("/auth/login", handler.login)
+		api.POST("/auth/register", rateLimitMiddleware(1.0, 3), handler.register)
+		api.POST("/auth/login", rateLimitMiddleware(2.0, 5), handler.login)
 		api.POST("/stats/visit", handler.logVisit)
 		api.GET("/catalog/document-types", handler.listDocumentTypes)
 
 		authenticated := api.Group("/")
-		authenticated.Use(handler.requireAuth())
+		authenticated.Use(rateLimitMiddleware(20.0, 50), handler.requireAuth())
 		{
 			authenticated.GET("/me", handler.me)
 			authenticated.GET("/home", handler.home)
@@ -90,12 +91,13 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 		}
 
 		admin := api.Group("/admin")
-		admin.Use(handler.requireAuth(), handler.requireRole(domain.RoleAdmin))
+		admin.Use(rateLimitMiddleware(30.0, 100), handler.requireAuth(), handler.requireRole(domain.RoleAdmin))
 		{
 			admin.GET("/documents", handler.adminListDocuments)
 			admin.POST("/documents", handler.adminCreateDocument)
 			admin.PUT("/documents/:id", handler.adminUpdateDocument)
 			admin.DELETE("/documents/:id", handler.adminDeleteDocument)
+			admin.DELETE("/documents/:id/hard", handler.adminHardDeleteDocument)
 			admin.POST("/documents/:id/restore", handler.adminRestoreDocument)
 			admin.GET("/documents/:id/audit", handler.adminDocumentAudit)
 			admin.GET("/audit", handler.adminAudit)
@@ -110,6 +112,7 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 			admin.PATCH("/users/:id/status", handler.adminSetUserStatus)
 
 			admin.DELETE("/users/:id", handler.adminDeleteUser)
+			admin.DELETE("/users/:id/hard", handler.adminHardDeleteUser)
 			admin.POST("/users/:id/restore", handler.adminRestoreUser)
 		}
 	}
@@ -125,24 +128,35 @@ func corsMiddleware(origins []string) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
+		allowCreds := false
 		if origin != "" {
 			if _, ok := allowed["*"]; ok {
 				c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 			} else if _, ok := allowed[origin]; ok {
 				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 				c.Writer.Header().Set("Vary", "Origin")
+				allowCreds = true
 			}
 		}
 
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		if allowCreds {
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
 
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
 
+		c.Next()
+	}
+}
+
+func bodySizeMiddleware(maxBytes int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
 		c.Next()
 	}
 }
@@ -169,7 +183,10 @@ func (h *Handler) requireAuth() gin.HandlerFunc {
 		if strings.HasPrefix(header, "Bearer ") {
 			token = strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
 		} else {
-			token = strings.TrimSpace(c.Query("token"))
+			path := c.Request.URL.Path
+			if c.Request.Method == http.MethodGet && (strings.HasSuffix(path, "/file") || strings.HasSuffix(path, "/cover")) {
+				token = strings.TrimSpace(c.Query("token"))
+			}
 		}
 
 		if token == "" {
@@ -183,6 +200,21 @@ func (h *Handler) requireAuth() gin.HandlerFunc {
 		if err != nil {
 			h.logger.Warn("invalid auth token", "path", c.FullPath(), "method", c.Request.Method, "remote_addr", c.ClientIP())
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_token"})
+			c.Abort()
+			return
+		}
+
+		user, err := h.service.Me(c.Request.Context(), claims.Sub)
+		if err != nil {
+			h.logger.Warn("user not found for token", "user_id", claims.Sub, "path", c.FullPath(), "error", err)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_token"})
+			c.Abort()
+			return
+		}
+
+		if !user.IsActive || user.DeletedAt != nil {
+			h.logger.Warn("inactive user attempted access", "user_id", claims.Sub, "path", c.FullPath())
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "account_deactivated"})
 			c.Abort()
 			return
 		}
@@ -463,6 +495,10 @@ func (h *Handler) serveStoredFile(c *gin.Context, relativePath, fileName, conten
 	}
 	c.Header("Content-Type", contentType)
 	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Referrer-Policy", "no-referrer")
+	if dispositionType == "attachment" {
+		c.Header("X-Frame-Options", "DENY")
+	}
 	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
 	c.Header("Pragma", "no-cache")
 	c.Header("Expires", "0")
@@ -604,6 +640,8 @@ func (h *Handler) serveDocumentCover(c *gin.Context) {
 
 	c.Header("Content-Type", "image/png")
 	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Referrer-Policy", "no-referrer")
+	c.Header("X-Frame-Options", "DENY")
 	c.Header("Cache-Control", "no-cache, max-age=0")
 	c.File(path)
 }
@@ -828,6 +866,19 @@ func (h *Handler) adminRestoreDocument(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+func (h *Handler) adminHardDeleteDocument(c *gin.Context) {
+	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	if err := h.service.HardDeleteDocument(c.Request.Context(), documentID, currentUserID(c), currentUserRole(c)); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func (h *Handler) adminDocumentAudit(c *gin.Context) {
 	documentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -981,7 +1032,7 @@ func (h *Handler) adminCreateUser(c *gin.Context) {
 		return
 	}
 
-	user, password, err := h.service.CreateAdminUser(c.Request.Context(), currentUserRole(c), input)
+	user, password, err := h.service.CreateAdminUser(c.Request.Context(), currentUserID(c), currentUserRole(c), input)
 	if err != nil {
 		writeError(c, err)
 		return
@@ -1065,6 +1116,21 @@ func (h *Handler) adminDeleteUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+func (h *Handler) adminHardDeleteUser(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+
+	err = h.service.HardDeleteUser(c.Request.Context(), currentUserID(c), currentUserRole(c), userID)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 func (h *Handler) adminRestoreUser(c *gin.Context) {
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -1132,20 +1198,39 @@ func currentUserRole(c *gin.Context) domain.UserRole {
 }
 
 func writeError(c *gin.Context, err error) {
+	path := c.FullPath()
 	switch err {
 	case apperror.ErrInvalidInput:
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		msg := "Некорректные данные запроса"
+		if path == "/api/auth/register" {
+			msg = "Некорректные данные регистрации: укажите логин, ФИО и пароль (не короче 6 символов)"
+		} else if strings.HasPrefix(path, "/api/admin/users") {
+			msg = "Некорректные данные пользователя: укажите логин, ФИО и роль; пароль не короче 6 символов при создании"
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 	case apperror.ErrUnauthorized, apperror.ErrInvalidToken:
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 	case apperror.ErrForbidden:
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	case apperror.ErrConflict:
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		msg := "Конфликт данных"
+		if path == "/api/auth/register" || strings.HasPrefix(path, "/api/admin/users") {
+			msg = "Пользователь с таким логином уже существует"
+		} else if strings.HasPrefix(path, "/api/admin/submissions") {
+			msg = "Операция недоступна для текущего статуса заявки"
+		}
+		c.JSON(http.StatusConflict, gin.H{"error": msg})
 	case apperror.ErrNotFound:
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	default:
 		if errors.Is(err, apperror.ErrConflict) {
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			msg := "Конфликт данных"
+			if path == "/api/auth/register" || strings.HasPrefix(path, "/api/admin/users") {
+				msg = "Пользователь с таким логином уже существует"
+			} else if strings.HasPrefix(path, "/api/admin/submissions") {
+				msg = "Операция недоступна для текущего статуса заявки"
+			}
+			c.JSON(http.StatusConflict, gin.H{"error": msg})
 			return
 		}
 		if strings.HasPrefix(err.Error(), "account_deactivated:") || strings.HasPrefix(err.Error(), "account_deactivated_reason:") {

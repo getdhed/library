@@ -109,6 +109,9 @@ func (a *App) startArchiver(ctx context.Context) {
 		} else {
 			a.logger.Info("successfully executed old logs archiver")
 		}
+		if err := a.svc.CleanOldArchives(ctx, a.cfg.EnableArchiveRetention, a.cfg.ArchiveRetentionDays); err != nil {
+			a.logger.Error("failed to clean old archives on startup", "error", err)
+		}
 		if err := a.svc.CleanupDeletedItems(ctx); err != nil {
 			a.logger.Error("failed to cleanup deleted items on startup", "error", err)
 		}
@@ -128,6 +131,9 @@ func (a *App) startArchiver(ctx context.Context) {
 					a.logger.Error("failed to archive old logs", "error", err)
 				} else {
 					a.logger.Info("successfully executed old logs archiver")
+				}
+				if err := a.svc.CleanOldArchives(ctx, a.cfg.EnableArchiveRetention, a.cfg.ArchiveRetentionDays); err != nil {
+					a.logger.Error("failed to clean old archives", "error", err)
 				}
 				if err := a.svc.CleanupDeletedItems(ctx); err != nil {
 					a.logger.Error("failed to cleanup deleted items", "error", err)

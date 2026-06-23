@@ -128,10 +128,10 @@ describe("BrowsePage", () => {
     expect(await screen.findByText("DevOps Playbook")).toBeInTheDocument();
 
     const selects = screen.getAllByRole("combobox");
-    expect(selects).toHaveLength(2);
+    expect(selects).toHaveLength(3);
 
     await selectMUIOption(selects[0], 1);
-    await selectMUIOption(selects[1], 4);
+    await selectMUIOption(selects[2], 4);
     fireEvent.change(screen.getByLabelText("Автор"), {
       target: { value: "Demo Author" },
     });

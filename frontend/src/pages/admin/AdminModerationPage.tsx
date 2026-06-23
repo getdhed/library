@@ -317,9 +317,11 @@ const AdminModerationPage: React.FC = () => {
                         </Stack>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">{item.submitterName}</Typography>
+                        <Typography variant="body2">
+                          {item.uploaderName || item.uploaderUsername || `ID ${item.userId}`}
+                        </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {item.submitterEmail}
+                          {item.uploaderUsername ? `@${item.uploaderUsername}` : (item.source === "admin_import" ? "Админ-импорт" : "Пользователь")}
                         </Typography>
                       </TableCell>
                       <TableCell sx={{ whiteSpace: "nowrap" }}>

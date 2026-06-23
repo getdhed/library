@@ -88,26 +88,32 @@ const DocumentListItem: React.FC<Props> = ({
           </Typography>
 
           {item.author && (
-            <Typography
-              component={Link}
-              to={`/search?author=${encodeURIComponent(item.author)}`}
-              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-              fontWeight={600}
-              sx={{
-                color: "success.main",
-                textDecoration: "none",
-                position: "relative",
-                zIndex: 2,
-                display: "inline-block",
-                width: "fit-content",
-                "&:hover": {
-                  color: "success.dark",
-                  textDecoration: "underline",
-                },
-              }}
-            >
-              {item.author}
-            </Typography>
+            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+              {item.author.split(",").map((a) => a.trim()).filter(Boolean).map((authorName, index, arr) => (
+                <React.Fragment key={index}>
+                  <Typography
+                    component={Link}
+                    to={`/search?author=${encodeURIComponent(authorName)}`}
+                    onClick={(e) => { e.stopPropagation(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                    fontWeight={600}
+                    sx={{
+                      color: "success.main",
+                      textDecoration: "none",
+                      position: "relative",
+                      zIndex: 2,
+                      "&:hover": { color: "success.dark" },
+                    }}
+                  >
+                    {authorName}
+                  </Typography>
+                  {index < arr.length - 1 && (
+                    <Typography component="span" sx={{ color: "text.secondary", zIndex: 2, position: "relative" }}>
+                      ,
+                    </Typography>
+                  )}
+                </React.Fragment>
+              ))}
+            </Box>
           )}
 
         </Stack>

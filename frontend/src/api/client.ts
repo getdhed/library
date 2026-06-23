@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api";
+const API_URL = import.meta.env.VITE_API_URL ?? "/api";
 
 export class ApiError extends Error {
   status: number;
@@ -41,10 +41,23 @@ export async function request<T>(
   }
 
   const text = await response.text();
-  const payload = text ? JSON.parse(text) : null;
+  let payload: any = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = text; // non-JSON response body
+    }
+  }
 
   if (!response.ok) {
-    throw new ApiError(payload?.error ?? "request_failed", response.status);
+    const message =
+      (payload && typeof payload === "object" && "error" in payload)
+        ? String((payload as any).error)
+        : (typeof payload === "string" && payload.trim() !== "")
+          ? payload
+          : "request_failed";
+    throw new ApiError(message, response.status);
   }
 
   return payload as T;

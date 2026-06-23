@@ -21,9 +21,10 @@ type MetricCardProps = {
   label: string;
   icon: React.ReactNode;
   color?: string;
+  children?: React.ReactNode;
 };
 
-const MetricCard: React.FC<MetricCardProps> = ({ value, label, icon, color }) => (
+const MetricCard: React.FC<MetricCardProps> = ({ value, label, icon, color, children }) => (
   <Paper sx={{ p: 2.5, borderRadius: 2, display: "flex", gap: 2, alignItems: "center", boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
     <Box sx={{ 
       p: 1.5, 
@@ -39,6 +40,7 @@ const MetricCard: React.FC<MetricCardProps> = ({ value, label, icon, color }) =>
         {value}
       </Typography>
       <Typography variant="body2" color="text.secondary" fontWeight={600} sx={{ mt: 0.5 }}>{label}</Typography>
+      {children}
     </Box>
   </Paper>
 );
@@ -179,7 +181,11 @@ const AdminStatsPage: React.FC = () => {
           label="ВСЕГО ДОКУМЕНТОВ"
           icon={<DescriptionIcon fontSize="large" />}
           color="#1976d2"
-        />
+        >
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+            Локальные: <b>{stats.localDocumentsCount}</b>, Внешние: <b>{stats.externalDocumentsCount}</b>
+          </Typography>
+        </MetricCard>
         <MetricCard
           value={stats.viewsToday}
           label="ОТКРЫТИЙ ЗА ПЕРИОД"
@@ -207,8 +213,8 @@ const AdminStatsPage: React.FC = () => {
       </Box>
 
       <Grid container spacing={2}>
-        <Grid size={{ xs: 12, md: 8 }}>
-          <ContentCard sx={{ height: 400, display: 'flex', flexDirection: 'column' }}>
+        <Grid size={{ xs: 12, md: 8 }} sx={{ minWidth: 0 }}>
+          <ContentCard sx={{ height: 400, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="h6" fontWeight={700}>
                 Нагрузка на приложение (API RPS)
@@ -217,8 +223,8 @@ const AdminStatsPage: React.FC = () => {
                 Всего за период
               </Typography>
             </Box>
-            <Box sx={{ flexGrow: 1, minHeight: 0 }}>
-              <ResponsiveContainer width="100%" height="100%">
+            <Box sx={{ flexGrow: 1, minHeight: 0, minWidth: 0 }}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <AreaChart data={(stats.appLoadByHour || []).map(item => {
                   let dString = item.name;
                   if (item.name.length === 16) { // YYYY-MM-DD HH:00

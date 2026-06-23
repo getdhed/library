@@ -37,6 +37,7 @@ import {
   createDocument,
   deleteDocument,
   getAdminDocuments,
+  getAdminStats,
   getDocumentTypes,
   documentFileUrl,
   updateDocument,
@@ -54,6 +55,7 @@ import {
   tableSurfaceSx,
 } from "../../components/mui-primitives";
 import type {
+  AdminStats,
   DocumentItem,
   PagedDocuments,
 } from "../../types";
@@ -72,6 +74,7 @@ function createEditForm(item: DocumentItem): AdminForm {
     volume: item.volume || "",
     description: item.description,
     tags: item.tags.join(", "),
+    isLocal: item.isLocal ?? true,
     file: null,
   };
 }
@@ -117,6 +120,7 @@ function buildDocumentFormData(form: AdminForm) {
 const AdminDocumentsPage: React.FC = () => {
   const { token } = useAuth();
   const [payload, setPayload] = useState<PagedDocuments | null>(null);
+  const [stats, setStats] = useState<AdminStats | null>(null);
 
   const [search, setSearch] = useState("");
   const [documentTypeFilter, setDocumentTypeFilter] = useState("");
@@ -132,10 +136,12 @@ const AdminDocumentsPage: React.FC = () => {
   const [editingDocument, setEditingDocument] = useState<DocumentItem | null>(null);
   const [editForm, setEditForm] = useState<AdminForm>(() => createEmptyForm());
   const [editFormError, setEditFormError] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const [isCreating, setIsCreating] = useState(false);
   const [createForm, setCreateForm] = useState<AdminForm>(() => createEmptyForm());
   const [createFormError, setCreateFormError] = useState("");
+  const [isSavingCreate, setIsSavingCreate] = useState(false);
 
   const [createPreviewUrl, setCreatePreviewUrl] = useState("");
   useEffect(() => {
@@ -185,6 +191,7 @@ const AdminDocumentsPage: React.FC = () => {
   useEffect(() => {
     if (!token) return;
     getDocumentTypes().then((res) => setDocumentTypes(res.items)).catch(console.error);
+    getAdminStats(token).then((res) => setStats(res)).catch(console.error);
   }, [token]);
 
   useEffect(() => {
@@ -218,6 +225,7 @@ const AdminDocumentsPage: React.FC = () => {
   async function handleUpdateDocument(event: React.FormEvent) {
     event.preventDefault();
     if (!token || !editingDocument) return;
+    if (isSavingEdit) return;
 
     setEditFormError("");
     const missing = validateDocumentForm(editForm, false);
@@ -227,17 +235,21 @@ const AdminDocumentsPage: React.FC = () => {
     }
 
     try {
+      setIsSavingEdit(true);
       await updateDocument(token, editingDocument.id, buildDocumentFormData(editForm));
       await loadDocuments();
       resetEditing();
     } catch (error) {
       setEditFormError(resolveErrorMessage(error, "Не удалось сохранить изменения."));
+    } finally {
+      setIsSavingEdit(false);
     }
   }
 
   async function handleCreateDocument(event: React.FormEvent) {
     event.preventDefault();
     if (!token) return;
+    if (isSavingCreate) return;
 
     setCreateFormError("");
     const missing = validateDocumentForm(createForm, true);
@@ -247,16 +259,19 @@ const AdminDocumentsPage: React.FC = () => {
     }
 
     try {
+      setIsSavingCreate(true);
       await createDocument(token, buildDocumentFormData(createForm));
       await loadDocuments();
       resetCreating();
     } catch (error) {
       setCreateFormError(resolveErrorMessage(error, "Не удалось создать документ."));
+    } finally {
+      setIsSavingCreate(false);
     }
   }
 
   async function removeDocument(id: number) {
-    if (!token || !window.confirm("Удалить документ?")) return;
+    if (!token || !window.confirm("Поместить документ в архив?")) return;
     await deleteDocument(token, id);
     if (editingDocument?.id === id) {
       resetEditing();
@@ -291,6 +306,11 @@ const AdminDocumentsPage: React.FC = () => {
             <Typography variant="h5" fontWeight={700}>
               Каталог <Typography component="span" variant="h6" color="text.secondary">({payload?.total ?? 0})</Typography>
             </Typography>
+            {stats && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Локальных: <b>{stats.localDocumentsCount}</b>, Внешних: <b>{stats.externalDocumentsCount}</b>
+              </Typography>
+            )}
           </Box>
 
           <Button variant="contained" size="large" onClick={startCreate} fullWidth>
@@ -474,6 +494,7 @@ const AdminDocumentsPage: React.FC = () => {
         error={createFormError}
         onSubmit={handleCreateDocument}
         submitLabel="Создать"
+        isSubmitting={isSavingCreate}
         fileLabel="PDF-файл *"
         idPrefix="admin-create"
         documentTypes={documentTypes}
@@ -490,6 +511,7 @@ const AdminDocumentsPage: React.FC = () => {
         error={editFormError}
         onSubmit={handleUpdateDocument}
         submitLabel="Сохранить изменения"
+        isSubmitting={isSavingEdit}
         fileLabel="Заменить PDF (необязательно)"
         idPrefix="admin-edit"
         documentTypes={documentTypes}
@@ -499,7 +521,7 @@ const AdminDocumentsPage: React.FC = () => {
             color="error"
             onClick={() => editingDocument && void removeDocument(editingDocument.id)}
           >
-            Удалить документ
+            Архивировать документ
           </Button>
         }
       />

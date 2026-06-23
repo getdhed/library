@@ -80,8 +80,9 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *sql.DB, context.Context, conte
 	renderer, _ := preview.New()
 	
 	cfg := config.Config{
-		JWTSecret: "test-secret",
-		TokenTTL:  24 * time.Hour,
+		JWTSecret:       "test-secret",
+		TokenTTL:        24 * time.Hour,
+		MaxUploadSizeMB: 100,
 	}
 	
 	tokens := auth.NewTokenManager("test-secret", 24*time.Hour)

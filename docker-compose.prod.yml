@@ -14,6 +14,11 @@ services:
       - frontend
       - backend
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Override backend to hide direct port exposure
   backend:

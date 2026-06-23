@@ -105,6 +105,8 @@ type SearchHistoryItem struct {
 
 type Stats struct {
 	DocumentsCount        int64       `json:"documentsCount"`
+	LocalDocumentsCount   int64       `json:"localDocumentsCount"`
+	ExternalDocumentsCount int64      `json:"externalDocumentsCount"`
 	VisitsInPeriod        int64       `json:"visitsInPeriod"`
 	ViewsToday            int64       `json:"viewsToday"`
 	DownloadsToday        int64       `json:"downloadsToday"`

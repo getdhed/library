@@ -43,18 +43,30 @@ const HomePage: React.FC = () => {
 
   useEffect(() => {
     const trimmed = query.trim();
-    if (!token || trimmed.length < 2) {
+    if (!token) {
       setSuggestions([]);
       return;
     }
 
-    const timeout = window.setTimeout(() => {
-      getSuggestions(token, trimmed)
-        .then((payload) => setSuggestions(payload.items.slice(0, 5)))
-        .catch(console.error);
-    }, 300);
+    // If input shorter than 2 chars, we don't fetch suggestions
+    if (trimmed.length < 2) {
+      setSuggestions([]);
+      return;
+    }
 
-    return () => window.clearTimeout(timeout);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      getSuggestions(token, trimmed, { signal: controller.signal })
+        .then((payload) => setSuggestions(payload.items.slice(0, 4)))
+        .catch((err) => {
+          if (err?.name !== "AbortError") console.error(err);
+        });
+    }, 250);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
   }, [query, token]);
 
   const dropdownItems = useMemo(() => {
@@ -71,7 +83,7 @@ const HomePage: React.FC = () => {
       }));
     }
 
-    return historyItems.map((item) => ({
+    return historyItems.slice(0, 5).map((item) => ({
       key: `history-${item.id}`,
       label: item.query,
       type: "",
@@ -129,7 +141,7 @@ const HomePage: React.FC = () => {
         component="section"
         sx={{
           p: 0,
-          overflow: "hidden",
+          overflow: "visible",
           bgcolor: "primary.dark",
           borderColor: (theme) => alpha(theme.palette.secondary.main, 0.4),
           color: (theme) => alpha(theme.palette.primary.contrastText, 0.95),
@@ -207,13 +219,14 @@ const HomePage: React.FC = () => {
                 },
               }}
             >
-              <Box component="form" onSubmit={submitSearch} sx={{ position: "relative" }}>
+              <Box component="form" onSubmit={submitSearch}>
                 <Box sx={{ display: "flex", gap: 1.2 }}>
-                  <InputBase
+                  <Box sx={{ position: "relative", flex: 1, minWidth: 0 }}>
+                    <InputBase
                     placeholder="Название, автор, тип документа"
                     inputProps={{ "aria-label": "Поиск документов" }}
                     sx={{
-                      flex: 1,
+                      width: "100%",
                       px: 2.2,
                       py: 1.1,
                       border: (theme) => `1px solid ${theme.palette.divider}`,
@@ -225,6 +238,76 @@ const HomePage: React.FC = () => {
                     onFocus={() => setShowHistory(true)}
                     onBlur={() => window.setTimeout(() => setShowHistory(false), 150)}
                   />
+                  {showDropdown && (
+                    <Paper
+                      sx={{
+                        position: "absolute",
+                        top: "100%",
+                        left: 0,
+                        right: 0,
+                        zIndex: (theme) => theme.zIndex.modal + 1,
+                        borderRadius: 0,
+                        bgcolor: "background.paper",
+                        border: (theme) => `1px solid ${theme.palette.divider}`,
+                        borderTop: 0,
+                        boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
+                        maxHeight: 320,
+                        overflowY: "auto",
+                      }}
+                    >
+                      {dropdownItems.map((item) => (
+                        <Button
+                          key={item.key}
+                          type="button"
+                          fullWidth
+                          color="inherit"
+                          onClick={item.onClick}
+                          sx={{
+                            justifyContent: "flex-start",
+                            borderRadius: 0,
+                            px: 1.7,
+                            py: 1.1,
+                            textAlign: "left",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "flex-start",
+                            borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+                            "&:last-child": { borderBottom: "none" },
+                            "&:hover": { bgcolor: "action.hover" },
+                          }}
+                        >
+                          <Typography
+                            component="span"
+                            sx={{
+                              fontSize: 14,
+                              fontWeight: 500,
+                              lineHeight: 1.3,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              width: "100%",
+                            }}
+                          >
+                            {item.label}
+                          </Typography>
+                          {item.type && (
+                            <Typography
+                              component="span"
+                              sx={{
+                                fontSize: 11,
+                                color: "text.secondary",
+                                lineHeight: 1.2,
+                                mt: 0.2,
+                              }}
+                            >
+                              {item.type}
+                            </Typography>
+                          )}
+                        </Button>
+                      ))}
+                    </Paper>
+                  )}
+                  </Box>
                   <Button
                     type="submit"
                     variant="contained"
@@ -238,71 +321,6 @@ const HomePage: React.FC = () => {
                     Поиск
                   </Button>
                 </Box>
-
-                {showDropdown && (
-                  <Paper
-                    sx={{
-                      position: "absolute",
-                      top: "calc(100% + 10px)",
-                      left: 0,
-                      right: 0,
-                      zIndex: 20,
-                      borderRadius: 0,
-                      maxHeight: 320,
-                      overflowY: "auto",
-                    }}
-                  >
-                    {dropdownItems.map((item) => (
-                      <Button
-                        key={item.key}
-                        type="button"
-                        fullWidth
-                        color="inherit"
-                        onClick={item.onClick}
-                        sx={{
-                          justifyContent: "flex-start",
-                          borderRadius: 0,
-                          px: 1.7,
-                          py: 1.1,
-                          textAlign: "left",
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "flex-start",
-                          borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
-                          "&:last-child": { borderBottom: "none" },
-                        }}
-                      >
-                        <Typography
-                          component="span"
-                          sx={{
-                            fontSize: 14,
-                            fontWeight: 500,
-                            lineHeight: 1.3,
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            width: "100%",
-                          }}
-                        >
-                          {item.label}
-                        </Typography>
-                        {item.type && (
-                          <Typography
-                            component="span"
-                            sx={{
-                              fontSize: 11,
-                              color: "text.secondary",
-                              lineHeight: 1.2,
-                              mt: 0.2,
-                            }}
-                          >
-                            {item.type}
-                          </Typography>
-                        )}
-                      </Button>
-                    ))}
-                  </Paper>
-                )}
               </Box>
             </Paper>
           </Box>

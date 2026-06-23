@@ -33,11 +33,13 @@ import {
 import BlockRoundedIcon from "@mui/icons-material/BlockRounded";
 import RestoreRoundedIcon from "@mui/icons-material/RestoreRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import DeleteForeverRoundedIcon from "@mui/icons-material/DeleteForeverRounded";
 import {
   createAdminUser,
   getAdminUsers,
   setAdminUserStatus,
   updateAdminUser,
+  hardDeleteAdminUser,
 } from "../../api/library";
 import { useAuth } from "../../auth/AuthContext";
 import AdminFrame from "../../components/AdminFrame";
@@ -100,6 +102,8 @@ const AdminUsersPage: React.FC = () => {
   const [form, setForm] = useState<UserForm>(() => createEmptyForm());
   const [error, setError] = useState("");
   const [temporaryPassword, setTemporaryPassword] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<{ fullName: string; username: string; password: string }>({ fullName: "", username: "", password: "" });
+  const [isSaving, setIsSaving] = useState(false);
 
   async function loadUsers() {
     if (!token) return;
@@ -128,6 +132,7 @@ const AdminUsersPage: React.FC = () => {
     setForm(createEmptyForm());
     setError("");
     setTemporaryPassword("");
+    setFieldErrors({ fullName: "", username: "", password: "" });
     setIsModalOpen(true);
   }
 
@@ -136,6 +141,7 @@ const AdminUsersPage: React.FC = () => {
     setForm(createEditForm(user));
     setError("");
     setTemporaryPassword("");
+    setFieldErrors({ fullName: "", username: "", password: "" });
     setIsModalOpen(true);
   }
 
@@ -146,15 +152,38 @@ const AdminUsersPage: React.FC = () => {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!token) return;
+    if (isSaving) return;
 
     setError("");
-
-    if (!form.username.trim() || !form.fullName.trim()) {
-      setError("Заполните ФИО и логин пользователя.");
-      return;
+    const errs = { fullName: "", username: "", password: "" };
+    let hasError = false;
+    if (!form.fullName.trim()) {
+      errs.fullName = "Укажите ФИО";
+      hasError = true;
+    }
+    if (!form.username.trim()) {
+      errs.username = "Укажите логин";
+      hasError = true;
+    }
+    if (!editingUser) {
+      const pw = form.password.trim();
+      if (!pw) {
+        errs.password = "Укажите пароль";
+        hasError = true;
+      } else if (pw.length < 6) {
+        errs.password = "Пароль должен содержать минимум 6 символов";
+        hasError = true;
+      }
     }
 
+    if (hasError) {
+      setFieldErrors(errs);
+      return;
+    }
+    setFieldErrors({ fullName: "", username: "", password: "" });
+
     try {
+      setIsSaving(true);
       if (editingUser) {
         await updateAdminUser(token, editingUser.id, {
           username: form.username.trim(),
@@ -178,6 +207,8 @@ const AdminUsersPage: React.FC = () => {
           ? submitError.message
           : "Не удалось сохранить пользователя."
       );
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -211,7 +242,15 @@ const AdminUsersPage: React.FC = () => {
     }
   }
 
-
+  async function handleHardDeleteUser(user: User) {
+    if (!token || !window.confirm(`Вы уверены, что хотите НАВСЕГДА удалить пользователя ${user.fullName}? Это действие необратимо!`)) return;
+    try {
+      await hardDeleteAdminUser(token, user.id);
+      await loadUsers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось окончательно удалить пользователя.");
+    }
+  }
 
   return (
     <AdminFrame
@@ -269,7 +308,6 @@ const AdminUsersPage: React.FC = () => {
                   <MenuItem value="">Все роли</MenuItem>
                   <MenuItem value="user">Читатель</MenuItem>
                   <MenuItem value="admin">Библиотекарь</MenuItem>
-                  <MenuItem value="superadmin">Супер-админ</MenuItem>
                 </Select>
               </FormControl>
               <FormControl fullWidth>
@@ -381,6 +419,21 @@ const AdminUsersPage: React.FC = () => {
                               </span>
                             </Tooltip>
                           )}
+                          {currentUser?.role === "superadmin" && !isSelf && (
+                            <Tooltip title="Удалить навсегда">
+                              <span>
+                                <IconButton
+                                  type="button"
+                                  size="small"
+                                  aria-label="Удалить навсегда"
+                                  onClick={() => handleHardDeleteUser(item)}
+                                  sx={[cardActionIconButtonSx, cardActionIconButtonDangerSx] as any}
+                                >
+                                  <DeleteForeverRoundedIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          )}
                         </Stack>
                       </TableCell>
                     </TableRow>
@@ -445,7 +498,7 @@ const AdminUsersPage: React.FC = () => {
 
 
       <Dialog open={isModalOpen} onClose={handleCloseModal} maxWidth="sm" fullWidth>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} noValidate>
           <DialogTitle>
             {editingUser ? "Редактирование пользователя" : "Создать пользователя"}
           </DialogTitle>
@@ -457,21 +510,29 @@ const AdminUsersPage: React.FC = () => {
                 label="ФИО"
                 value={form.fullName}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, fullName: event.target.value }))
+                  {
+                    setForm((current) => ({ ...current, fullName: event.target.value }));
+                    if (fieldErrors.fullName) setFieldErrors((prev) => ({ ...prev, fullName: "" }));
+                  }
                 }
-                required
                 fullWidth
-                inputProps={{ "aria-label": "ФИО" }}
+                inputProps={{ "aria-label": "ФИО", maxLength: 100 }}
+                error={!!fieldErrors.fullName}
+                helperText={fieldErrors.fullName}
               />
               <TextField
                 label="Логин"
                 value={form.username}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, username: event.target.value }))
+                  {
+                    setForm((current) => ({ ...current, username: event.target.value }));
+                    if (fieldErrors.username) setFieldErrors((prev) => ({ ...prev, username: "" }));
+                  }
                 }
-                required
                 fullWidth
-                inputProps={{ "aria-label": "Логин" }}
+                inputProps={{ "aria-label": "Логин", maxLength: 30 }}
+                error={!!fieldErrors.username}
+                helperText={fieldErrors.username}
               />
               {currentUser?.role === "superadmin" && (
                 <FormControl fullWidth>
@@ -499,10 +560,16 @@ const AdminUsersPage: React.FC = () => {
                   label="Пароль"
                   value={form.password}
                   onChange={(event) =>
-                    setForm((current) => ({ ...current, password: event.target.value }))
+                    {
+                      setForm((current) => ({ ...current, password: event.target.value }));
+                      if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: "" }));
+                    }
                   }
                   fullWidth
-                  placeholder="Оставьте пустым для автогенерации"
+                  placeholder="Введите пароль (минимум 6 символов)"
+                  inputProps={{ maxLength: 50 }}
+                  error={!!fieldErrors.password}
+                  helperText={fieldErrors.password}
                 />
               )}
             </Stack>
@@ -511,7 +578,7 @@ const AdminUsersPage: React.FC = () => {
             <Button onClick={handleCloseModal} type="button">
               Отмена
             </Button>
-            <Button variant="contained" type="submit">
+            <Button variant="contained" type="submit" disabled={isSaving}>
               {editingUser ? "Сохранить" : "Создать"}
             </Button>
           </DialogActions>

@@ -40,7 +40,8 @@ func (s *FileStorage) SavePDF(file multipart.File, header *multipart.FileHeader)
 		return "", 0, err
 	}
 
-	dst, err := os.Create(absolutePath)
+	tmpPath := absolutePath + ".part"
+	dst, err := os.Create(tmpPath)
 	if err != nil {
 		return "", 0, err
 	}
@@ -48,6 +49,14 @@ func (s *FileStorage) SavePDF(file multipart.File, header *multipart.FileHeader)
 
 	size, err := io.Copy(dst, file)
 	if err != nil {
+		return "", 0, err
+	}
+
+	if err := dst.Sync(); err != nil {
+		return "", 0, err
+	}
+
+	if err := os.Rename(tmpPath, absolutePath); err != nil {
 		return "", 0, err
 	}
 

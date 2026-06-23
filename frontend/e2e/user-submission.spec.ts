@@ -16,9 +16,9 @@ test("user can submit a document and admin can approve it", async ({
 
   await test.step("register a new user", async () => {
     await page.goto("/register");
-    await page.getByLabel("Имя (как к вам обращаться)").fill("E2E Submitter");
-    await page.getByLabel("Логин").fill(userUsername);
-    await page.getByLabel("Пароль").fill(userPassword);
+    await page.getByPlaceholder("Ваше имя").fill("E2E Submitter");
+    await page.getByPlaceholder("Придумайте логин").fill(userUsername);
+    await page.getByPlaceholder("Создайте пароль").fill(userPassword);
     await page.locator("form").first().locator('button[type="submit"]').click();
     await expect(page).toHaveURL(/\/$/);
   });

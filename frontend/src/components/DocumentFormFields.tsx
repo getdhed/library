@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import {
   Box,
   Button,
@@ -12,6 +12,7 @@ import {
   TextField,
   Typography,
   FormControlLabel,
+  FormHelperText,
 } from "@mui/material";
 
 export type AdminForm = {
@@ -80,6 +81,10 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
     setForm((current) => ({ ...current, [field]: value }));
   };
 
+  const yearInvalid = !Number.isFinite(form.year) || form.year < 1 || form.year > 2100;
+  const titleInvalid = !String(form.title || "").trim();
+  const typeInvalid = !String(form.type || "").trim();
+
   return (
     <Stack spacing={2.5}>
       <Section title="Основная информация">
@@ -93,6 +98,8 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
           multiline
           maxRows={4}
           inputProps={{ "aria-label": "Название", maxLength: 100 }}
+          error={titleInvalid}
+          helperText={titleInvalid ? "Укажите название документа" : undefined}
         />
 
         <Stack direction="row" spacing={2}>
@@ -104,10 +111,12 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
             type="number"
             required
             fullWidth
-            inputProps={{ "aria-label": "Год" }}
+            inputProps={{ "aria-label": "Год", min: 1, max: 2100 }}
+            error={yearInvalid}
+            helperText={yearInvalid ? "Введите корректные данные" : undefined}
           />
 
-          <FormControl fullWidth required>
+          <FormControl fullWidth required error={typeInvalid}>
             <InputLabel id={`${idPrefix}-type-label`}>Тип</InputLabel>
             <Select
               labelId={`${idPrefix}-type-label`}
@@ -117,12 +126,13 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
               onChange={(e) => handleChange("type", e.target.value)}
               inputProps={{ "aria-label": "Тип документа" }}
             >
-              {documentTypes.map((t) => (
+              {(documentTypes.length > 0 ? documentTypes : [form.type]).map((t) => (
                 <MenuItem key={t} value={t}>
                   {t}
                 </MenuItem>
               ))}
             </Select>
+            {typeInvalid && <FormHelperText>Выберите тип документа</FormHelperText>}
           </FormControl>
         </Stack>
 
@@ -166,7 +176,7 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
           label="Автор"
           value={form.author}
           onChange={(e) => handleChange("author", e.target.value)}
-          placeholder="ФИО автора"
+          placeholder="ФИО автора (если несколько, укажите через запятую)"
           fullWidth
           multiline
           maxRows={2}
@@ -285,3 +295,5 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
     </Stack>
   );
 };
+
+

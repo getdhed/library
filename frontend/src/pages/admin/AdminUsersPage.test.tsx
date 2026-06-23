@@ -6,15 +6,7 @@ import { AuthContext } from "../../auth/AuthContext";
 import AdminUsersPage from "./AdminUsersPage";
 import * as libraryApi from "../../api/library";
 
-vi.mock("../../api/library", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../api/library")>();
-  return {
-    ...actual,
-    getAdminSubmissions: vi.fn().mockResolvedValue({ items: [], totalCount: 0 }),
-    getAdminUsers: vi.fn(),
-    createAdminUser: vi.fn(),
-  };
-});
+
 
 const users = [
   {
@@ -53,7 +45,7 @@ const {
     })
   ),
   getAdminStatsMock: vi.fn(() => Promise.resolve({ documentsCount: 0 })),
-  getAdminSubmissionsMock: vi.fn(() => Promise.resolve({ total: 0 })),
+  getAdminSubmissionsMock: vi.fn(() => Promise.resolve({ items: [], totalCount: 0 })),
 }));
 
 vi.mock("../../api/library", () => ({

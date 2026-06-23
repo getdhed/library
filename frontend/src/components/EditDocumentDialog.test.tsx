@@ -3,70 +3,95 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import EditDocumentDialog from "./EditDocumentDialog";
-import { ThemeProvider } from "../theme/ThemeContext";
 
 vi.mock("../api/library", () => ({
-  getDocumentTypes: vi.fn().mockResolvedValue({ items: ["book", "article"] }),
-  updateDocument: vi.fn().mockResolvedValue({
-    id: 1,
-    title: "Updated Title",
-    author: "New Author",
-    year: 2024,
-    type: "book",
-    tags: [],
-  }),
+  getDocumentTypes: vi.fn().mockResolvedValue({ items: ["Учебник", "Статья"] }),
+  updateDocument: vi.fn(),
 }));
 
-const mockDoc = {
-  id: 1,
-  title: "Old Title",
-  author: "Old Author",
-  year: 2020,
-  type: "article",
-  tags: ["test"],
-  description: "Desc",
-  fileUrl: "url",
-  fileSize: 100,
-  createdAt: "2023-01-01T00:00:00Z",
-  updatedAt: "2023-01-01T00:00:00Z",
-};
+import { updateDocument } from "../api/library";
 
 describe("EditDocumentDialog", () => {
-  afterEach(cleanup);
+  const mockDocument = {
+    id: 1,
+    title: "Old Title",
+    author: "Old Author",
+    year: 2020,
+    type: "Учебник",
+    description: "Old Description",
+    fileSizeBytes: 1024,
+    mimeType: "application/pdf",
+    createdAt: "2020-01-01T00:00:00Z",
+    updatedAt: "2020-01-01T00:00:00Z",
+    isFavorite: false,
+    isLocal: true,
+    tags: [],
+  };
 
-  it("opens dialog, populates form and saves", async () => {
-    const { updateDocument } = await import("../api/library");
-    const onSavedMock = vi.fn();
+  afterEach(() => {
+    cleanup();
+  });
 
+  it("renders correctly with given document data", async () => {
     render(
-      <ThemeProvider>
-        <EditDocumentDialog token="token" document={mockDoc} onSaved={onSavedMock} />
-      </ThemeProvider>
+      <EditDocumentDialog
+        token="test-token"
+        document={mockDocument}
+        onSaved={vi.fn()}
+      />
     );
 
-    // Open dialog
-    const openBtn = screen.getByRole("button");
-    await userEvent.click(openBtn);
+    await userEvent.click(screen.getByRole("button", { name: "Редактировать" }));
 
-    // Check title is populated
+    expect(screen.getByDisplayValue("Old Title")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Old Author")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("2020")).toBeInTheDocument();
+  });
+
+  it("calls onClose when cancel is clicked", async () => {
+    const onSaved = vi.fn();
+    render(
+      <EditDocumentDialog
+        token="test-token"
+        document={mockDocument}
+        onSaved={onSaved}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Редактировать" }));
+    await userEvent.click(screen.getByRole("button", { name: "Отмена" }));
+    
+    // Check if dialog closed by verifying the title input is gone
     await waitFor(() => {
-      const titleInput = screen.getByRole("textbox", { name: /Заглавие/i });
-      expect(titleInput).toHaveValue("Old Title");
+      expect(screen.queryByLabelText(/Заглавие/i)).not.toBeInTheDocument();
     });
+  });
 
-    // Edit title
-    const titleInput = screen.getByRole("textbox", { name: /Заглавие/i });
+  it("submits the form with updated data", async () => {
+    const onSaved = vi.fn();
+    vi.mocked(updateDocument).mockResolvedValueOnce({ ...mockDocument, title: "New Title" } as any);
+
+    render(
+      <EditDocumentDialog
+        token="test-token"
+        document={mockDocument}
+        onSaved={onSaved}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Редактировать" }));
+
+    const titleInput = screen.getByLabelText(/Заглавие/i);
     await userEvent.clear(titleInput);
-    await userEvent.type(titleInput, "Updated Title");
+    await userEvent.type(titleInput, "New Title");
 
-    // Click Save
-    const saveBtn = screen.getByRole("button", { name: /Сохранить/i });
-    await userEvent.click(saveBtn);
+    await userEvent.click(screen.getByRole("button", { name: "Сохранить" }));
 
-    // Check API was called
     await waitFor(() => {
       expect(updateDocument).toHaveBeenCalled();
-      expect(onSavedMock).toHaveBeenCalled();
+      expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({
+        title: "New Title"
+      }));
     });
   });
 });

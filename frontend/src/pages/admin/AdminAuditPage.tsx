@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   Box,
   Button,
-  Button,
   Divider,
   FormControl,
   InputLabel,
@@ -14,11 +13,11 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableHead,
   TablePagination,
   TableRow,
   TextField,
   Typography,
+  ListSubheader,
 } from "@mui/material";
 import { getAdminAudit } from "../../api/library";
 import { useAuth } from "../../auth/AuthContext";
@@ -29,12 +28,38 @@ import type { DocumentAuditEvent } from "../../types";
 const actionOptions = [
   { value: "", label: "Все действия" },
   { value: "create", label: "Добавление" },
-  { value: "submit", label: "Отправка на модерацию" },
-  { value: "approve", label: "Одобрение" },
-  { value: "reject", label: "Отклонение" },
   { value: "update", label: "Обновление" },
   { value: "file_replace", label: "Замена файла" },
   { value: "delete", label: "Удаление" },
+  { value: "restore", label: "Восстановление документа" },
+  { value: "document_hard_deleted", label: "Окончательное удаление документа" },
+  { value: "submit", label: "Отправка на модерацию" },
+  { value: "approve", label: "Одобрение" },
+  { value: "reject", label: "Отклонение" },
+  { value: "user_created", label: "Создание пользователя" },
+  { value: "user_restored", label: "Восстановление пользователя" },
+  { value: "user_deactivated", label: "Деактивация пользователя" },
+  { value: "user_deleted", label: "Удаление пользователя" },
+  { value: "user_hard_deleted", label: "Окончательное удаление пользователя" },
+] as const;
+
+const docActions = [
+  "create",
+  "update",
+  "file_replace",
+  "delete",
+  "restore",
+  "document_hard_deleted",
+] as const;
+
+const moderationActions = ["submit", "approve", "reject"] as const;
+
+const userActions = [
+  "user_created",
+  "user_restored",
+  "user_deactivated",
+  "user_deleted",
+  "user_hard_deleted",
 ] as const;
 
 const actionLabels: Record<string, string> = Object.fromEntries(
@@ -139,10 +164,18 @@ const AdminAuditPage: React.FC = () => {
                     resetPage();
                   }}
                 >
-                  {actionOptions.map((opt) => (
-                    <MenuItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </MenuItem>
+                  <MenuItem value="">Все действия</MenuItem>
+                  <ListSubheader disableSticky>Документы</ListSubheader>
+                  {docActions.map((val) => (
+                    <MenuItem key={val} value={val}>{actionLabels[val]}</MenuItem>
+                  ))}
+                  <ListSubheader disableSticky>Модерация заявок</ListSubheader>
+                  {moderationActions.map((val) => (
+                    <MenuItem key={val} value={val}>{actionLabels[val]}</MenuItem>
+                  ))}
+                  <ListSubheader disableSticky>Пользователи</ListSubheader>
+                  {userActions.map((val) => (
+                    <MenuItem key={val} value={val}>{actionLabels[val]}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -181,7 +214,7 @@ const AdminAuditPage: React.FC = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell>Действие</TableCell>
-                    <TableCell>Документ</TableCell>
+                    <TableCell>Объект (документ / пользователь)</TableCell>
                     <TableCell>Пользователь</TableCell>
                     <TableCell>Дата</TableCell>
                   </TableRow>

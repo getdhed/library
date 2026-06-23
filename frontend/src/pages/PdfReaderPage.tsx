@@ -19,14 +19,13 @@ import {
   getSubmission,
   markOpened,
   submissionFileUrl,
+  updateDocument,
+  getDocumentTypes,
+  deleteDocument,
 } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
-import {
-  DocumentFormFields,
-  type AdminForm,
-  createEmptyForm,
-} from "../components/DocumentFormFields";
-import { updateDocument, getDocumentTypes } from "../api/library";
+import { type AdminForm, createEmptyForm } from "../components/DocumentFormFields";
+import { AdminDocumentFullView } from "../components/AdminDocumentFullView";
 
 type PdfReaderPageProps = {
   kind: "document" | "submission";
@@ -53,8 +52,7 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
   const [editPreviewUrl, setEditPreviewUrl] = useState("");
   useEffect(() => {
     if (editForm.file) {
-      const blob = new Blob([editForm.file], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(editForm.file);
       setEditPreviewUrl(url);
       return () => URL.revokeObjectURL(url);
     } else {
@@ -76,42 +74,37 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
     const load = async () => {
       if (kind === "document") {
         const document = await getDocument(token, numericId);
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
         setTitle(document.title);
         setFileName(document.fileName);
         setVersion(document.updatedAt);
+        // Initialize edit form with current document metadata for immediate edit/preview
+        setEditForm({
+          title: document.title || "",
+          author: document.author || "",
+          executor: document.executor || "",
+          scientificAdvisor: document.scientificAdvisor || "",
+          year: document.year || new Date().getFullYear(),
+          type: document.type || "Учебник",
+          placeOfPublication: document.placeOfPublication || "",
+          publisher: document.publisher || "",
+          periodicalName: document.periodicalName || "",
+          volume: document.volume || "",
+          description: document.description || "",
+          tags: (document.tags || []).join(", "),
+          isLocal: document.isLocal ?? true,
+          file: null,
+        });
         void markOpened(token, numericId).catch(console.error);
         return;
       }
 
       const submission = await getSubmission(token, numericId);
-      if (cancelled) {
-        return;
-      }
+      if (cancelled) return;
       setTitle(submission.title);
       setFileName(submission.fileName);
       setVersion(submission.updatedAt);
-
-      // Initialize edit form if it's a document (submissions are moderated in AdminDocumentsPage)
-      if (kind === "document") {
-        setEditForm({
-          title: submission.title || "",
-          author: submission.author || "",
-          executor: submission.executor || "",
-          scientificAdvisor: submission.scientificAdvisor || "",
-          year: submission.year || new Date().getFullYear(),
-          type: submission.type || "Учебник",
-          placeOfPublication: submission.placeOfPublication || "",
-          publisher: submission.publisher || "",
-          periodicalName: submission.periodicalName || "",
-          volume: submission.volume || "",
-          description: submission.description || "",
-          tags: (submission.tags || []).join(", "),
-          file: null,
-        });
-      }
+      // For submissions мы не редактируем файл здесь (модерация в админке)
     };
 
     load()
@@ -181,6 +174,7 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
       formData.append("volume", editForm.volume);
       formData.append("description", editForm.description);
       formData.append("tags", editForm.tags);
+      formData.append("isLocal", String(editForm.isLocal));
       if (editForm.file) {
         formData.append("file", editForm.file);
       }
@@ -190,12 +184,36 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
       // Refresh version to reload PDF if changed
       setVersion(new Date().toISOString());
       setTitle(editForm.title);
+      // Clear local file selection and preview
+      setEditForm((curr) => ({ ...curr, file: null }));
     } catch (err: any) {
       setSaveError(err.message || "Ошибка при сохранении");
     } finally {
       setIsSaving(false);
     }
   }
+
+  async function handleArchive() {
+    if (!token || !numericId) return;
+    if (!window.confirm("Поместить документ в архив?")) return;
+    try {
+      setIsSaving(true);
+      await deleteDocument(token, numericId);
+      setIsEditing(false);
+      navigate(-1);
+    } catch (err: any) {
+      setSaveError(err.message || "Не удалось архивировать документ");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  const closeEdit = () => {
+    setIsEditing(false);
+    setEditForm((curr) => ({ ...curr, file: null }));
+  };
+
+  const modalPdfUrl = editPreviewUrl || fileUrl;
 
   return (
     <Box
@@ -219,9 +237,9 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
           px: 2,
           py: 1.2,
           borderBottom: "1px solid",
-          borderColor: isEditing ? "divider" : (theme) => alpha(theme.palette.common.white, 0.18),
-          bgcolor: isEditing ? "background.paper" : (theme) => alpha(theme.palette.common.black, 0.86),
-          color: isEditing ? "text.primary" : "common.white",
+          borderColor: (theme) => alpha(theme.palette.common.white, 0.18),
+          bgcolor: (theme) => alpha(theme.palette.common.black, 0.86),
+          color: "common.white",
         }}
       >
         <Stack direction="row" spacing={1.5} alignItems="center" minWidth={0}>
@@ -230,119 +248,50 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
           </IconButton>
           <Box minWidth={0}>
             <Typography variant="h6" noWrap>
-              {isEditing ? "Редактирование документа" : (title || "PDF")}
+              {title || "PDF"}
             </Typography>
-            {isEditing ? (
-              <Typography variant="body2" color="text.secondary" noWrap>
-                {title}
+            {fileName && (
+              <Typography variant="body2" color="grey.400" noWrap>
+                {fileName}
               </Typography>
-            ) : (
-              fileName && (
-                <Typography variant="body2" color={isEditing ? "text.secondary" : "grey.400"} noWrap>
-                  {fileName}
-                </Typography>
-              )
             )}
           </Box>
         </Stack>
 
         <Stack direction="row" spacing={1} alignItems="center">
-          {isEditing ? (
-            <>
-              <Button
-                variant="outlined"
-                color="inherit"
-                onClick={() => setIsEditing(false)}
-              >
-                Отмена
-              </Button>
-              <Button
-                variant="contained"
-                onClick={(e) => handleSaveEdit(e as any)}
-                disabled={isSaving}
-              >
-                {isSaving ? "Сохраняем..." : "Сохранить изменения"}
-              </Button>
-            </>
-          ) : (
-            <>
-              {user?.role === "admin" && kind === "document" && (
-                <Button
-                  type="button"
-                  variant="outlined"
-                  color="inherit"
-                  onClick={() => setIsEditing(true)}
-                >
-                  Изменить
-                </Button>
-              )}
-              <Button
-                component="a"
-                href={downloadUrl}
-                variant="outlined"
-                color="inherit"
-                startIcon={<DownloadIcon />}
-                disabled={!downloadUrl}
-              >
-                Скачать
-              </Button>
-              <Button
-                type="button"
-                variant="outlined"
-                color="inherit"
-                startIcon={<FullscreenIcon />}
-                onClick={requestFullscreen}
-              >
-                Полный экран
-              </Button>
-            </>
+          {(user?.role === "admin" || user?.role === "superadmin") && kind === "document" && (
+            <Button
+              type="button"
+              variant="outlined"
+              color="inherit"
+              onClick={() => setIsEditing(true)}
+            >
+              Изменить
+            </Button>
           )}
+          <Button
+            component="a"
+            href={downloadUrl}
+            variant="outlined"
+            color="inherit"
+            startIcon={<DownloadIcon />}
+            disabled={!downloadUrl}
+          >
+            Скачать
+          </Button>
+          <Button
+            type="button"
+            variant="outlined"
+            color="inherit"
+            startIcon={<FullscreenIcon />}
+            onClick={requestFullscreen}
+          >
+            Полный экран
+          </Button>
         </Stack>
       </Stack>
 
-      <Box sx={{ display: "grid", gridTemplateColumns: isEditing ? "480px 1fr" : "1fr", minHeight: 0 }}>
-        {isEditing && (
-          <Box
-            sx={{
-              bgcolor: "background.paper",
-              color: "text.primary",
-              borderRight: "1px solid",
-              borderColor: "divider",
-              overflowY: "auto",
-              p: 2.5,
-            }}
-          >
-            <Typography variant="h6" sx={{ mb: 0.5 }}>
-              Метаданные документа
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-              Внесите необходимые изменения в карточку документа.
-            </Typography>
-
-            <Stack spacing={3} component="form" onSubmit={handleSaveEdit} noValidate>
-              <DocumentFormFields
-                form={editForm}
-                setForm={setEditForm}
-                idPrefix="reader-edit"
-                fileLabel="Заменить PDF (необязательно)"
-                documentTypes={documentTypes}
-              />
-              
-              {saveError && <Alert severity="error">{saveError}</Alert>}
-              
-              <Button
-                variant="contained"
-                type="submit"
-                size="large"
-                disabled={isSaving}
-                fullWidth
-              >
-                {isSaving ? "Сохраняем..." : "Сохранить изменения"}
-              </Button>
-            </Stack>
-          </Box>
-        )}
-
+      <Box sx={{ display: "grid", gridTemplateColumns: "1fr", minHeight: 0 }}>
         <Box sx={{ minHeight: 0, bgcolor: "grey.900", position: "relative" }}>
           {isLoading && (
             <Stack height="100%" alignItems="center" justifyContent="center" spacing={1.2}>
@@ -355,11 +304,11 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
               <Alert severity="error">{error}</Alert>
             </Box>
           )}
-          {!isLoading && !error && (editPreviewUrl || fileUrl) && (
+          {!isLoading && !error && fileUrl && (
             <Box
               component="iframe"
               title={title || "PDF"}
-              src={isEditing && editPreviewUrl ? editPreviewUrl : fileUrl}
+              src={fileUrl}
               sx={{
                 display: "block",
                 width: "100%",
@@ -371,6 +320,34 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
           )}
         </Box>
       </Box>
+
+      {(user?.role === "admin" || user?.role === "superadmin") && kind === "document" && (
+        <AdminDocumentFullView
+          open={isEditing}
+          title="Редактировать документ"
+          subtitle={title}
+          pdfUrl={modalPdfUrl}
+          onClose={closeEdit}
+          form={editForm}
+          setForm={setEditForm}
+          error={saveError}
+          onSubmit={handleSaveEdit}
+          submitLabel={isSaving ? "Сохраняем..." : "Сохранить изменения"}
+          isSubmitting={isSaving}
+          idPrefix="reader-edit"
+          documentTypes={documentTypes}
+          secondaryActions={
+            <Button
+              variant="contained"
+              color="error"
+              onClick={() => void handleArchive()}
+              disabled={isSaving}
+            >
+              Архивировать документ
+            </Button>
+          }
+        />
+      )}
     </Box>
   );
 };

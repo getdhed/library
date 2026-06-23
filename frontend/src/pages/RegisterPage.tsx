@@ -17,6 +17,7 @@ const RegisterPage: React.FC = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({ fullName: "", username: "", password: "" });
 
   if (auth.token) {
     return <Navigate to="/" replace />;
@@ -25,6 +26,32 @@ const RegisterPage: React.FC = () => {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError("");
+    const newFieldErrors = { fullName: "", username: "", password: "" };
+    let hasError = false;
+
+    if (!fullName.trim()) {
+      newFieldErrors.fullName = "Имя обязательно для заполнения";
+      hasError = true;
+    }
+    if (!username.trim()) {
+      newFieldErrors.username = "Логин обязателен для заполнения";
+      hasError = true;
+    }
+    if (!password) {
+      newFieldErrors.password = "Пароль обязателен для заполнения";
+      hasError = true;
+    } else if (password.length < 6) {
+      newFieldErrors.password = "Пароль должен содержать минимум 6 символов";
+      hasError = true;
+    }
+
+    if (hasError) {
+      setFieldErrors(newFieldErrors);
+      return;
+    }
+
+    setFieldErrors({ fullName: "", username: "", password: "" });
+
     try {
       await auth.register({ fullName, username, password });
       navigate("/");
@@ -37,13 +64,15 @@ const RegisterPage: React.FC = () => {
     <AuthPageFrame
       title="Регистрация"
       formContent={
-        <Stack component="form" spacing={2} onSubmit={handleSubmit}>
+        <Stack component="form" spacing={2} onSubmit={handleSubmit} noValidate>
           <TextField
             label="Имя (как к вам обращаться)"
             value={fullName}
             onChange={(event) => setFullName(event.target.value)}
             placeholder="Ваше имя"
             inputProps={{ maxLength: 30 }}
+            error={!!fieldErrors.fullName}
+            helperText={fieldErrors.fullName}
             fullWidth
           />
 
@@ -53,6 +82,8 @@ const RegisterPage: React.FC = () => {
             onChange={(event) => setUsername(event.target.value)}
             placeholder="Придумайте логин"
             inputProps={{ maxLength: 30 }}
+            error={!!fieldErrors.username}
+            helperText={fieldErrors.username}
             fullWidth
           />
 
@@ -63,6 +94,8 @@ const RegisterPage: React.FC = () => {
             placeholder="Создайте пароль"
             type="password"
             inputProps={{ maxLength: 30 }}
+            error={!!fieldErrors.password}
+            helperText={fieldErrors.password}
             fullWidth
           />
 

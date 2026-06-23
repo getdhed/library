@@ -68,6 +68,9 @@ func (s *Service) Register(ctx context.Context, input domain.RegisterInput) (dom
 	if strings.TrimSpace(input.Username) == "" || strings.TrimSpace(input.Password) == "" || strings.TrimSpace(input.FullName) == "" {
 		return domain.AuthPayload{}, apperror.ErrInvalidInput
 	}
+	if len([]rune(strings.TrimSpace(input.Password))) < 6 {
+		return domain.AuthPayload{}, apperror.ErrInvalidInput
+	}
 
 	hash, err := auth.HashPassword(input.Password)
 	if err != nil {
@@ -78,6 +81,14 @@ func (s *Service) Register(ctx context.Context, input domain.RegisterInput) (dom
 	if err != nil {
 		return domain.AuthPayload{}, err
 	}
+
+	_ = s.logAudit(ctx, domain.CreateAuditEventInput{
+		Action:        "user_created",
+		ActorID:       user.ID,
+		DocumentTitle: fmt.Sprintf("%s (%s)", user.FullName, user.Username),
+		FileName:      user.Username,
+		Details:       map[string]any{"role": user.Role},
+	})
 
 	token, err := s.tokens.Create(user)
 	if err != nil {
@@ -90,6 +101,8 @@ func (s *Service) Register(ctx context.Context, input domain.RegisterInput) (dom
 func (s *Service) Login(ctx context.Context, input domain.LoginInput) (domain.AuthPayload, error) {
 	user, err := s.repo.GetUserByUsername(ctx, input.Username)
 	if err != nil {
+		_, _ = auth.HashPassword(input.Password)
+		time.Sleep(200 * time.Millisecond)
 		return domain.AuthPayload{}, apperror.ErrUnauthorized
 	}
 	if user.IsActive && !user.LastLoginAt.IsZero() {
@@ -98,18 +111,27 @@ func (s *Service) Login(ctx context.Context, input domain.LoginInput) (domain.Au
 			user.IsActive = false
 			user.DeactivationReason = fmt.Sprintf("Автоматическая деактивация (бездействие %d мес.)", months)
 			_, _ = s.repo.SetUserActive(ctx, user.ID, false, user.DeactivationReason)
+			_ = s.logAudit(ctx, domain.CreateAuditEventInput{
+				Action:        "user_deactivated",
+				ActorID:       user.ID,
+				DocumentTitle: fmt.Sprintf("%s (%s)", user.FullName, user.Username),
+				FileName:      user.Username,
+				Details:       map[string]any{"reason": user.DeactivationReason, "auto": true},
+			})
 		}
 	}
 
 	if !user.IsActive {
-		if user.DeactivationReason != "" {
-			return domain.AuthPayload{}, fmt.Errorf("account_deactivated_reason:%s", user.DeactivationReason)
-		}
-		return domain.AuthPayload{}, fmt.Errorf("account_deactivated:Администратор не указал причину")
-	}
-	if err := auth.ComparePassword(user.PasswordHash, input.Password); err != nil {
+		time.Sleep(200 * time.Millisecond)
 		return domain.AuthPayload{}, apperror.ErrUnauthorized
 	}
+	if err := auth.ComparePassword(user.PasswordHash, input.Password); err != nil {
+		time.Sleep(200 * time.Millisecond)
+		return domain.AuthPayload{}, apperror.ErrUnauthorized
+	}
+
+	// Best-effort update of last successful login timestamp
+	_ = s.repo.UpdateLastLoginAt(ctx, user.ID)
 
 	user.PasswordHash = ""
 	token, err := s.tokens.Create(user)
@@ -140,8 +162,11 @@ func validateAdminUserInput(input domain.AdminUserInput, requirePassword bool) e
 	if strings.TrimSpace(input.Username) == "" || strings.TrimSpace(input.FullName) == "" || !validUserRole(input.Role) {
 		return apperror.ErrInvalidInput
 	}
-	if requirePassword && strings.TrimSpace(input.Password) == "" {
-		return apperror.ErrInvalidInput
+	if requirePassword {
+		pw := strings.TrimSpace(input.Password)
+		if pw == "" || len([]rune(pw)) < 6 {
+			return apperror.ErrInvalidInput
+		}
 	}
 	return nil
 }
@@ -164,13 +189,13 @@ func (s *Service) Users(ctx context.Context, filters domain.UserFilters) (domain
 	return s.repo.ListUsers(ctx, filters)
 }
 
-func (s *Service) CreateAdminUser(ctx context.Context, actorRole domain.UserRole, input domain.AdminUserInput) (domain.User, string, error) {
+func (s *Service) CreateAdminUser(ctx context.Context, actorID int64, actorRole domain.UserRole, input domain.AdminUserInput) (domain.User, string, error) {
 	if input.Role == "" {
 		input.Role = domain.RoleUser
 	}
 
 	password := strings.TrimSpace(input.Password)
-	requirePassword := password != ""
+	requirePassword := true
 	
 	if input.Role != domain.RoleUser && actorRole != domain.RoleSuperAdmin {
 		return domain.User{}, "", apperror.ErrForbidden
@@ -178,13 +203,6 @@ func (s *Service) CreateAdminUser(ctx context.Context, actorRole domain.UserRole
 
 	if err := validateAdminUserInput(input, requirePassword); err != nil {
 		return domain.User{}, "", err
-	}
-	if password == "" {
-		generated, err := generateTemporaryPassword()
-		if err != nil {
-			return domain.User{}, "", err
-		}
-		password = generated
 	}
 
 	hash, err := auth.HashPassword(password)
@@ -195,7 +213,16 @@ func (s *Service) CreateAdminUser(ctx context.Context, actorRole domain.UserRole
 	if err != nil {
 		return domain.User{}, "", err
 	}
-	return user, password, nil
+
+	_ = s.logAudit(ctx, domain.CreateAuditEventInput{
+		Action:        "user_created",
+		ActorID:       actorID,
+		DocumentTitle: fmt.Sprintf("%s (%s)", user.FullName, user.Username),
+		FileName:      user.Username,
+		Details:       map[string]any{"role": user.Role},
+	})
+
+	return user, "", nil
 }
 
 func (s *Service) UpdateUser(ctx context.Context, actorID int64, actorRole domain.UserRole, id int64, input domain.AdminUserInput) (domain.User, error) {
@@ -216,7 +243,17 @@ func (s *Service) UpdateUser(ctx context.Context, actorID int64, actorRole domai
 		return domain.User{}, apperror.ErrForbidden // Admin cannot edit another admin
 	}
 
-	return s.repo.UpdateUser(ctx, id, input)
+	updatedUser, err := s.repo.UpdateUser(ctx, id, input)
+	if err == nil {
+		_ = s.logAudit(ctx, domain.CreateAuditEventInput{
+			Action:        "user_updated",
+			ActorID:       actorID,
+			DocumentTitle: fmt.Sprintf("%s (%s)", updatedUser.FullName, updatedUser.Username),
+			FileName:      updatedUser.Username,
+			Details:       map[string]any{"role": updatedUser.Role},
+		})
+	}
+	return updatedUser, err
 }
 
 func (s *Service) SetUserActive(ctx context.Context, actorID int64, actorRole domain.UserRole, id int64, input domain.UserStatusInput) (domain.User, error) {
@@ -230,7 +267,24 @@ func (s *Service) SetUserActive(ctx context.Context, actorID int64, actorRole do
 	if targetUser.Role != domain.RoleUser && actorRole != domain.RoleSuperAdmin {
 		return domain.User{}, apperror.ErrForbidden // Only superadmin can deactivate an admin
 	}
-	return s.repo.SetUserActive(ctx, id, input.IsActive, input.DeactivationReason)
+	updatedUser, err := s.repo.SetUserActive(ctx, id, input.IsActive, input.DeactivationReason)
+	if err != nil {
+		return domain.User{}, err
+	}
+
+	action := "user_deactivated"
+	if input.IsActive {
+		action = "user_restored"
+	}
+	_ = s.logAudit(ctx, domain.CreateAuditEventInput{
+		Action:        action,
+		ActorID:       actorID,
+		DocumentTitle: fmt.Sprintf("%s (%s)", targetUser.FullName, targetUser.Username),
+		FileName:      targetUser.Username,
+		Details:       map[string]any{"reason": input.DeactivationReason},
+	})
+
+	return updatedUser, nil
 }
 
 
@@ -248,7 +302,43 @@ func (s *Service) DeleteUser(ctx context.Context, actorID int64, actorRole domai
 		return apperror.ErrForbidden // Only superadmin can delete an admin
 	}
 	
-	return s.repo.DeleteUser(ctx, id)
+	err = s.repo.DeleteUser(ctx, id)
+	if err == nil {
+		_ = s.logAudit(ctx, domain.CreateAuditEventInput{
+			Action:        "user_deleted",
+			ActorID:       actorID,
+			DocumentTitle: fmt.Sprintf("%s (%s)", targetUser.FullName, targetUser.Username),
+			FileName:      targetUser.Username,
+			Details:       map[string]any{"role": targetUser.Role},
+		})
+	}
+	return err
+}
+
+func (s *Service) HardDeleteUser(ctx context.Context, actorID int64, actorRole domain.UserRole, id int64) error {
+	if actorID == id {
+		return apperror.ErrForbidden // Cannot delete yourself
+	}
+	
+	targetUser, err := s.repo.GetUserByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if actorRole != domain.RoleSuperAdmin {
+		return apperror.ErrForbidden // Only superadmin can hard delete a user
+	}
+	
+	err = s.repo.HardDeleteUser(ctx, id)
+	if err == nil {
+		_ = s.logAudit(ctx, domain.CreateAuditEventInput{
+			Action:        "user_hard_deleted",
+			ActorID:       actorID,
+			DocumentTitle: fmt.Sprintf("%s (%s)", targetUser.FullName, targetUser.Username),
+			FileName:      targetUser.Username,
+			Details:       map[string]any{"role": targetUser.Role},
+		})
+	}
+	return err
 }
 
 func (s *Service) RestoreUser(ctx context.Context, actorID int64, actorRole domain.UserRole, id int64) error {
@@ -260,7 +350,17 @@ func (s *Service) RestoreUser(ctx context.Context, actorID int64, actorRole doma
 		return apperror.ErrForbidden // Only superadmin can restore an admin
 	}
 
-	return s.repo.RestoreUser(ctx, id)
+	err = s.repo.RestoreUser(ctx, id)
+	if err == nil {
+		_ = s.logAudit(ctx, domain.CreateAuditEventInput{
+			Action:        "user_restored",
+			ActorID:       actorID,
+			DocumentTitle: fmt.Sprintf("%s (%s)", targetUser.FullName, targetUser.Username),
+			FileName:      targetUser.Username,
+			Details:       map[string]any{"role": targetUser.Role},
+		})
+	}
+	return err
 }
 
 func (s *Service) Home(ctx context.Context, userID int64) (domain.HomePayload, error) {
@@ -625,7 +725,7 @@ func (s *Service) GetSubmission(ctx context.Context, requesterID int64, requeste
 	if err != nil {
 		return domain.DocumentSubmission{}, err
 	}
-	if requesterRole != domain.RoleAdmin && submission.UserID != requesterID {
+	if requesterRole == domain.RoleUser && submission.UserID != requesterID {
 		return domain.DocumentSubmission{}, apperror.ErrForbidden
 	}
 	return submission, nil
@@ -742,6 +842,40 @@ func (s *Service) RestoreDocument(ctx context.Context, id int64, actorID int64) 
 	return s.repo.RestoreDocument(ctx, id)
 }
 
+func (s *Service) HardDeleteDocument(ctx context.Context, id int64, actorID int64, actorRole domain.UserRole) error {
+	document, err := s.repo.GetDocumentByID(ctx, 0, id, true)
+	if err != nil {
+		return err
+	}
+	if actorRole != domain.RoleAdmin && actorRole != domain.RoleSuperAdmin {
+		return apperror.ErrForbidden
+	}
+
+	if err := s.logAudit(ctx, domain.CreateAuditEventInput{
+		Action:        "document_hard_deleted",
+		ActorID:       actorID,
+		DocumentID:    document.ID,
+		DocumentTitle: document.Title,
+		FileName:      document.FileName,
+		Details: map[string]any{
+			"type": document.Type,
+		},
+	}); err != nil {
+		return err
+	}
+	
+	if err := s.repo.HardDeleteDocument(ctx, id); err != nil {
+		return err
+	}
+	
+	_ = s.files.Delete(document.FilePath)
+	if document.CoverPath != "" {
+		_ = s.files.Delete(document.CoverPath)
+	}
+	
+	return nil
+}
+
 func (s *Service) LogAPIRequest(ctx context.Context, method, path string, statusCode, durationMs int) error {
 	return s.repo.LogAPIRequest(ctx, method, path, statusCode, durationMs)
 }
@@ -800,7 +934,9 @@ func (s *Service) EnsureDocumentCover(ctx context.Context, document domain.Docum
 		return coverPath, nil
 	}
 
-	if err := s.covers.RenderFirstPage(ctx, s.files.Resolve(document.FilePath), absoluteCoverPath); err != nil {
+	renderCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := s.covers.RenderFirstPage(renderCtx, s.files.Resolve(document.FilePath), absoluteCoverPath); err != nil {
 		return "", err
 	}
 
@@ -822,7 +958,9 @@ func (s *Service) generateCover(ctx context.Context, relativePDFPath string) (st
 	}
 
 	coverPath := s.files.CoverPathFor(relativePDFPath)
-	if err := s.covers.RenderFirstPage(ctx, s.files.Resolve(relativePDFPath), s.files.Resolve(coverPath)); err != nil {
+	renderCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := s.covers.RenderFirstPage(renderCtx, s.files.Resolve(relativePDFPath), s.files.Resolve(coverPath)); err != nil {
 		return "", err
 	}
 

@@ -177,7 +177,7 @@ const EditDocumentDialog: React.FC<Props> = ({ token, document, onSaved }) => {
           <Typography variant="caption" color="text.secondary" display="block">
             Редактирование документа
           </Typography>
-          <Typography variant="h6" fontWeight={700}>
+          <Typography component="div" variant="h6" fontWeight={700}>
             {document.title}
           </Typography>
         </DialogTitle>

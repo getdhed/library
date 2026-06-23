@@ -30,9 +30,9 @@ describe("RegisterPage", () => {
 
     expect(screen.getByText("Регистрация")).toBeInTheDocument();
 
-    const nameInput = screen.getByLabelText("Имя (как к вам обращаться)");
-    const usernameInput = screen.getByLabelText("Логин");
-    const passwordInput = screen.getByLabelText("Пароль");
+    const nameInput = screen.getByPlaceholderText("Ваше имя");
+    const usernameInput = screen.getByPlaceholderText("Придумайте логин");
+    const passwordInput = screen.getByPlaceholderText("Создайте пароль");
     const submitBtn = screen.getByRole("button", { name: "Зарегистрироваться" });
 
     await userEvent.type(nameInput, "Test User");
@@ -62,7 +62,15 @@ describe("RegisterPage", () => {
       </ThemeProvider>
     );
 
+    const nameInput = screen.getByPlaceholderText("Ваше имя");
+    const usernameInput = screen.getByPlaceholderText("Придумайте логин");
+    const passwordInput = screen.getByPlaceholderText("Создайте пароль");
     const submitBtn = screen.getByRole("button", { name: "Зарегистрироваться" });
+
+    await userEvent.type(nameInput, "Test User");
+    await userEvent.type(usernameInput, "testuser");
+    await userEvent.type(passwordInput, "testpass");
+
     await userEvent.click(submitBtn);
 
     await waitFor(() => {

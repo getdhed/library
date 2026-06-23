@@ -84,7 +84,6 @@ describe("Layout", () => {
     fireEvent.click(screen.getByLabelText("Открыть меню аккаунта"));
 
     const accountMenu = screen.getByLabelText("Меню аккаунта");
-    expect(within(accountMenu).getByText("Настройки")).toBeInTheDocument();
     expect(within(accountMenu).getByRole("button", { name: "Выйти" })).toBeInTheDocument();
 
     fireEvent.click(within(accountMenu).getByRole("button", { name: "Выйти" }));
@@ -100,16 +99,10 @@ describe("Layout", () => {
 
     const mainNavigation = screen.getByLabelText("Основная навигация");
     expect(
-      within(mainNavigation).queryByRole("link", { name: "Мои PDF" })
-    ).not.toBeInTheDocument();
+      within(mainNavigation).getByRole("link", { name: "Мои PDF" })
+    ).toBeInTheDocument();
     expect(
       within(mainNavigation).queryByRole("link", { name: "Админка" })
     ).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByLabelText("Открыть меню аккаунта"));
-    const accountMenu = screen.getByLabelText("Меню аккаунта");
-    expect(
-      within(accountMenu).getByRole("link", { name: "Мои PDF" })
-    ).toHaveAttribute("href", "/account/pdfs");
   });
 });

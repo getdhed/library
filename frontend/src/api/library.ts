@@ -64,10 +64,10 @@ export function getHome(token: string) {
   return request<HomePayload>("/home", { token });
 }
 
-export function getSuggestions(token: string, q: string) {
+export function getSuggestions(token: string, q: string, options?: { signal?: AbortSignal }) {
   return request<{ items: DocumentItem[] }>(
     `/search/suggest${buildQuery({ q })}`,
-    { token }
+    { token, signal: options?.signal }
   );
 }
 
@@ -175,10 +175,24 @@ export function deleteDocument(token: string, id: number) {
   });
 }
 
-export async function deleteAdminUser(token: string, id: number): Promise<void> {
-  await request(`/api/admin/users/${id}`, {
+export function hardDeleteDocument(token: string, id: number) {
+  return request<void>(`/admin/documents/${id}/hard`, {
     method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
+    token,
+  });
+}
+
+export async function deleteAdminUser(token: string, id: number): Promise<void> {
+  await request(`/admin/users/${id}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export async function hardDeleteAdminUser(token: string, id: number): Promise<void> {
+  await request(`/admin/users/${id}/hard`, {
+    method: "DELETE",
+    token,
   });
 }
 
@@ -298,7 +312,7 @@ export function documentFileUrl(
   if (version) {
     params.set("v", version);
   }
-  return `${import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8080"}/api/documents/${id}/file?${params.toString()}`;
+  return `${import.meta.env.VITE_BACKEND_URL ?? ""}/api/documents/${id}/file?${params.toString()}`;
 }
 
 export function documentCoverUrl(id: number, token: string, version?: string) {
@@ -307,7 +321,7 @@ export function documentCoverUrl(id: number, token: string, version?: string) {
   if (version) {
     params.set("v", version);
   }
-  return `${import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8080"}/api/documents/${id}/cover?${params.toString()}`;
+  return `${import.meta.env.VITE_BACKEND_URL ?? ""}/api/documents/${id}/cover?${params.toString()}`;
 }
 
 export function submissionFileUrl(
@@ -324,5 +338,5 @@ export function submissionFileUrl(
   if (version) {
     params.set("v", version);
   }
-  return `${import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8080"}/api/submissions/${id}/file?${params.toString()}`;
+  return `${import.meta.env.VITE_BACKEND_URL ?? ""}/api/submissions/${id}/file?${params.toString()}`;
 }

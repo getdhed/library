@@ -21,6 +21,8 @@ type Config struct {
 	SeedAdminPass             string
 	LogLevel                  string
 	LogFormat                 string
+	EnableArchiveRetention    bool
+	ArchiveRetentionDays      int
 }
 
 func Load() Config {
@@ -30,13 +32,15 @@ func Load() Config {
 		JWTSecret:                 getEnv("JWT_SECRET", "change-me-in-production"),
 		StoragePath:               getEnv("STORAGE_PATH", "./storage"),
 		MaxUploadSizeMB:           getEnvInt64("MAX_UPLOAD_SIZE_MB", 100),
-		TokenTTL:                  time.Duration(getEnvInt64("TOKEN_TTL_HOURS", 72)) * time.Hour,
+		TokenTTL:                  time.Duration(getEnvInt64("TOKEN_TTL_HOURS", 24)) * time.Hour,
 		CORSOrigins:               getEnvSlice("CORS_ORIGINS", "http://localhost:5173"),
 		SeedAdminUsername:         getEnv("SEED_ADMIN_USERNAME", "admin"),
 		SeedAdminName:             getEnv("SEED_ADMIN_NAME", "Администратор"),
 		SeedAdminPass:             getEnv("SEED_ADMIN_PASSWORD", "admin12345"),
 		LogLevel:                  strings.ToLower(getEnv("LOG_LEVEL", "info")),
 		LogFormat:                 strings.ToLower(getEnv("LOG_FORMAT", "text")),
+		EnableArchiveRetention:    getEnvBool("ENABLE_ARCHIVE_RETENTION", false),
+		ArchiveRetentionDays:      int(getEnvInt64("ARCHIVE_RETENTION_DAYS", 365)),
 	}
 }
 
@@ -79,4 +83,19 @@ func getEnvSlice(key, fallback string) []string {
 		}
 	}
 	return items
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	switch strings.ToLower(value) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	case "0", "false", "no", "n", "off":
+		return false
+	default:
+		panic(fmt.Sprintf("invalid bool env %s=%q", key, value))
+	}
 }

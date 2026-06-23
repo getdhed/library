@@ -17,9 +17,10 @@ import AuthPageFrame from "../components/AuthPageFrame";
 const LoginPage: React.FC = () => {
   const auth = useAuth();
   const navigate = useNavigate();
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin12345");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<React.ReactNode>("");
+  const [fieldErrors, setFieldErrors] = useState({ username: "", password: "" });
 
   if (auth.token) {
     return <Navigate to="/" replace />;
@@ -28,6 +29,26 @@ const LoginPage: React.FC = () => {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError("");
+    
+    const newFieldErrors = { username: "", password: "" };
+    let hasError = false;
+
+    if (!username.trim()) {
+      newFieldErrors.username = "Логин обязателен для заполнения";
+      hasError = true;
+    }
+    if (!password) {
+      newFieldErrors.password = "Пароль обязателен для заполнения";
+      hasError = true;
+    }
+
+    if (hasError) {
+      setFieldErrors(newFieldErrors);
+      return;
+    }
+
+    setFieldErrors({ username: "", password: "" });
+
     try {
       await auth.login({ username, password });
       navigate("/");
@@ -70,23 +91,33 @@ const LoginPage: React.FC = () => {
     <AuthPageFrame
       title="Вход"
       formContent={
-        <Stack component="form" spacing={2} onSubmit={handleSubmit}>
+        <Stack component="form" spacing={2} onSubmit={handleSubmit} noValidate>
           <TextField
             label="Логин"
             value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            placeholder="admin"
+            onChange={(event) => {
+              setUsername(event.target.value);
+              if (fieldErrors.username) setFieldErrors((prev) => ({ ...prev, username: "" }));
+            }}
+            placeholder="Введите логин"
             inputProps={{ maxLength: 30 }}
+            error={!!fieldErrors.username}
+            helperText={fieldErrors.username}
             fullWidth
           />
 
           <TextField
             label="Пароль"
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
+            onChange={(event) => {
+              setPassword(event.target.value);
+              if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: "" }));
+            }}
             placeholder="Введите пароль"
             type="password"
             inputProps={{ maxLength: 30 }}
+            error={!!fieldErrors.password}
+            helperText={fieldErrors.password}
             fullWidth
           />
 
@@ -108,10 +139,10 @@ const LoginPage: React.FC = () => {
                     Нужна помощь?
                   </Typography>
                   <Typography variant="body2" sx={{ mb: 1, opacity: 0.9 }}>
-                    По вопросам доступа к документам и восстановления учетной записи обращайтесь в ИТ-отдел:
+                    Если возникли какие-то неполадки, обратитесь к администратору или библиотекарю по телефону:
                   </Typography>
                   <Typography variant="body2" fontWeight={700}>
-                    Внутренний тел. 123
+                    4736
                   </Typography>
                 </Box>
               }

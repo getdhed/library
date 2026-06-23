@@ -59,7 +59,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     bootstrap();
 
     return () => {
+
       cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    let timeoutId: number;
+
+    const resetTimer = () => {
+      window.clearTimeout(timeoutId);
+      // 15 minutes = 15 * 60 * 1000
+      timeoutId = window.setTimeout(() => {
+        persist(null);
+        setToken(null);
+        setUser(null);
+      }, 15 * 60 * 1000);
+    };
+
+    resetTimer();
+
+    const events = ["mousemove", "keydown", "scroll", "click", "touchstart"];
+    const handleActivity = () => {
+      // Throttle the reset slightly to avoid excessive calls on mousemove
+      window.requestAnimationFrame(resetTimer);
+    };
+
+    events.forEach((event) => {
+      window.addEventListener(event, handleActivity, { passive: true });
+    });
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      events.forEach((event) => {
+        window.removeEventListener(event, handleActivity);
+      });
     };
   }, [token]);
 

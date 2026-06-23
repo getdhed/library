@@ -65,9 +65,8 @@ describe("BookPage", () => {
     expect(screen.getByText("Demo Author")).toBeInTheDocument();
     expect(screen.getByText("Generated demo PDF set")).toBeInTheDocument();
     expect(screen.queryByText("Demo Publisher")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Подробнее" }));
+    fireEvent.click(screen.getByRole("button", { name: "Подробнее..." }));
     expect(screen.getByText("Demo Publisher")).toBeInTheDocument();
-    expect(screen.getByText("playbook.pdf")).toBeInTheDocument();
     expect(screen.queryByText(/Alias:/i)).not.toBeInTheDocument();
   });
 });

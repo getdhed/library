@@ -39,7 +39,7 @@ describe("AdminModerationPage", () => {
     expect(screen.getByText("Заявки")).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText("В данной категории заявок нет.")).toBeInTheDocument();
+      expect(screen.getByText("Все заявки обработаны!")).toBeInTheDocument();
     });
   });
 

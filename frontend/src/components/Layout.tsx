@@ -152,10 +152,12 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           letterSpacing: "0.1em",
           textTransform: "uppercase",
           color: isSearchAccent ? tokens.headerInk : alpha(tokens.headerInk, 0.84),
-          px: 2.2,
+          px: 1.5,
           height: 64,
+          minWidth: 90,
           display: "flex",
           alignItems: "center",
+          justifyContent: "center",
           borderLeft: "1px solid rgba(255,255,255,0.06)",
           position: "relative",
           backgroundColor: isSearchAccent ? tokens.danger : "transparent",
@@ -236,8 +238,8 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             alignItems: "center",
             justifyContent: "space-between",
             height: 64,
-            px: 3,
-            maxWidth: 1700,
+            px: { xs: 1.5, md: 2 },
+            maxWidth: 2400,
             mx: "auto",
           }}
         >
@@ -362,9 +364,9 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         sx={{
           flex: 1,
           width: "100%",
-          maxWidth: 1700,
+          maxWidth: 2400,
           mx: "auto",
-          px: 3,
+          px: { xs: 1.5, md: 2 },
           py: 3.5,
         }}
       >
@@ -378,13 +380,13 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           bgcolor: tokens.footerBg,
           borderTop: `3px solid ${tokens.accent}`,
           color: alpha(tokens.headerInk, 0.84),
-          px: 3,
+          px: { xs: 1.5, md: 2 },
           py: 4,
         }}
       >
         <Box
           sx={{
-            maxWidth: 1700,
+            maxWidth: 2400,
             mx: "auto",
             display: "flex",
             alignItems: "center",

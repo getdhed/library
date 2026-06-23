@@ -32,10 +32,12 @@ import {
 } from "../../components/DocumentFormFields";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import SettingsBackupRestoreRoundedIcon from "@mui/icons-material/SettingsBackupRestoreRounded";
+import DeleteForeverRoundedIcon from "@mui/icons-material/DeleteForeverRounded";
 import {
   getAdminDocuments,
   getDocumentTypes,
   restoreDocument,
+  hardDeleteDocument,
 } from "../../api/library";
 import { useAuth } from "../../auth/AuthContext";
 import AdminFrame from "../../components/AdminFrame";
@@ -55,7 +57,7 @@ import type {
 } from "../../types";
 
 const AdminArchivePage: React.FC = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [payload, setPayload] = useState<PagedDocuments | null>(null);
 
   const [search, setSearch] = useState("");
@@ -106,6 +108,17 @@ const AdminArchivePage: React.FC = () => {
     if (!token || !window.confirm("Восстановить документ?")) return;
     await restoreDocument(token, id);
     await loadDocuments();
+  }
+
+  async function handleHardDelete(id: number) {
+    if (!token || !window.confirm("Вы уверены, что хотите ОКОНЧАТЕЛЬНО удалить этот документ? Это действие необратимо!")) return;
+    try {
+      await hardDeleteDocument(token, id);
+      await loadDocuments();
+    } catch (err) {
+      console.error(err);
+      alert("Не удалось удалить документ окончательно");
+    }
   }
 
   return (
@@ -241,6 +254,13 @@ const AdminArchivePage: React.FC = () => {
                                 <SettingsBackupRestoreRoundedIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
+                            {user?.role === "superadmin" && (
+                              <Tooltip title="Удалить навсегда">
+                                <IconButton size="small" onClick={() => void handleHardDelete(item.id)} sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonDangerSx } as any}>
+                                  <DeleteForeverRoundedIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            )}
                           </Stack>
                         </TableCell>
                       </TableRow>
@@ -270,6 +290,13 @@ const AdminArchivePage: React.FC = () => {
                           <SettingsBackupRestoreRoundedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
+                      {user?.role === "superadmin" && (
+                        <Tooltip title="Удалить навсегда">
+                          <IconButton size="small" onClick={() => void handleHardDelete(item.id)} sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonDangerSx } as any}>
+                            <DeleteForeverRoundedIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                     </CardActions>
                   </Card>
                 ))}

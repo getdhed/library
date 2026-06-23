@@ -111,12 +111,9 @@ describe("MyPdfsPage", () => {
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getByText("У вас пока нет отправленных PDF")).toBeInTheDocument();
+      expect(screen.getByText("У вас пока нет загруженных PDF")).toBeInTheDocument();
     });
 
-    expect(
-      screen.getByText("Вы ещё не отправляли файлы на модерацию.")
-    ).toBeInTheDocument();
 
     const uploadButtons = screen.getAllByRole("link", { name: "Загрузить новый PDF" });
     expect(uploadButtons.length).toBeGreaterThanOrEqual(1);
@@ -126,7 +123,7 @@ describe("MyPdfsPage", () => {
     expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
   });
 
-  it("renders success state, filter toolbar and sorted cards", async () => {
+  it("renders success state and sorted cards", async () => {
     renderPage(true);
 
     await waitFor(() => {
@@ -134,23 +131,15 @@ describe("MyPdfsPage", () => {
     });
 
     expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.getByRole("toolbar")).toBeInTheDocument();
 
     const cardTitles = screen
       .getAllByRole("heading", { level: 6 })
       .map((item) => item.textContent);
     expect(cardTitles).toEqual([
-      "Rejected Draft",
-      "Approved Draft",
       "Pending Notes",
+      "Approved Draft",
+      "Rejected Draft",
     ]);
-
-    const filterButtons = within(screen.getByRole("toolbar")).getAllByRole("button");
-    fireEvent.click(filterButtons[3]);
-
-    expect(screen.getByText("Rejected Draft")).toBeInTheDocument();
-    expect(screen.queryByText("Approved Draft")).not.toBeInTheDocument();
-    expect(screen.queryByText("Pending Notes")).not.toBeInTheDocument();
   });
 
   it("opens details drawer for rejected, approved and pending entries", async () => {
@@ -178,19 +167,19 @@ describe("MyPdfsPage", () => {
 
     const rejectedCard = screen.getByText("Rejected Draft").closest("article");
     expect(rejectedCard).not.toBeNull();
-    fireEvent.click(rejectedCard!.querySelector("button") as HTMLElement);
+    fireEvent.click(rejectedCard!);
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    expect(screen.getByText("Need full metadata")).toBeInTheDocument();
+    expect(screen.getAllByText("Need full metadata").length).toBeGreaterThan(0);
     expect(vi.mocked(getDocument)).not.toHaveBeenCalled();
 
     fireEvent.click(within(screen.getByRole("dialog")).getAllByRole("button")[0]);
 
     const approvedCard = screen.getByText("Approved Draft").closest("article");
     expect(approvedCard).not.toBeNull();
-    fireEvent.click(approvedCard!.querySelector("button") as HTMLElement);
+    fireEvent.click(approvedCard!);
 
     await waitFor(() => {
       expect(screen.getByText("Approved Catalog Title")).toBeInTheDocument();
@@ -206,7 +195,7 @@ describe("MyPdfsPage", () => {
 
     const pendingCard = screen.getByText("Pending Notes").closest("article");
     expect(pendingCard).not.toBeNull();
-    fireEvent.click(pendingCard!.querySelector("button") as HTMLElement);
+    fireEvent.click(pendingCard!);
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();

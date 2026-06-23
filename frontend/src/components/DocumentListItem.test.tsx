@@ -35,7 +35,7 @@ describe("DocumentListItem", () => {
 
     fireEvent.error(screen.getByAltText("Обложка DevOps Playbook"));
 
-    expect(screen.getByText("PDF")).toBeInTheDocument();
+    expect(screen.getByText("Нет превью")).toBeInTheDocument();
     expect(screen.getAllByText("Учебник")).toHaveLength(1);
     expect(screen.getByText("Demo Author")).toBeInTheDocument();
     expect(screen.queryByText("Generated demo PDF set")).not.toBeInTheDocument();

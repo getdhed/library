@@ -24,6 +24,7 @@ import {
   toggleDocumentFavorite,
   getDocumentTypes,
   updateDocument,
+  deleteDocument,
 } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
 import { ContentCard, PageShell } from "../components/mui-primitives";
@@ -54,14 +55,15 @@ const BookPage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<AdminForm>({
     title: "", author: "", executor: "", scientificAdvisor: "", year: new Date().getFullYear(),
-    type: "", placeOfPublication: "", publisher: "", periodicalName: "", volume: "", description: "", tags: "", file: null
+    type: "", placeOfPublication: "", publisher: "", periodicalName: "", volume: "", description: "", tags: "", isLocal: true, file: null
   });
   const [editFormError, setEditFormError] = useState("");
   const [documentTypes, setDocumentTypes] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editPreviewUrl, setEditPreviewUrl] = useState("");
   const { token, user } = useAuth();
   const { id } = useParams();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
 
   useEffect(() => {
     if (!token || !id) return;
@@ -70,6 +72,15 @@ const BookPage: React.FC = () => {
       void markOpened(token, doc.id).catch(console.error);
     }).catch(console.error);
   }, [id, token]);
+
+  useEffect(() => {
+    if (editForm.file) {
+      const url = URL.createObjectURL(editForm.file);
+      setEditPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setEditPreviewUrl("");
+  }, [editForm.file]);
 
   if (!document || !token) {
     return (
@@ -168,8 +179,24 @@ const BookPage: React.FC = () => {
       const updated = await updateDocument(token, document.id, fd);
       setDocument(updated);
       setIsEditing(false);
+      setEditPreviewUrl("");
     } catch (err) {
       setEditFormError(err instanceof Error ? err.message : "Ошибка при сохранении");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleArchive() {
+    if (!token || !document) return;
+    if (!window.confirm("Поместить документ в архив?")) return;
+    try {
+      setIsSubmitting(true);
+      await deleteDocument(token, document.id);
+      setIsEditing(false);
+      window.history.back();
+    } catch (err) {
+      setEditFormError(err instanceof Error ? err.message : "Не удалось архивировать документ");
     } finally {
       setIsSubmitting(false);
     }
@@ -195,23 +222,34 @@ const BookPage: React.FC = () => {
                   {document.title}
                 </Typography>
                 {document.author ? (
-                  <Typography
-                    component={Link}
-                    to={`/search?author=${encodeURIComponent(document.author)}`}
-                    onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-                    variant="h6"
-                    sx={{
-                      fontWeight: 500,
-                      color: "text.secondary",
-                      textDecoration: "none",
-                      display: "inline-block",
-                      "&:hover": {
-                        color: "success.main",
-                      },
-                    }}
-                  >
-                    {document.author}
-                  </Typography>
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                    {document.author.split(",").map((a) => a.trim()).filter(Boolean).map((authorName, index, arr) => (
+                      <React.Fragment key={index}>
+                        <Typography
+                          component={Link}
+                          to={`/search?author=${encodeURIComponent(authorName)}`}
+                          onClick={(e) => { e.stopPropagation(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                          variant="h6"
+                          sx={{
+                            fontWeight: 500,
+                            color: "text.secondary",
+                            textDecoration: "none",
+                            display: "inline-block",
+                            "&:hover": {
+                              color: "success.main",
+                            },
+                          }}
+                        >
+                          {authorName}
+                        </Typography>
+                        {index < arr.length - 1 && (
+                          <Typography variant="h6" component="span" sx={{ color: "text.secondary", fontWeight: 500 }}>
+                            ,
+                          </Typography>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </Box>
                 ) : (
                   <Typography variant="h6" sx={{ fontWeight: 500, color: "text.secondary" }}>
                     не указан
@@ -356,17 +394,22 @@ const BookPage: React.FC = () => {
           open={isEditing}
           title="Редактировать документ"
           subtitle={document.title}
-          pdfUrl={documentFileUrl(document.id, token, false, document.updatedAt)}
+          pdfUrl={editPreviewUrl || documentFileUrl(document.id, token, false, document.updatedAt)}
           onClose={() => setIsEditing(false)}
           form={editForm}
           setForm={setEditForm}
           error={editFormError}
           onSubmit={handleUpdateDocument}
-          submitLabel="Сохранить изменения"
+          submitLabel={isSubmitting ? "Сохраняем..." : "Сохранить изменения"}
           isSubmitting={isSubmitting}
           fileLabel="Заменить PDF (необязательно)"
           idPrefix="book-edit"
           documentTypes={documentTypes}
+          secondaryActions={
+            <Button variant="contained" color="error" onClick={() => void handleArchive()} disabled={isSubmitting}>
+              Архивировать документ
+            </Button>
+          }
         />
       )}
     </PageShell>

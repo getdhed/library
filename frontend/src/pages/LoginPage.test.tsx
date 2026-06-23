@@ -34,9 +34,9 @@ describe("LoginPage", () => {
     const passwordInput = screen.getByLabelText("Пароль");
     const submitBtn = screen.getByRole("button", { name: "Войти" });
 
-    // Inputs have default values "admin" and "admin12345"
-    expect(usernameInput).toHaveValue("admin");
-    expect(passwordInput).toHaveValue("admin12345");
+    // Inputs should be empty by default
+    expect(usernameInput).toHaveValue("");
+    expect(passwordInput).toHaveValue("");
 
     await userEvent.clear(usernameInput);
     await userEvent.type(usernameInput, "testuser");
@@ -67,11 +67,17 @@ describe("LoginPage", () => {
       </ThemeProvider>
     );
 
+    const usernameInput = screen.getByLabelText("Логин");
+    const passwordInput = screen.getByLabelText("Пароль");
     const submitBtn = screen.getByRole("button", { name: "Войти" });
+
+    await userEvent.type(usernameInput, "wronguser");
+    await userEvent.type(passwordInput, "wrongpass");
+
     await userEvent.click(submitBtn);
 
     await waitFor(() => {
-      expect(screen.getByText("Не удалось войти. Проверьте логин и пароль.")).toBeInTheDocument();
+      expect(screen.getByText("Ошибка сервера: Login failed")).toBeInTheDocument();
     });
   });
 

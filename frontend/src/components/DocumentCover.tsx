@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Box, Chip } from "@mui/material";
+import { Box, Chip, Typography } from "@mui/material";
+import { ImageNotSupported } from "@mui/icons-material";
 import { documentCoverUrl } from "../api/library";
 import type { DocumentItem } from "../types";
 
@@ -60,16 +61,22 @@ const DocumentCover: React.FC<Props> = ({
             aria-hidden="true"
             sx={{
               height: "100%",
-              display: "grid",
-              placeItems: "center",
-              alignContent: "center",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
               gap: 1,
               p: 2,
               textAlign: "center",
-              backgroundColor: (theme) => `rgba(74,92,58,${theme.palette.mode === "light" ? 0.12 : 0.2})`,
+              backgroundColor: (theme) =>
+                theme.palette.mode === "light" ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.04)",
+              color: "text.disabled",
             }}
           >
-            <Chip size="small" label="PDF" />
+            <ImageNotSupported sx={{ fontSize: 40, opacity: 0.5 }} />
+            <Typography variant="caption" sx={{ fontWeight: 500, opacity: 0.7 }}>
+              Нет превью
+            </Typography>
           </Box>
         )}
       </Box>

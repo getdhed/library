@@ -286,6 +286,7 @@ const MyPdfsPage: React.FC = () => {
                     component={Link}
                     variant="contained"
                     to={`/documents/${detailDocument.id}`}
+                    onClick={(e) => e.stopPropagation()}
                   >
                     Открыть документ
                   </Button>
@@ -370,6 +371,7 @@ const MyPdfsPage: React.FC = () => {
                       <Box
                         key={item.id}
                         component="article"
+                        onClick={() => setSelectedSubmission(item)}
                         sx={{
                           p: 2.5,
                           display: "flex",
@@ -377,6 +379,7 @@ const MyPdfsPage: React.FC = () => {
                           alignItems: { xs: "flex-start", sm: "center" },
                           justifyContent: "space-between",
                           gap: 2,
+                          cursor: "pointer",
                           transition: "background-color 0.2s ease",
                           "&:hover": {
                             backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.03),
@@ -426,6 +429,7 @@ const MyPdfsPage: React.FC = () => {
                             color="primary"
                             size="small"
                             to={`/documents/${item.approvedDocumentId}`}
+                            onClick={(e) => e.stopPropagation()}
                             sx={{ borderRadius: 2, mt: { xs: 1.5, sm: 0 } }}
                           >
                             Перейти на страницу файла
@@ -438,6 +442,7 @@ const MyPdfsPage: React.FC = () => {
                               color="secondary"
                               size="small"
                               target="_blank"
+                              onClick={(e) => e.stopPropagation()}
                               sx={{ borderRadius: 2 }}
                             >
                               Открыть PDF
@@ -451,6 +456,7 @@ const MyPdfsPage: React.FC = () => {
                               color="secondary"
                               size="small"
                               target="_blank"
+                              onClick={(e) => e.stopPropagation()}
                               sx={{ borderRadius: 2 }}
                             >
                               Открыть PDF

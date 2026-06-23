@@ -2,6 +2,7 @@ package service
 
 import (
 	"testing"
+	"time"
 
 	"library-backend/internal/domain"
 )
@@ -59,7 +60,7 @@ func TestService_Users(t *testing.T) {
 	}
 
 	// CreateAdminUser
-	admin, _, err := svc.CreateAdminUser(ctx, domain.RoleSuperAdmin, domain.AdminUserInput{
+	admin, _, err := svc.CreateAdminUser(ctx, 1, domain.RoleSuperAdmin, domain.AdminUserInput{
 		Username: "admin_test",
 		FullName: "Admin Test",
 		Role:     domain.RoleAdmin,
@@ -100,7 +101,7 @@ func TestService_DocumentsAndHome(t *testing.T) {
 
 	authData, _ := svc.Register(ctx, domain.RegisterInput{
 		Username: "docuser",
-		Password: "pwd",
+		Password: "password123",
 		FullName: "Doc User",
 	})
 
@@ -209,14 +210,14 @@ func TestService_SubmissionsAndStats(t *testing.T) {
 
 	user, _ := svc.Register(ctx, domain.RegisterInput{
 		Username: "subuser",
-		Password: "pwd",
+		Password: "password123",
 		FullName: "Sub User",
 	})
-	admin, _, _ := svc.CreateAdminUser(ctx, domain.RoleSuperAdmin, domain.AdminUserInput{
-		Username: "subadmin",
+	admin, _, _ := svc.CreateAdminUser(ctx, 1, domain.RoleSuperAdmin, domain.AdminUserInput{
+		Username: "super_" + time.Now().String(),
 		FullName: "Sub Admin",
 		Role:     domain.RoleAdmin,
-		Password: "pwd",
+		Password: "password123",
 	})
 
 	sub, err := svc.CreateSubmission(ctx, user.User.ID, domain.CreateSubmissionInput{

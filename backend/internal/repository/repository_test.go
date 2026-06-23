@@ -349,6 +349,7 @@ func TestListDocumentsSupportsEmptyAndTextSearch(t *testing.T) {
 		FileSize:    1024,
 		MimeType:    "application/pdf",
 		CoverPath:   "covers/ds.png",
+		IsLocal:     true,
 	}); err != nil {
 		t.Fatalf("CreateDocument() error = %v", err)
 	}
@@ -415,6 +416,32 @@ func TestListDocumentsSupportsEmptyAndTextSearch(t *testing.T) {
 	}
 	if tagSearch.Total != 1 || len(tagSearch.Items) != 1 {
 		t.Fatalf("expected tag query to find one document, got total=%d items=%d", tagSearch.Total, len(tagSearch.Items))
+	}
+
+	trueVal := true
+	isLocalFilter, err := repo.ListDocuments(ctx, userID, domain.DocumentFilters{
+		IsLocal:  &trueVal,
+		Page:     1,
+		PageSize: 10,
+	}, false)
+	if err != nil {
+		t.Fatalf("ListDocuments() by isLocal=true filter error = %v", err)
+	}
+	if isLocalFilter.Total != 1 || len(isLocalFilter.Items) != 1 {
+		t.Fatalf("expected isLocal filter to find one document, got total=%d items=%d", isLocalFilter.Total, len(isLocalFilter.Items))
+	}
+
+	falseVal := false
+	isLocalFalseFilter, err := repo.ListDocuments(ctx, userID, domain.DocumentFilters{
+		IsLocal:  &falseVal,
+		Page:     1,
+		PageSize: 10,
+	}, false)
+	if err != nil {
+		t.Fatalf("ListDocuments() by isLocal=false filter error = %v", err)
+	}
+	if isLocalFalseFilter.Total != 0 || len(isLocalFalseFilter.Items) != 0 {
+		t.Fatalf("expected isLocal false filter to find zero documents, got total=%d items=%d", isLocalFalseFilter.Total, len(isLocalFalseFilter.Items))
 	}
 }
 

@@ -115,6 +115,8 @@ export interface NamedStat {
 
 export interface AdminStats {
   documentsCount: number;
+  localDocumentsCount: number;
+  externalDocumentsCount: number;
   visitsInPeriod: number;
   viewsToday: number;
   downloadsToday: number;

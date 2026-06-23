@@ -282,6 +282,21 @@ func (r *Repository) UpdateLastLoginAt(ctx context.Context, id int64) error {
 	return err
 }
 
+func (r *Repository) HardDeleteUser(ctx context.Context, id int64) error {
+	res, err := r.db.ExecContext(ctx, "DELETE FROM users WHERE id = $1", id)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return apperror.ErrNotFound
+	}
+	return nil
+}
+
 func (r *Repository) DeleteUser(ctx context.Context, id int64) error {
 	res, err := r.db.ExecContext(ctx, "UPDATE users SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL", id)
 	if err != nil {
@@ -752,12 +767,12 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			queryConditions,
 			fmt.Sprintf(
 				`(
-					d.title %% $%d OR d.title ILIKE $%d OR
-					d.author %% $%d OR d.author ILIKE $%d OR
+					$%d <%% d.title OR d.title ILIKE $%d OR
+					$%d <%% d.author OR d.author ILIKE $%d OR
 					EXISTS (
 						SELECT 1 FROM document_tags dt2
 						JOIN tags t2 ON t2.id = dt2.tag_id
-						WHERE dt2.document_id = d.id AND (t2.name %% $%d OR t2.name ILIKE $%d)
+						WHERE dt2.document_id = d.id AND ($%d <%% t2.name OR t2.name ILIKE $%d)
 					)
 				)`,
 				queryArgIndex,
@@ -783,12 +798,12 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			countConditions,
 			fmt.Sprintf(
 				`(
-					d.title %% $%d OR d.title ILIKE $%d OR
-					d.author %% $%d OR d.author ILIKE $%d OR
+					$%d <%% d.title OR d.title ILIKE $%d OR
+					$%d <%% d.author OR d.author ILIKE $%d OR
 					EXISTS (
 						SELECT 1 FROM document_tags dt2
 						JOIN tags t2 ON t2.id = dt2.tag_id
-						WHERE dt2.document_id = d.id AND (t2.name %% $%d OR t2.name ILIKE $%d)
+						WHERE dt2.document_id = d.id AND ($%d <%% t2.name OR t2.name ILIKE $%d)
 					)
 				)`,
 				countArgIndex,
@@ -822,14 +837,14 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 	if requestedAuthor != "" {
 		queryConditions = append(
 			queryConditions,
-			fmt.Sprintf("(d.author %% $%d OR d.author ILIKE $%d)", queryArgIndex, queryArgIndex+1),
+			fmt.Sprintf("($%d <%% d.author OR d.author ILIKE $%d)", queryArgIndex, queryArgIndex+1),
 		)
 		queryArgs = append(queryArgs, requestedAuthor, likeAuthor)
 		queryArgIndex += 2
 
 		countConditions = append(
 			countConditions,
-			fmt.Sprintf("(d.author %% $%d OR d.author ILIKE $%d)", countArgIndex, countArgIndex+1),
+			fmt.Sprintf("($%d <%% d.author OR d.author ILIKE $%d)", countArgIndex, countArgIndex+1),
 		)
 		countArgs = append(countArgs, requestedAuthor, likeAuthor)
 		countArgIndex += 2
@@ -839,7 +854,7 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 		for _, term := range tagTerms {
 			queryTagConditions = append(
 				queryTagConditions,
-				fmt.Sprintf("(t2.name %% $%d OR t2.name ILIKE $%d)", queryArgIndex, queryArgIndex+1),
+				fmt.Sprintf("($%d <%% t2.name OR t2.name ILIKE $%d)", queryArgIndex, queryArgIndex+1),
 			)
 			queryArgs = append(queryArgs, term, "%"+term+"%")
 			queryArgIndex += 2
@@ -860,7 +875,7 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 		for _, term := range tagTerms {
 			countTagConditions = append(
 				countTagConditions,
-				fmt.Sprintf("(t2.name %% $%d OR t2.name ILIKE $%d)", countArgIndex, countArgIndex+1),
+				fmt.Sprintf("($%d <%% t2.name OR t2.name ILIKE $%d)", countArgIndex, countArgIndex+1),
 			)
 			countArgs = append(countArgs, term, "%"+term+"%")
 			countArgIndex += 2
@@ -1768,6 +1783,12 @@ func (r *Repository) Stats(ctx context.Context, filters domain.StatsFilters) (do
 	stats.UploadPeriodTo = dateTo
 
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM documents WHERE created_at < $1 AND deleted_at IS NULL`, dateTo).Scan(&stats.DocumentsCount); err != nil {
+		return stats, err
+	}
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM documents WHERE created_at < $1 AND deleted_at IS NULL AND is_local = true`, dateTo).Scan(&stats.LocalDocumentsCount); err != nil {
+		return stats, err
+	}
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM documents WHERE created_at < $1 AND deleted_at IS NULL AND is_local = false`, dateTo).Scan(&stats.ExternalDocumentsCount); err != nil {
 		return stats, err
 	}
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM document_views WHERE created_at >= $1 AND created_at < $2`, dateFrom, dateTo).Scan(&stats.ViewsToday); err != nil {
