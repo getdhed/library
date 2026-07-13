@@ -14,6 +14,9 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { prefetchPath, useSmartRoutePrefetch } from "../routing/routePrefetch";
 import { getThemeTokens } from "../theme/muiTheme";
+import LanguageRoundedIcon from "@mui/icons-material/LanguageRounded";
+import MenuBookRoundedIcon from "@mui/icons-material/MenuBookRounded";
+import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 
 type NavItem = {
   to: string;
@@ -28,7 +31,7 @@ const navItems: NavItem[] = [
 
 const adminItem: NavItem = {
   to: "/admin/documents",
-  label: "Админка",
+  label: "Управление",
 };
 
 const myPdfsItem: NavItem = {
@@ -384,58 +387,102 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           py: 4,
         }}
       >
-        <Box
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          spacing={4}
           sx={{
             maxWidth: 2400,
             mx: "auto",
-            display: "flex",
-            alignItems: "center",
             justifyContent: "space-between",
-            gap: 2,
+            alignItems: { xs: "flex-start", md: "center" },
           }}
         >
           <Typography
             sx={{
-              fontSize: "1.1rem",
-              letterSpacing: "0.08em",
+              fontSize: "0.85rem",
+              letterSpacing: "0.02em",
               color: alpha(tokens.headerInk, 0.86),
+              lineHeight: 1.5,
             }}
           >
-            ИПС РБ · Библиотека
+            © {new Date().getFullYear()} Государственное учреждение образования<br />
+            «Институт пограничной службы Республики Беларусь»
           </Typography>
+
+          <Stack spacing={1.2}>
+            <Box
+              component="a"
+              href="https://portal.topsips.ops.by/ips/"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 1,
+                fontSize: "0.84rem",
+                fontWeight: 500,
+                color: alpha(tokens.headerInk, 0.82),
+                textDecoration: "none",
+                transition: "all 0.2s ease",
+                py: 0.5,
+                px: 1.2,
+                borderRadius: 1,
+                border: `1px solid ${alpha(tokens.headerInk, 0.15)}`,
+                "&:hover": {
+                  color: tokens.accent,
+                  borderColor: alpha(tokens.accent, 0.4),
+                  bgcolor: alpha(tokens.accent, 0.08),
+                },
+              }}
+            >
+              <LanguageRoundedIcon sx={{ fontSize: 18 }} />
+              Портал ИПС
+              <OpenInNewRoundedIcon sx={{ fontSize: 13, ml: 0.3, opacity: 0.6 }} />
+            </Box>
+            <Box
+              component="a"
+              href="https://portal.topsips.ops.by/library/"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 1,
+                fontSize: "0.84rem",
+                fontWeight: 500,
+                color: alpha(tokens.headerInk, 0.82),
+                textDecoration: "none",
+                transition: "all 0.2s ease",
+                py: 0.5,
+                px: 1.2,
+                borderRadius: 1,
+                border: `1px solid ${alpha(tokens.headerInk, 0.15)}`,
+                "&:hover": {
+                  color: tokens.accent,
+                  borderColor: alpha(tokens.accent, 0.4),
+                  bgcolor: alpha(tokens.accent, 0.08),
+                },
+              }}
+            >
+              <MenuBookRoundedIcon sx={{ fontSize: 18 }} />
+              Библиотека ИПС
+              <OpenInNewRoundedIcon sx={{ fontSize: 13, ml: 0.3, opacity: 0.6 }} />
+            </Box>
+          </Stack>
 
           <Typography
             sx={{
-              fontSize: "0.62rem",
-              letterSpacing: "0.08em",
-              textAlign: "center",
-              color: alpha(tokens.headerInk, 0.58),
-              lineHeight: 1.8,
+              fontSize: "0.75rem",
+              letterSpacing: "0.02em",
+              color: alpha(tokens.headerInk, 0.68),
+              lineHeight: 1.6,
+              textAlign: { xs: "left", md: "right" },
             }}
           >
-            Институт пограничной службы Республики Беларусь
-            <br />
-            Электронная библиотека учебных и методических материалов
-            <br />
-            v1.0 · 2026
+            220103, г. Минск, ул. Славинского, 4<br />
+            Режим работы: пн-пт 8.00 - 17.00, обед 13.00 - 14.00
           </Typography>
-
-          <Typography
-            sx={{
-              fontSize: "0.64rem",
-              letterSpacing: "0.08em",
-              textAlign: "right",
-              color: alpha(tokens.headerInk, 0.58),
-              lineHeight: 1.8,
-            }}
-          >
-            Администратор библиотеки
-            <br />
-            admin@library.local
-            <br />
-            Пн–Пт, 08:00–17:00
-          </Typography>
-        </Box>
+        </Stack>
       </Box>
     </Box>
   );

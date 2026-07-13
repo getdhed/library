@@ -60,6 +60,17 @@ export function getMe(token: string) {
   return request<User>("/me", { token });
 }
 
+export function changeMyPassword(
+  token: string,
+  input: { oldPassword: string; newPassword: string }
+) {
+  return request<{ status: string }>("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify(input),
+    token,
+  });
+}
+
 export function getHome(token: string) {
   return request<HomePayload>("/home", { token });
 }
@@ -215,6 +226,36 @@ export function getAdminStats(
   return request<AdminStats>(`/admin/stats${buildQuery(query)}`, { token });
 }
 
+export async function downloadAdminDBBackup(token: string) {
+  const API_URL = import.meta.env.VITE_API_URL ?? "/api";
+  const response = await fetch(`${API_URL}/admin/backup/db`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error("Не удалось скачать резервную копию");
+  }
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  
+  // Try to extract filename from Content-Disposition header if possible
+  let filename = "library_backup.bak";
+  const disposition = response.headers.get("Content-Disposition");
+  if (disposition && disposition.indexOf("filename=") !== -1) {
+    const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+    if (filenameMatch && filenameMatch.length === 2) {
+      filename = filenameMatch[1];
+    }
+  }
+  
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 export function getAdminDocumentAudit(token: string, id: number) {
   return request<{ items: DocumentAuditEvent[] }>(
     `/admin/documents/${id}/audit`,
@@ -273,6 +314,14 @@ export function setAdminUserStatus(
   return request<User>(`/admin/users/${id}/status`, {
     method: "PATCH",
     body: JSON.stringify({ isActive, deactivationReason: reason }),
+    token,
+  });
+}
+
+export function resetAdminUserPassword(token: string, id: number, password: string) {
+  return request<{ status: string }>(`/admin/users/${id}/reset-password`, {
+    method: "POST",
+    body: JSON.stringify({ password }),
     token,
   });
 }

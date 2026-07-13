@@ -91,11 +91,6 @@ const MyPdfsPage: React.FC = () => {
   const pageSize = 10;
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [selectedSubmission, setSelectedSubmission] =
-    useState<SubmissionItem | null>(null);
-  const [detailDocument, setDetailDocument] = useState<DocumentItem | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState("");
 
   useEffect(() => {
     if (locationState?.submissionCreated) {
@@ -134,183 +129,25 @@ const MyPdfsPage: React.FC = () => {
       cancelled = true;
     };
   }, [token]);
-
-  useEffect(() => {
-    if (!selectedSubmission) {
-      setDetailDocument(null);
-      setDetailLoading(false);
-      setDetailError("");
-      return;
-    }
-
-    if (selectedSubmission.status !== "approved") {
-      setDetailDocument(null);
-      setDetailLoading(false);
-      setDetailError("");
-      return;
-    }
-
-    if (!selectedSubmission.approvedDocumentId || !token) {
-      setDetailDocument(null);
-      setDetailLoading(false);
-      setDetailError("Итоговый документ пока недоступен.");
-      return;
-    }
-
-    let cancelled = false;
-    setDetailDocument(null);
-    setDetailError("");
-    setDetailLoading(true);
-
-    getDocument(token, selectedSubmission.approvedDocumentId)
-      .then((document) => {
-        if (!cancelled) {
-          setDetailDocument(document);
-        }
-      })
-      .catch((error) => {
-        console.error(error);
-        if (!cancelled) {
-          setDetailError("Не удалось загрузить итоговый документ.");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setDetailLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedSubmission, token]);
-
   const pageCount = Math.ceil(submissions.length / pageSize);
   const paginatedSubmissions = useMemo(() => {
     return submissions.slice((page - 1) * pageSize, page * pageSize);
   }, [submissions, page]);
 
-  function renderDetailField(label: string, value: React.ReactNode) {
-    return (
-      <Box>
-        <Typography variant="body2" color="text.secondary">
-          {label}
-        </Typography>
-        <Typography variant="body1" fontWeight={600}>
-          {value}
-        </Typography>
-      </Box>
-    );
-  }
 
-  function renderDetailContent() {
-    if (!selectedSubmission) {
-      return null;
-    }
-
-    return (
-      <Stack spacing={2.25}>
-        <Stack component="section" spacing={1.4}>
-          <Typography variant="h6">Исходная заявка</Typography>
-          <Box component="dl" sx={detailGridSx}>
-            {renderDetailField("Название", selectedSubmission.title)}
-            {renderDetailField("Исходный файл", selectedSubmission.fileName)}
-            {renderDetailField("Статус", submissionStatusLabel(selectedSubmission.status))}
-            {renderDetailField("Отправлен", formatDateTime(selectedSubmission.createdAt))}
-            {renderDetailField(
-              "Последнее изменение",
-              formatDateTime(selectedSubmission.updatedAt)
-            )}
-          </Box>
-
-          {selectedSubmission.comment && (
-            <Typography>
-              Комментарий к заявке: {selectedSubmission.comment}
-            </Typography>
-          )}
-
-          <Box>
-            <Button
-              component={Link}
-              variant="outlined"
-              to={`/submissions/${selectedSubmission.id}/read`}
-            >
-              Открыть исходный PDF
-            </Button>
-          </Box>
-        </Stack>
-
-        {selectedSubmission.status === "pending" && (
-          <Alert severity="info" variant="outlined">
-            Заявка в обработке.
-          </Alert>
-        )}
-
-        {selectedSubmission.status === "rejected" && (
-          <Stack component="section" spacing={1}>
-            <Typography variant="h6">Причина отказа</Typography>
-            <Alert severity="error" variant="outlined">
-              {selectedSubmission.moderationNote || "Причина отказа не указана."}
-            </Alert>
-            <Typography variant="body2" color="text.secondary">
-              Решение принято:{" "}
-              {formatDateTime(
-                selectedSubmission.reviewedAt ?? selectedSubmission.updatedAt
-              )}
-            </Typography>
-          </Stack>
-        )}
-
-        {selectedSubmission.status === "approved" && (
-          <Stack component="section" spacing={1.25}>
-            <Typography variant="h6">Итоговый документ в каталоге</Typography>
-
-            {detailLoading && (
-              <Typography color="text.secondary">
-                Загружаем итоговые данные документа...
-              </Typography>
-            )}
-
-            {detailError && <Alert severity="error">{detailError}</Alert>}
-
-            {detailDocument && (
-              <>
-                <Box component="dl" sx={detailGridSx}>
-                  {renderDetailField("Название в каталоге", detailDocument.title)}
-                  {renderDetailField("Файл в каталоге", detailDocument.fileName)}
-                  {renderDetailField("Автор", detailDocument.author)}
-                </Box>
-
-                <Box>
-                  <Button
-                    component={Link}
-                    variant="contained"
-                    to={`/documents/${detailDocument.id}`}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    Открыть документ
-                  </Button>
-                </Box>
-              </>
-            )}
-          </Stack>
-        )}
-      </Stack>
-    );
-  }
 
   return (
     <PageShell>
-      <PageHeader
-        title="Мои PDF"
-        side={
-          submissions.length > 0 && !isLoading && !loadError && (
-            <Button component={Link} to="/submit" variant="contained">
-              Загрузить новый PDF
-            </Button>
-          )
-        }
-      />
+      <Box sx={{ mb: 3, px: 0.5, mt: 1, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 2, alignItems: "center" }}>
+        <Typography variant="h4" fontWeight={700}>
+          Мои PDF
+        </Typography>
+        {submissions.length > 0 && !isLoading && !loadError && (
+          <Button component={Link} to="/submit" variant="contained">
+            Загрузить новый PDF
+          </Button>
+        )}
+      </Box>
 
       {showSuccessBanner && (
         <Alert
@@ -371,7 +208,6 @@ const MyPdfsPage: React.FC = () => {
                       <Box
                         key={item.id}
                         component="article"
-                        onClick={() => setSelectedSubmission(item)}
                         sx={{
                           p: 2.5,
                           display: "flex",
@@ -379,11 +215,6 @@ const MyPdfsPage: React.FC = () => {
                           alignItems: { xs: "flex-start", sm: "center" },
                           justifyContent: "space-between",
                           gap: 2,
-                          cursor: "pointer",
-                          transition: "background-color 0.2s ease",
-                          "&:hover": {
-                            backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.03),
-                          },
                         }}
                       >
                         <Stack spacing={0.75} flex={1} minWidth={0}>
@@ -429,7 +260,6 @@ const MyPdfsPage: React.FC = () => {
                             color="primary"
                             size="small"
                             to={`/documents/${item.approvedDocumentId}`}
-                            onClick={(e) => e.stopPropagation()}
                             sx={{ borderRadius: 2, mt: { xs: 1.5, sm: 0 } }}
                           >
                             Перейти на страницу файла
@@ -442,7 +272,6 @@ const MyPdfsPage: React.FC = () => {
                               color="secondary"
                               size="small"
                               target="_blank"
-                              onClick={(e) => e.stopPropagation()}
                               sx={{ borderRadius: 2 }}
                             >
                               Открыть PDF
@@ -456,7 +285,6 @@ const MyPdfsPage: React.FC = () => {
                               color="secondary"
                               size="small"
                               target="_blank"
-                              onClick={(e) => e.stopPropagation()}
                               sx={{ borderRadius: 2 }}
                             >
                               Открыть PDF
@@ -483,60 +311,7 @@ const MyPdfsPage: React.FC = () => {
             </Stack>
       )}
 
-      <Drawer
-        anchor="right"
-        open={Boolean(selectedSubmission)}
-        onClose={() => setSelectedSubmission(null)}
-        PaperProps={{
-          role: "dialog",
-          "aria-modal": true,
-          "aria-labelledby": "submission-detail-title",
-          sx: {
-            width: 560,
-            p: 2.25,
-            display: "grid",
-            gridTemplateRows: "auto minmax(0, 1fr)",
-            gap: 1.5,
-            borderRadius: 0,
-          },
-        }}
-      >
-        {selectedSubmission && (
-          <>
-            <Stack
-              direction="row"
-              spacing={1.25}
-              justifyContent="space-between"
-              alignItems="center"
-            >
-              <Box>
-                <Typography
-                  variant="caption"
-                  sx={eyebrowSx}
-                >
-                  Мои PDF
-                </Typography>
-                <Typography id="submission-detail-title" variant="h5">
-                  {selectedSubmission.title}
-                </Typography>
-                <Typography color="text.secondary">
-                  Статус: {submissionStatusLabel(selectedSubmission.status)}
-                </Typography>
-              </Box>
-              <Button
-                type="button"
-                variant="outlined"
-                onClick={() => setSelectedSubmission(null)}
-                sx={{ borderRadius: 0 }}
-              >
-                Закрыть
-              </Button>
-            </Stack>
 
-            <Box sx={{ overflowY: "auto", pr: 0.5 }}>{renderDetailContent()}</Box>
-          </>
-        )}
-      </Drawer>
     </PageShell>
   );
 };

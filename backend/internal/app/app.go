@@ -60,7 +60,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		return nil, err
 	}
 	logger.Info("ensuring seed admin user", "username", cfg.SeedAdminUsername)
-	if err := repo.EnsureSeedData(ctx, cfg.SeedAdminUsername, cfg.SeedAdminName, passwordHash); err != nil {
+	if _, err := repo.EnsureSystemUser(ctx, cfg.SeedAdminUsername, cfg.SeedAdminName, passwordHash); err != nil {
 		cancel()
 		return nil, err
 	}

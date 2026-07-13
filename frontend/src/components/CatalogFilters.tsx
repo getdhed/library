@@ -79,16 +79,16 @@ const CatalogFilters: React.FC<CatalogFiltersProps> = ({
       </FormControl>
 
       <FormControl fullWidth>
-        <InputLabel id={`${idPrefix}-local-label`}>Источник документа</InputLabel>
+        <InputLabel id={`${idPrefix}-local-label`}>Источник</InputLabel>
         <Select
           labelId={`${idPrefix}-local-label`}
           value={isLocalValue}
-          label="Источник документа"
+          label="Источник"
           onChange={(event) => onIsLocalChange?.(event.target.value)}
         >
           <MenuItem value="">Все источники</MenuItem>
-          <MenuItem value="true">Только локальные архивы</MenuItem>
-          <MenuItem value="false">Внешние материалы</MenuItem>
+          <MenuItem value="true">Источники Института</MenuItem>
+          <MenuItem value="false">Прочие источники</MenuItem>
         </Select>
       </FormControl>
 
@@ -129,7 +129,7 @@ const CatalogFilters: React.FC<CatalogFiltersProps> = ({
         label="Ключевые слова"
         value={tagsValue}
         onChange={(event) => onTagsChange?.(event.target.value)}
-        placeholder="Теги через пробел или запятую"
+        placeholder="Теги через пробел, запятую или ;"
         fullWidth
         inputProps={{ "aria-label": "Ключевые слова" }}
       />

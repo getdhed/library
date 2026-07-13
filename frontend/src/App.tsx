@@ -174,7 +174,7 @@ const App: React.FC = () => {
                 <AdminModerationPage />
               </AdminRoute>,
               {
-                title: "Админка: модерация",
+                title: "Управление: модерация",
                 description: "Рассмотрение пользовательских заявок.",
                 noIndex: true,
                 canonicalPath: "/admin/moderation",
@@ -188,7 +188,7 @@ const App: React.FC = () => {
                 <AdminDocumentsPage />
               </AdminRoute>,
               {
-                title: "Админка: документы",
+                title: "Управление: документы",
                 description: "Управление каталогом и модерацией документов.",
                 noIndex: true,
                 canonicalPath: "/admin/documents",
@@ -202,7 +202,7 @@ const App: React.FC = () => {
                 <AdminArchivePage />
               </AdminRoute>,
               {
-                title: "Админка: архив",
+                title: "Управление: архив",
                 description: "Удаленные документы.",
                 noIndex: true,
                 canonicalPath: "/admin/archive",
@@ -216,7 +216,7 @@ const App: React.FC = () => {
                 <AdminStatsPage />
               </AdminRoute>,
               {
-                title: "Админка: статистика",
+                title: "Управление: статистика",
                 description: "Статистика библиотеки и активности.",
                 noIndex: true,
                 canonicalPath: "/admin/stats",
@@ -230,7 +230,7 @@ const App: React.FC = () => {
                 <AdminUsersPage />
               </AdminRoute>,
               {
-                title: "Админка: пользователи",
+                title: "Управление: пользователи",
                 description: "Управление пользователями библиотеки.",
                 noIndex: true,
                 canonicalPath: "/admin/users",
@@ -244,7 +244,7 @@ const App: React.FC = () => {
                 <AdminAuditPage />
               </AdminRoute>,
               {
-                title: "Админка: журнал",
+                title: "Управление: журнал",
                 description: "Журнал действий в библиотеке.",
                 noIndex: true,
                 canonicalPath: "/admin/audit",

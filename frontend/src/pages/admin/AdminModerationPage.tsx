@@ -101,7 +101,6 @@ function resolveErrorMessage(error: unknown, fallback: string) {
 function validateDocumentForm(form: AdminForm, requireFile: boolean) {
   const missing: string[] = [];
   if (!form.title.trim()) missing.push("название");
-  if (!Number.isFinite(form.year) || form.year <= 0) missing.push("год");
   if (!form.type.trim()) missing.push("тип");
   if (requireFile && !form.file) missing.push("PDF-файл");
   return missing;
@@ -234,8 +233,8 @@ const AdminModerationPage: React.FC = () => {
 
   async function handleRejectSubmission(item: SubmissionItem) {
     if (!token) return;
-    const moderationNote = window.prompt("Причина отклонения", item.moderationNote ?? "");
-    if (!moderationNote?.trim()) return;
+    const moderationNote = window.prompt("Причина отклонения (необязательно)", item.moderationNote ?? "");
+    if (moderationNote === null) return;
 
     await rejectSubmission(token, item.id, moderationNote.trim());
     if (approvingSubmission?.id === item.id) {
@@ -301,15 +300,30 @@ const AdminModerationPage: React.FC = () => {
                 <TableBody>
                   {paginatedSubmissions.map((item) => (
                     <TableRow key={item.id} hover>
-                      <TableCell>
+                      <TableCell sx={{ maxWidth: 400 }}>
                         <Stack direction="row" spacing={1} alignItems="flex-start">
                           <PictureAsPdfRoundedIcon color="error" />
-                          <Box>
-                            <Typography fontWeight={600} sx={{ lineHeight: 1.2, mb: 0.5 }}>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography fontWeight={600} sx={{
+                              lineHeight: 1.2, mb: 0.5,
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              wordBreak: "break-word"
+                            }}>
                               {item.title}
                             </Typography>
                             {item.author && (
-                              <Typography variant="body2" color="text.secondary">
+                              <Typography variant="body2" color="text.secondary" sx={{
+                                display: "-webkit-box",
+                                WebkitLineClamp: 1,
+                                WebkitBoxOrient: "vertical",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                wordBreak: "break-word"
+                              }}>
                                 {item.author}
                               </Typography>
                             )}

@@ -51,12 +51,19 @@ export async function request<T>(
   }
 
   if (!response.ok) {
-    const message =
+    let message =
       (payload && typeof payload === "object" && "error" in payload)
         ? String((payload as any).error)
         : (typeof payload === "string" && payload.trim() !== "")
           ? payload
           : "request_failed";
+          
+    if (response.status === 413 || message.includes("request entity too large")) {
+      message = "Размер файла превышает максимально допустимый лимит сервера.";
+    } else if (response.status === 504 || message.includes("deadline exceeded") || message.includes("signal: killed")) {
+      message = "Превышено время ожидания сервера. Возможно, файл слишком сложный для обработки (например, 'PDF-бомба') или повреждён.";
+    }
+
     throw new ApiError(message, response.status);
   }
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import {
   Box,
   Button,
@@ -58,6 +58,7 @@ import type {
 
 const AdminArchivePage: React.FC = () => {
   const { token, user } = useAuth();
+  const navigate = useNavigate();
   const [payload, setPayload] = useState<PagedDocuments | null>(null);
 
   const [search, setSearch] = useState("");
@@ -157,7 +158,7 @@ const AdminArchivePage: React.FC = () => {
             <Stack spacing={2}>
               <TextField
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => { setSearch(event.target.value); setPage(1); }}
                 placeholder="Поиск по названию"
                 fullWidth
               />
@@ -167,7 +168,7 @@ const AdminArchivePage: React.FC = () => {
                   labelId="catalog-type-label"
                   value={documentTypeFilter}
                   label="Тип документа"
-                  onChange={(event) => setDocumentTypeFilter(event.target.value)}
+                  onChange={(event) => { setDocumentTypeFilter(event.target.value); setPage(1); }}
                 >
                   <MenuItem value="">Все типы</MenuItem>
                   {documentTypes.map((item) => (
@@ -177,7 +178,7 @@ const AdminArchivePage: React.FC = () => {
               </FormControl>
               <TextField
                 value={authorFilter}
-                onChange={(event) => setAuthorFilter(event.target.value)}
+                onChange={(event) => { setAuthorFilter(event.target.value); setPage(1); }}
                 label="Автор"
                 placeholder="Введите автора"
                 fullWidth
@@ -185,14 +186,14 @@ const AdminArchivePage: React.FC = () => {
               <Stack direction="row" spacing={2}>
                 <TextField
                   value={yearFromFilter}
-                  onChange={(event) => setYearFromFilter(event.target.value)}
+                  onChange={(event) => { setYearFromFilter(event.target.value); setPage(1); }}
                   label="Год с"
                   type="number"
                   fullWidth
                 />
                 <TextField
                   value={yearToFilter}
-                  onChange={(event) => setYearToFilter(event.target.value)}
+                  onChange={(event) => { setYearToFilter(event.target.value); setPage(1); }}
                   label="Год по"
                   type="number"
                   fullWidth
@@ -200,9 +201,9 @@ const AdminArchivePage: React.FC = () => {
               </Stack>
               <TextField
                 value={tagsFilter}
-                onChange={(event) => setTagsFilter(event.target.value)}
+                onChange={(event) => { setTagsFilter(event.target.value); setPage(1); }}
                 label="Ключевые слова"
-                placeholder="Теги через пробел"
+                placeholder="Теги через пробел, запятую или ;"
                 fullWidth
               />
               <FormControl fullWidth>
@@ -211,14 +212,31 @@ const AdminArchivePage: React.FC = () => {
                   labelId="catalog-sort-label"
                   value={sort}
                   label="Сортировка"
-                  onChange={(event) => setSort(event.target.value)}
+                  onChange={(event) => { setSort(event.target.value); setPage(1); }}
                 >
                   <MenuItem value="date_desc">Новые</MenuItem>
                   <MenuItem value="date_asc">Старые</MenuItem>
+                  <MenuItem value="views_desc">По просмотрам</MenuItem>
                   <MenuItem value="title_asc">А-Я</MenuItem>
-                  <MenuItem value="size_desc">Большой размер</MenuItem>
                 </Select>
               </FormControl>
+              <Button
+                variant="outlined"
+                color="secondary"
+                onClick={() => {
+                  setSearch("");
+                  setDocumentTypeFilter("");
+                  setAuthorFilter("");
+                  setYearFromFilter("");
+                  setYearToFilter("");
+                  setTagsFilter("");
+                  setSort("date_desc");
+                  setPage(1);
+                }}
+                disabled={!search && !documentTypeFilter && !authorFilter && !yearFromFilter && !yearToFilter && !tagsFilter && sort === "date_desc"}
+              >
+                Сбросить
+              </Button>
             </Stack>
           </Box>
         </Box>
@@ -238,25 +256,50 @@ const AdminArchivePage: React.FC = () => {
                   </TableHead>
                   <TableBody>
                     {(payload?.items ?? []).map((item) => (
-                      <TableRow key={item.id} hover>
-                        <TableCell>
-                          {item.title}
+                      <TableRow 
+                        key={item.id} 
+                        hover
+                        onClick={() => navigate(`/documents/${item.id}`)}
+                        sx={{ cursor: "pointer" }}
+                      >
+                        <TableCell sx={{ maxWidth: 560 }}>
+                          <Typography variant="body2" sx={{
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            wordBreak: "break-word"
+                          }}>
+                            {item.title}
+                          </Typography>
                           <Typography variant="caption" display="block" color="error">
                             Удалено: {new Date(item.deletedAt ?? "").toLocaleDateString()}
                           </Typography>
                         </TableCell>
-                        <TableCell>{item.type}</TableCell>
-                        <TableCell>{item.year}</TableCell>
+                        <TableCell sx={{ maxWidth: 200 }}>
+                          <Typography variant="body2" sx={{
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            wordBreak: "break-word"
+                          }}>
+                            {item.type}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>{item.year > 0 ? item.year : "—"}</TableCell>
                         <TableCell align="right">
                           <Stack direction="row" spacing={0.6} justifyContent="flex-end">
                             <Tooltip title="Восстановить">
-                              <IconButton size="small" onClick={() => void handleRestore(item.id)} sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonPrimarySx } as any}>
+                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); void handleRestore(item.id); }} sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonPrimarySx } as any}>
                                 <SettingsBackupRestoreRoundedIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
                             {user?.role === "superadmin" && (
                               <Tooltip title="Удалить навсегда">
-                                <IconButton size="small" onClick={() => void handleHardDelete(item.id)} sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonDangerSx } as any}>
+                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); void handleHardDelete(item.id); }} sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonDangerSx } as any}>
                                   <DeleteForeverRoundedIcon fontSize="small" />
                                 </IconButton>
                               </Tooltip>
@@ -278,24 +321,24 @@ const AdminArchivePage: React.FC = () => {
             ) : (
               <Stack spacing={1}>
                 {(payload?.items ?? []).map((item) => (
-                  <Card key={item.id} sx={{ borderRadius: 2.5 }}>
+                  <Card 
+                    key={item.id} 
+                    sx={{ borderRadius: 2.5, cursor: "pointer" }}
+                    onClick={() => navigate(`/documents/${item.id}`)}
+                  >
                     <CardContent sx={{ display: "grid", gap: 1 }}>
                       <Typography fontWeight={700}>{item.title}</Typography>
-                      <Typography variant="body2" color="text.secondary">{item.type} • {item.year}</Typography>
+                      <Typography variant="body2" color="text.secondary">{item.type} • {item.year > 0 ? item.year : "—"}</Typography>
                     </CardContent>
                     <Divider />
                     <CardActions sx={{ px: 1.3, py: 0.95, justifyContent: "flex-end", gap: 0.6 }}>
-                      <Tooltip title="Восстановить">
-                        <IconButton size="small" onClick={() => void handleRestore(item.id)} sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonPrimarySx } as any}>
-                          <SettingsBackupRestoreRoundedIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                      <Button size="small" onClick={(e) => { e.stopPropagation(); void handleRestore(item.id); }} startIcon={<SettingsBackupRestoreRoundedIcon />}>
+                        Восстановить
+                      </Button>
                       {user?.role === "superadmin" && (
-                        <Tooltip title="Удалить навсегда">
-                          <IconButton size="small" onClick={() => void handleHardDelete(item.id)} sx={{ ...cardActionIconButtonSx, ...cardActionIconButtonDangerSx } as any}>
-                            <DeleteForeverRoundedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                        <Button size="small" color="error" onClick={(e) => { e.stopPropagation(); void handleHardDelete(item.id); }} startIcon={<DeleteForeverRoundedIcon />}>
+                          Удалить
+                        </Button>
                       )}
                     </CardActions>
                   </Card>

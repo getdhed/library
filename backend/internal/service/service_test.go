@@ -17,7 +17,7 @@ func TestParseDocumentInputValid(t *testing.T) {
 			"year":        "2024",
 			"type":        "manual",
 			"description": " Reference book ",
-			"tags":        " os, distributed , networks ",
+			"tags":        " os; distributed ; networks ",
 		}
 		return values[key]
 	})
@@ -90,9 +90,8 @@ func TestParseDocumentInputRejectsMissingFields(t *testing.T) {
 }
 
 func TestSplitCSV(t *testing.T) {
-	got := splitCSV(" one, , two,three ")
+	got := splitCSV(" one; ; two;three ")
 	want := []string{"one", "two", "three"}
-
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected splitCSV result: %#v", got)
 	}

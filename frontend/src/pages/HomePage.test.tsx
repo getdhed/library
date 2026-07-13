@@ -85,7 +85,7 @@ describe("HomePage", () => {
     const searchInput = screen.getByLabelText("Поиск документов");
     const heading = screen.getByRole("heading", {
       level: 1,
-      name: "Онлайн-библиотека Института пограничной службы",
+      name: "Онлайн-библиотека ИНСТИТУТА ПОГРАНИЧНОЙ СЛУЖБЫ",
     });
 
     expect(heading).toBeInTheDocument();

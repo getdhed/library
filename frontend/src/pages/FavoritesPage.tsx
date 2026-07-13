@@ -49,8 +49,8 @@ const FavoritesPage: React.FC = () => {
 
   return (
     <PageShell>
-      <Box sx={{ mb: 1, px: 0.5, mt: 1, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 2, alignItems: "center" }}>
-        <Typography variant="h4">
+      <Box sx={{ mb: 3, px: 0.5, mt: 1, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 2, alignItems: "center" }}>
+        <Typography variant="h4" fontWeight={700}>
           Избранные документы <Typography component="span" variant="h5" color="text.secondary">({items.length})</Typography>
         </Typography>
 

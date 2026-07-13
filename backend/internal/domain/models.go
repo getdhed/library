@@ -57,6 +57,7 @@ type Document struct {
 	Tags               []string  `json:"tags"`
 	IsFavorite         bool       `json:"isFavorite"`
 	IsLocal            bool       `json:"isLocal"`
+	ViewsCount         int64      `json:"viewsCount"`
 	Similarity         float64    `json:"similarity,omitempty"`
 	DeletedAt          *time.Time `json:"deletedAt,omitempty"`
 }

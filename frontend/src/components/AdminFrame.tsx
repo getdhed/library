@@ -23,7 +23,7 @@ const AdminFrame: React.FC<AdminFrameProps> = ({ children }) => {
       >
         <Stack spacing={2}>
           <Box>
-            <Typography variant="h4" sx={{ mt: 0, mb: 0 }}>
+            <Typography variant="h4" fontWeight={700} sx={{ mt: 0, mb: 0 }}>
               Панель администратора
             </Typography>
           </Box>

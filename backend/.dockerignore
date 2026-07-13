@@ -1,4 +1,3 @@
-server
+﻿storage
+tmp
 .git
-.env
-.cache

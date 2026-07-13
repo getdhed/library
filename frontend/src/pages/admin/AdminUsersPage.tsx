@@ -40,6 +40,7 @@ import {
   setAdminUserStatus,
   updateAdminUser,
   hardDeleteAdminUser,
+  resetAdminUserPassword,
 } from "../../api/library";
 import { useAuth } from "../../auth/AuthContext";
 import AdminFrame from "../../components/AdminFrame";
@@ -119,6 +120,7 @@ const AdminUsersPage: React.FC = () => {
     setTotal(response.total);
   }
 
+
   useEffect(() => {
     setPage(0);
   }, [query, role, status]);
@@ -165,12 +167,17 @@ const AdminUsersPage: React.FC = () => {
       errs.username = "Укажите логин";
       hasError = true;
     }
+    const pw = form.password.trim();
     if (!editingUser) {
-      const pw = form.password.trim();
       if (!pw) {
         errs.password = "Укажите пароль";
         hasError = true;
       } else if (pw.length < 6) {
+        errs.password = "Пароль должен содержать минимум 6 символов";
+        hasError = true;
+      }
+    } else {
+      if (pw && pw.length < 6) {
         errs.password = "Пароль должен содержать минимум 6 символов";
         hasError = true;
       }
@@ -190,6 +197,9 @@ const AdminUsersPage: React.FC = () => {
           fullName: form.fullName.trim(),
           role: form.role,
         });
+        if (form.password.trim()) {
+          await resetAdminUserPassword(token, editingUser.id, form.password.trim());
+        }
       } else {
         const response = await createAdminUser(token, {
           username: form.username.trim(),
@@ -323,6 +333,19 @@ const AdminUsersPage: React.FC = () => {
                   <MenuItem value="inactive">Отключенные</MenuItem>
                 </Select>
               </FormControl>
+              <Button
+                variant="outlined"
+                color="secondary"
+                onClick={() => {
+                  setQuery("");
+                  setRole("");
+                  setStatus("");
+                  setPage(0);
+                }}
+                disabled={!query && !role && !status}
+              >
+                Сбросить
+              </Button>
             </Stack>
           </Box>
         </Box>
@@ -391,7 +414,6 @@ const AdminUsersPage: React.FC = () => {
                                   </IconButton>
                                 </span>
                               </Tooltip>
-
                             </>
                           )}
                           {(canEdit || (isSelf && !item.isActive)) && (
@@ -497,6 +519,7 @@ const AdminUsersPage: React.FC = () => {
 
 
 
+
       <Dialog open={isModalOpen} onClose={handleCloseModal} maxWidth="sm" fullWidth>
         <form onSubmit={handleSubmit} noValidate>
           <DialogTitle>
@@ -555,23 +578,21 @@ const AdminUsersPage: React.FC = () => {
                 </FormControl>
               )}
               
-              {!editingUser && (
-                <TextField
-                  label="Пароль"
-                  value={form.password}
-                  onChange={(event) =>
-                    {
-                      setForm((current) => ({ ...current, password: event.target.value }));
-                      if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: "" }));
-                    }
+              <TextField
+                label={editingUser ? "Новый пароль" : "Пароль"}
+                value={form.password}
+                onChange={(event) =>
+                  {
+                    setForm((current) => ({ ...current, password: event.target.value }));
+                    if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: "" }));
                   }
-                  fullWidth
-                  placeholder="Введите пароль (минимум 6 символов)"
-                  inputProps={{ maxLength: 50 }}
-                  error={!!fieldErrors.password}
-                  helperText={fieldErrors.password}
-                />
-              )}
+                }
+                fullWidth
+                placeholder={editingUser ? "Оставьте пустым, чтобы не менять (мин. 6 символов)" : "Введите пароль (минимум 6 символов)"}
+                inputProps={{ maxLength: 50 }}
+                error={!!fieldErrors.password}
+                helperText={fieldErrors.password}
+              />
             </Stack>
           </DialogContent>
           <DialogActions>

@@ -65,7 +65,7 @@ describe("Layout", () => {
       within(mainNavigation).getByRole("link", { name: "Главная" })
     ).toBeInTheDocument();
     expect(
-      within(mainNavigation).getByRole("link", { name: "Админка" })
+      within(mainNavigation).getByRole("link", { name: "Управление" })
     ).toBeInTheDocument();
     expect(searchLink).toHaveAttribute("href", "/search");
     expect(searchLink).toHaveAttribute("data-header-accent", "danger");
@@ -74,7 +74,7 @@ describe("Layout", () => {
     ).not.toBeInTheDocument();
 
     expect(screen.getByLabelText("Открыть меню аккаунта")).toBeInTheDocument();
-    expect(screen.getByText("ИПС РБ · Библиотека")).toBeInTheDocument();
+    expect(screen.getByText(/© Государственный пограничный комитет/i)).toBeInTheDocument();
     expect(screen.queryByLabelText("Открыть меню")).not.toBeInTheDocument();
   });
 
@@ -102,7 +102,7 @@ describe("Layout", () => {
       within(mainNavigation).getByRole("link", { name: "Мои PDF" })
     ).toBeInTheDocument();
     expect(
-      within(mainNavigation).queryByRole("link", { name: "Админка" })
+      within(mainNavigation).queryByRole("link", { name: "Управление" })
     ).not.toBeInTheDocument();
   });
 });

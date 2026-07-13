@@ -124,12 +124,7 @@ const HomePage: React.FC = () => {
     event?.preventDefault();
     const trimmedQuery = query.trim();
 
-    if (showDropdown && trimmedQuery && suggestions.length > 0) {
-      await openSuggestedDocument(suggestions[0]);
-      setShowHistory(false);
-      return;
-    }
-
+    setShowHistory(false);
     navigate(`/search?q=${encodeURIComponent(trimmedQuery)}`);
   }
 
@@ -187,14 +182,14 @@ const HomePage: React.FC = () => {
               variant="h1"
               sx={{
                 mt: 0,
-                fontSize: "clamp(2.4rem, 4.2vw, 4.2rem)",
+                fontSize: "clamp(2.0rem, 3.6vw, 3.6rem)",
                 color: "primary.contrastText",
                 mb: 1.8,
               }}
             >
               Онлайн-библиотека
               <br />
-              Института пограничной службы
+              ИНСТИТУТА ПОГРАНИЧНОЙ СЛУЖБЫ
             </Typography>
 
             <Paper

@@ -26,6 +26,7 @@ import {
 import { useAuth } from "../auth/AuthContext";
 import { type AdminForm, createEmptyForm } from "../components/DocumentFormFields";
 import { AdminDocumentFullView } from "../components/AdminDocumentFullView";
+import PdfViewer from "../components/PdfViewer";
 
 type PdfReaderPageProps = {
   kind: "document" | "submission";
@@ -305,18 +306,7 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
             </Box>
           )}
           {!isLoading && !error && fileUrl && (
-            <Box
-              component="iframe"
-              title={title || "PDF"}
-              src={fileUrl}
-              sx={{
-                display: "block",
-                width: "100%",
-                height: "100%",
-                border: 0,
-                bgcolor: "common.white",
-              }}
-            />
+            <PdfViewer url={fileUrl} />
           )}
         </Box>
       </Box>

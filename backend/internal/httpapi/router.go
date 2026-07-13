@@ -7,6 +7,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -35,13 +36,44 @@ type Handler struct {
 	logger  *slog.Logger
 }
 
+func (h *Handler) changeMyPassword(c *gin.Context) {
+    var input domain.ChangePasswordInput
+    if err := c.ShouldBindJSON(&input); err != nil {
+        writeError(c, apperror.ErrInvalidInput)
+        return
+    }
+    if err := h.service.ChangeMyPassword(c.Request.Context(), currentUserID(c), input); err != nil {
+        writeError(c, err)
+        return
+    }
+    c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *Handler) adminResetUserPassword(c *gin.Context) {
+    userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+    if err != nil {
+        writeError(c, apperror.ErrInvalidInput)
+        return
+    }
+    var input domain.ResetPasswordInput
+    if err := c.ShouldBindJSON(&input); err != nil {
+        writeError(c, apperror.ErrInvalidInput)
+        return
+    }
+    if err := h.service.ResetUserPassword(c.Request.Context(), currentUserID(c), currentUserRole(c), userID, input); err != nil {
+        writeError(c, err)
+        return
+    }
+    c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gin.Engine {
 	handler := &Handler{service: svc, config: cfg, logger: logger}
 
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.MaxMultipartMemory = cfg.MaxUploadSizeBytes()
-	router.Use(bodySizeMiddleware(cfg.MaxUploadSizeBytes()))
+	router.Use(bodySizeMiddleware(cfg.MaxUploadSizeBytes(), svc))
 	router.Use(requestLogger(logger))
 	router.Use(recoveryLogger(logger))
 	router.Use(corsMiddleware(cfg.CORSOrigins))
@@ -73,6 +105,7 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 		{
 			authenticated.GET("/me", handler.me)
 			authenticated.GET("/home", handler.home)
+			authenticated.POST("/auth/change-password", handler.changeMyPassword)
 			authenticated.GET("/search/suggest", handler.suggest)
 			authenticated.GET("/documents", handler.listDocuments)
 			authenticated.GET("/documents/:id", handler.getDocument)
@@ -110,6 +143,9 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 			admin.PUT("/users/:id", handler.adminUpdateUser)
 			admin.PUT("/users", handler.adminUpdateUser)
 			admin.PATCH("/users/:id/status", handler.adminSetUserStatus)
+			admin.POST("/users/:id/reset-password", handler.adminResetUserPassword)
+
+			admin.GET("/backup/db", handler.requireRole(domain.RoleSuperAdmin), handler.adminDownloadDBBackup)
 
 			admin.DELETE("/users/:id", handler.adminDeleteUser)
 			admin.DELETE("/users/:id/hard", handler.adminHardDeleteUser)
@@ -154,9 +190,21 @@ func corsMiddleware(origins []string) gin.HandlerFunc {
 	}
 }
 
-func bodySizeMiddleware(maxBytes int64) gin.HandlerFunc {
+func bodySizeMiddleware(maxBytes int64, svc *service.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
+		limit := maxBytes
+
+		header := strings.TrimSpace(c.GetHeader("Authorization"))
+		if strings.HasPrefix(header, "Bearer ") {
+			token := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+			if claims, err := svc.ParseToken(token); err == nil {
+				if claims.Role == domain.RoleSuperAdmin {
+					limit = 250 * 1024 * 1024 // 250 MB
+				}
+			}
+		}
+
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
 		c.Next()
 	}
 }
@@ -499,9 +547,8 @@ func (h *Handler) serveStoredFile(c *gin.Context, relativePath, fileName, conten
 	if dispositionType == "attachment" {
 		c.Header("X-Frame-Options", "DENY")
 	}
-	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
-	c.Header("Pragma", "no-cache")
-	c.Header("Expires", "0")
+	// Use a private cache for the file to improve PDF viewer performance and allow proper Range requests
+	c.Header("Cache-Control", "private, max-age=86400")
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -1206,6 +1253,10 @@ func writeError(c *gin.Context, err error) {
 			msg = "Некорректные данные регистрации: укажите логин, ФИО и пароль (не короче 6 символов)"
 		} else if strings.HasPrefix(path, "/api/admin/users") {
 			msg = "Некорректные данные пользователя: укажите логин, ФИО и роль; пароль не короче 6 символов при создании"
+		} else if path == "/api/auth/change-password" {
+			msg = "Некорректные данные: укажите текущий пароль и новый пароль (не короче 6 символов)"
+		} else if strings.HasSuffix(path, "/reset-password") {
+			msg = "Некорректные данные: укажите новый пароль (не короче 6 символов)"
 		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 	case apperror.ErrUnauthorized, apperror.ErrInvalidToken:
@@ -1233,10 +1284,43 @@ func writeError(c *gin.Context, err error) {
 			c.JSON(http.StatusConflict, gin.H{"error": msg})
 			return
 		}
-		if strings.HasPrefix(err.Error(), "account_deactivated:") || strings.HasPrefix(err.Error(), "account_deactivated_reason:") {
+		if strings.HasPrefix(err.Error(), "account_deactivated:") || strings.HasPrefix(err.Error(), "account_deactivated_reason:") || strings.HasPrefix(err.Error(), "Ваш аккаунт удален") || strings.HasPrefix(err.Error(), "Аккаунт не активен") {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
+	}
+}
+
+// @Summary Download DB Backup
+// @Description Creates a pg_dump archive format backup of the database and streams it
+// @Tags admin
+// @Produce application/octet-stream
+// @Security ApiKeyAuth
+// @Success 200 {file} file "backup.bak"
+// @Failure 401 {object} ErrorResponse "Unauthorized"
+// @Failure 403 {object} ErrorResponse "Forbidden"
+// @Failure 500 {object} ErrorResponse "Internal Server Error"
+// @Router /api/admin/backup/db [get]
+func (h *Handler) adminDownloadDBBackup(c *gin.Context) {
+	dbURL := h.config.DatabaseURL
+	if dbURL == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database_url_not_configured"})
+		return
+	}
+
+	c.Header("Content-Disposition", "attachment; filename=\"library_backup.bak\"")
+	c.Header("Content-Type", "application/octet-stream")
+
+	cmd := exec.Command("pg_dump", "-d", dbURL, "-F", "c")
+	cmd.Stdout = c.Writer
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		h.logger.Error("failed to generate db backup", "error", err)
+		// We might have already written some headers or bytes, so we can't properly send a JSON error.
+		// Just abort the request.
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
 	}
 }

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   Alert,
   Button,
@@ -18,6 +18,8 @@ const RegisterPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({ fullName: "", username: "", password: "" });
+  const usernameRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   if (auth.token) {
     return <Navigate to="/" replace />;
@@ -74,6 +76,12 @@ const RegisterPage: React.FC = () => {
             error={!!fieldErrors.fullName}
             helperText={fieldErrors.fullName}
             fullWidth
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                usernameRef.current?.focus();
+              }
+            }}
           />
 
           <TextField
@@ -85,6 +93,13 @@ const RegisterPage: React.FC = () => {
             error={!!fieldErrors.username}
             helperText={fieldErrors.username}
             fullWidth
+            inputRef={usernameRef}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                passwordRef.current?.focus();
+              }
+            }}
           />
 
           <TextField
@@ -97,6 +112,7 @@ const RegisterPage: React.FC = () => {
             error={!!fieldErrors.password}
             helperText={fieldErrors.password}
             fullWidth
+            inputRef={passwordRef}
           />
 
           {error && <Alert severity="error">{error}</Alert>}

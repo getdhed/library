@@ -1,5 +1,6 @@
 import React from "react";
 import { Box, Chip, Paper, Stack, Typography, alpha } from "@mui/material";
+import { VisibilityRounded } from "@mui/icons-material";
 import { Link } from "react-router-dom";
 import DocumentCover from "./DocumentCover";
 import type { DocumentItem } from "../types";
@@ -66,14 +67,18 @@ const DocumentListItem: React.FC<Props> = ({
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
             <Chip size="small" label={item.type} />
             {item.isLocal && (
-              <Chip size="small" color="primary" variant="outlined" label="Локальный" />
+              <Chip size="small" color="primary" variant="outlined" label="Источники Института" />
             )}
             {!item.isLocal && item.isLocal !== undefined && (
-              <Chip size="small" color="secondary" variant="outlined" label="Внешний" />
+              <Chip size="small" color="secondary" variant="outlined" label="Прочие источники" />
             )}
             <Typography variant="caption" color="text.secondary">
-              {item.year}
+              {item.year > 0 ? item.year : "—"}
             </Typography>
+            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ color: "text.disabled" }}>
+              <VisibilityRounded sx={{ fontSize: "1.1rem" }} />
+              <Typography variant="caption" fontWeight={500}>{item.viewsCount || 0}</Typography>
+            </Stack>
           </Stack>
 
           <Typography

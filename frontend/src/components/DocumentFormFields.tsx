@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import {
   Box,
   Button,
@@ -40,7 +40,7 @@ export type DocumentFormFieldsProps = {
   documentTypes: string[];
 };
 
-export const createEmptyForm = (defaultType = "Учебник"): AdminForm => {
+export const createEmptyForm = (defaultType = "Другое"): AdminForm => {
   return {
     title: "",
     author: "",
@@ -81,12 +81,12 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
     setForm((current) => ({ ...current, [field]: value }));
   };
 
-  const yearInvalid = !Number.isFinite(form.year) || form.year < 1 || form.year > 2100;
+  const yearInvalid = !Number.isInteger(form.year) || form.year < 1 || form.year > 2100;
   const titleInvalid = !String(form.title || "").trim();
   const typeInvalid = !String(form.type || "").trim();
 
   return (
-    <Stack spacing={2.5}>
+    <Stack spacing={2.5} sx={{ "& .MuiInputBase-inputMultiline": { wordBreak: "break-word" } }}>
       <Section title="Основная информация">
         <TextField
           label="Название"
@@ -97,7 +97,7 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
           fullWidth
           multiline
           maxRows={4}
-          inputProps={{ "aria-label": "Название", maxLength: 100 }}
+          inputProps={{ "aria-label": "Название", maxLength: 400 }}
           error={titleInvalid}
           helperText={titleInvalid ? "Укажите название документа" : undefined}
         />
@@ -109,11 +109,10 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
             onChange={(e) => handleChange("year", Number(e.target.value))}
             placeholder="Год"
             type="number"
-            required
             fullWidth
             inputProps={{ "aria-label": "Год", min: 1, max: 2100 }}
             error={yearInvalid}
-            helperText={yearInvalid ? "Введите корректные данные" : undefined}
+            helperText={yearInvalid ? "Введите корректный год или оставьте поле пустым" : undefined}
           />
 
           <FormControl fullWidth required error={typeInvalid}>
@@ -145,18 +144,18 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
               color="primary"
             />
           }
-          label="Локальный файл (Собственность библиотеки)"
+          label={form.isLocal ? "Источник: Институт" : "Источник: Прочие"}
         />
 
         <TextField
           label="Ключевые слова"
           value={form.tags}
           onChange={(e) => handleChange("tags", e.target.value)}
-          placeholder="Введите через запятую"
+          placeholder="Введите через ;"
           fullWidth
           multiline
           maxRows={3}
-          inputProps={{ maxLength: 200 }}
+          inputProps={{ maxLength: 300 }}
         />
 
         <TextField
@@ -167,11 +166,11 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
           multiline
           minRows={4}
           fullWidth
-          inputProps={{ maxLength: 500 }}
+          inputProps={{ maxLength: 600 }}
         />
       </Section>
 
-      <Section title="Авторы и исполнители">
+      <Section title="Авторы и составители">
         <TextField
           label="Автор"
           value={form.author}
@@ -180,18 +179,18 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
           fullWidth
           multiline
           maxRows={2}
-          inputProps={{ "aria-label": "Автор", maxLength: 150 }}
+          inputProps={{ "aria-label": "Автор", maxLength: 250 }}
         />
 
         <TextField
-          label="Исполнитель"
+          label="Составитель"
           value={form.executor}
           onChange={(e) => handleChange("executor", e.target.value)}
-          placeholder="ФИО исполнителя"
+          placeholder="ФИО составителя"
           fullWidth
           multiline
           maxRows={2}
-          inputProps={{ maxLength: 150 }}
+          inputProps={{ maxLength: 250 }}
         />
 
         <TextField
@@ -202,7 +201,7 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
           fullWidth
           multiline
           maxRows={2}
-          inputProps={{ maxLength: 150 }}
+          inputProps={{ maxLength: 250 }}
         />
       </Section>
 
@@ -215,7 +214,7 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
           fullWidth
           multiline
           maxRows={2}
-          inputProps={{ maxLength: 100 }}
+          inputProps={{ maxLength: 200 }}
         />
 
         <TextField
@@ -226,7 +225,7 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
           fullWidth
           multiline
           maxRows={3}
-          inputProps={{ maxLength: 150 }}
+          inputProps={{ maxLength: 250 }}
         />
 
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
@@ -238,7 +237,7 @@ export const DocumentFormFields: React.FC<DocumentFormFieldsProps> = ({
             fullWidth
             multiline
             maxRows={3}
-            inputProps={{ maxLength: 150 }}
+            inputProps={{ maxLength: 250 }}
           />
           <TextField
             label="Количество страниц"

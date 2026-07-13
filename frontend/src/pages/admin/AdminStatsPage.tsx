@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Box, Grid, Paper, Stack, Typography, ToggleButton, ToggleButtonGroup, TextField } from "@mui/material";
+import { Box, Grid, Paper, Stack, Typography, ToggleButton, ToggleButtonGroup, TextField, Button } from "@mui/material";
 import DescriptionIcon from "@mui/icons-material/Description";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -8,7 +8,7 @@ import PersonIcon from "@mui/icons-material/Person";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer
 } from "recharts";
-import { getAdminStats } from "../../api/library";
+import { getAdminStats, downloadAdminDBBackup } from "../../api/library";
 import { useAuth } from "../../auth/AuthContext";
 import AdminFrame from "../../components/AdminFrame";
 import { ContentCard } from "../../components/mui-primitives";
@@ -25,23 +25,25 @@ type MetricCardProps = {
 };
 
 const MetricCard: React.FC<MetricCardProps> = ({ value, label, icon, color, children }) => (
-  <Paper sx={{ p: 2.5, borderRadius: 2, display: "flex", gap: 2, alignItems: "center", boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
-    <Box sx={{ 
-      p: 1.5, 
-      borderRadius: '50%', 
-      display: 'flex', 
-      bgcolor: color ? `${color}15` : 'primary.main', 
-      color: color || 'primary.main' 
-    }}>
-      {icon}
+  <Paper sx={{ p: 2, borderRadius: 2, display: "flex", flexDirection: "column", boxShadow: '0 2px 10px rgba(0,0,0,0.05)', height: "100%" }}>
+    <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
+      <Box sx={{ 
+        p: 1.5, 
+        borderRadius: '50%', 
+        display: 'flex', 
+        bgcolor: color ? `${color}15` : 'primary.main', 
+        color: color || 'primary.main' 
+      }}>
+        {icon}
+      </Box>
+      <Box>
+        <Typography variant="h4" fontWeight={800} lineHeight={1}>
+          {value}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" fontWeight={700} sx={{ mt: 0.5, textTransform: 'uppercase', fontSize: '0.65rem', letterSpacing: '0.5px' }}>{label}</Typography>
+      </Box>
     </Box>
-    <Box>
-      <Typography variant="h4" fontWeight={800} lineHeight={1.05}>
-        {value}
-      </Typography>
-      <Typography variant="body2" color="text.secondary" fontWeight={600} sx={{ mt: 0.5 }}>{label}</Typography>
-      {children}
-    </Box>
+    {children && <Box sx={{ mt: 'auto', pt: 1.5 }}>{children}</Box>}
   </Paper>
 );
 
@@ -53,7 +55,7 @@ const SimpleList: React.FC<{ items: NamedStat[], labelCount?: string }> = ({ ite
         <Typography variant="body2" sx={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80%' }} title={item.name}>
           {item.name}
         </Typography>
-        <Typography variant="body2" sx={{ fontWeight: 700, color: 'primary.main' }}>
+        <Typography variant="body2" sx={{ fontWeight: 700, color: 'primary.main', mr: 2 }}>
           {item.count}
         </Typography>
       </Box>
@@ -72,11 +74,12 @@ function daysAgo(days: number) {
 }
 
 const AdminStatsPage: React.FC = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [periodType, setPeriodType] = useState("day");
   const [dateFrom, setDateFrom] = useState(() => formatDate(new Date()));
   const [dateTo, setDateTo] = useState(() => formatDate(new Date()));
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -129,7 +132,7 @@ const AdminStatsPage: React.FC = () => {
   return (
     <AdminFrame title="Статистика">
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2, mt: 2 }}>
-        <Typography variant="h5" fontWeight={700}>Дашборд</Typography>
+        <Typography variant="h5" fontWeight={700}>Сводка показателей</Typography>
         <Stack direction="row" spacing={2} alignItems="center">
           {periodType === "custom" && (
             <Stack direction="row" spacing={1} alignItems="center">
@@ -168,6 +171,39 @@ const AdminStatsPage: React.FC = () => {
         </Stack>
       </Box>
 
+      {user?.role === "superadmin" && (
+        <ContentCard sx={{ mb: 4, bgcolor: 'primary.light', color: 'primary.contrastText' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+            <Box>
+              <Typography variant="h6" fontWeight={700}>Резервное копирование</Typography>
+              <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                Скачайте полную резервную копию базы данных (.bak) для надежного хранения.
+              </Typography>
+            </Box>
+            <Button 
+              variant="contained" 
+              color="inherit" 
+              sx={{ color: 'primary.main', fontWeight: 700 }}
+              startIcon={<DownloadIcon />}
+              onClick={async () => {
+                if (!token) return;
+                setIsDownloading(true);
+                try {
+                  await downloadAdminDBBackup(token);
+                } catch (e) {
+                  alert(e instanceof Error ? e.message : "Ошибка скачивания");
+                } finally {
+                  setIsDownloading(false);
+                }
+              }}
+              disabled={isDownloading}
+            >
+              {isDownloading ? "Скачивание..." : "Скачать базу данных"}
+            </Button>
+          </Box>
+        </ContentCard>
+      )}
+
       <Box
         sx={{
           display: "grid",
@@ -182,8 +218,8 @@ const AdminStatsPage: React.FC = () => {
           icon={<DescriptionIcon fontSize="large" />}
           color="#1976d2"
         >
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-            Локальные: <b>{stats.localDocumentsCount}</b>, Внешние: <b>{stats.externalDocumentsCount}</b>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.4 }}>
+            Институт: <b>{stats.localDocumentsCount}</b><br/>Прочие: <b>{stats.externalDocumentsCount}</b>
           </Typography>
         </MetricCard>
         <MetricCard

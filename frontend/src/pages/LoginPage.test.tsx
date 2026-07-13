@@ -77,7 +77,7 @@ describe("LoginPage", () => {
     await userEvent.click(submitBtn);
 
     await waitFor(() => {
-      expect(screen.getByText("Ошибка сервера: Login failed")).toBeInTheDocument();
+      expect(screen.getByText("Login failed")).toBeInTheDocument();
     });
   });
 

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   Alert,
   Box,
@@ -21,6 +21,7 @@ const LoginPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<React.ReactNode>("");
   const [fieldErrors, setFieldErrors] = useState({ username: "", password: "" });
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   if (auth.token) {
     return <Navigate to="/" replace />;
@@ -54,32 +55,14 @@ const LoginPage: React.FC = () => {
       navigate("/");
     } catch (err: any) {
       if (err instanceof Error) {
-        if (err.message.startsWith("account_deactivated_reason:")) {
-          const reason = err.message.split("account_deactivated_reason:")[1] || "неизвестно";
-          setError(
-            <>
-              <strong>Аккаунт деактивирован.</strong>
-              <br />
-              Причина: {reason}
-            </>
-          );
-        } else if (err.message.startsWith("account_deactivated:")) {
-          const reason = err.message.split("account_deactivated:")[1] || "неизвестно";
-          setError(
-            <>
-              <strong>Аккаунт деактивирован.</strong>
-              <br />
-              Причина: {reason}
-            </>
-          );
-        } else if (err.message === "unauthorized" || err.message === "invalid credentials" || err.message === "user not found" || err.message === "crypto/bcrypt: hashedPassword is not the hash of the given password") {
+        if (err.message === "unauthorized" || err.message === "invalid credentials" || err.message === "user not found" || err.message === "crypto/bcrypt: hashedPassword is not the hash of the given password") {
           setError("Неверный логин или пароль");
         } else if (err.message === "invalid payload" || err.message.includes("validation")) {
           setError("Пожалуйста, заполните все поля корректно");
         } else if (err.message === "Failed to fetch") {
           setError("Сервер недоступен. Проверьте подключение к сети");
         } else {
-          setError(`Ошибка сервера: ${err.message}`);
+          setError(err.message);
         }
       } else {
         setError("Не удалось войти. Проверьте логин и пароль.");
@@ -100,10 +83,17 @@ const LoginPage: React.FC = () => {
               if (fieldErrors.username) setFieldErrors((prev) => ({ ...prev, username: "" }));
             }}
             placeholder="Введите логин"
+            autoComplete="username"
             inputProps={{ maxLength: 30 }}
             error={!!fieldErrors.username}
             helperText={fieldErrors.username}
             fullWidth
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                passwordRef.current?.focus();
+              }
+            }}
           />
 
           <TextField
@@ -115,10 +105,12 @@ const LoginPage: React.FC = () => {
             }}
             placeholder="Введите пароль"
             type="password"
+            autoComplete="current-password"
             inputProps={{ maxLength: 30 }}
             error={!!fieldErrors.password}
             helperText={fieldErrors.password}
             fullWidth
+            inputRef={passwordRef}
           />
 
           {error && <Alert severity="error">{error}</Alert>}

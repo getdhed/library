@@ -13,6 +13,7 @@ import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { alpha } from "@mui/material/styles";
 import { DocumentFormFields, type AdminForm } from "./DocumentFormFields";
+import PdfViewer from "./PdfViewer";
 
 export type AdminDocumentFullViewProps = {
   open: boolean;
@@ -71,6 +72,10 @@ export const AdminDocumentFullView: React.FC<AdminDocumentFullViewProps> = ({
         bgcolor: "background.default",
         display: "grid",
         gridTemplateRows: "auto 1fr",
+        gridTemplateColumns: "minmax(0, 1fr)",
+        width: "100vw",
+        maxWidth: "100%",
+        overflowX: "hidden",
       }}
     >
       {/* Header */}
@@ -85,11 +90,11 @@ export const AdminDocumentFullView: React.FC<AdminDocumentFullViewProps> = ({
         }}
       >
         <Toolbar sx={{ justifyContent: "space-between", gap: 2 }}>
-          <Stack direction="row" spacing={1.5} alignItems="center" minWidth={0}>
+          <Stack direction="row" spacing={1.5} alignItems="center" minWidth={0} sx={{ flex: 1 }}>
             <IconButton onClick={onClose} edge="start" aria-label="Закрыть">
               <ArrowBackRoundedIcon />
             </IconButton>
-            <Box minWidth={0}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography variant="h6" noWrap>
                 {title}
               </Typography>
@@ -101,7 +106,7 @@ export const AdminDocumentFullView: React.FC<AdminDocumentFullViewProps> = ({
             </Box>
           </Stack>
 
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
             {secondaryActions}
             <Button variant="outlined" onClick={onClose}>
               Отмена
@@ -118,10 +123,12 @@ export const AdminDocumentFullView: React.FC<AdminDocumentFullViewProps> = ({
         sx={{
           display: "grid",
           gridTemplateColumns: {
-            xs: "1fr",
-            lg: "1fr 1fr",
+            xs: "minmax(0, 1fr)",
+            lg: "minmax(0, 1fr) minmax(0, 1fr)",
           },
           minHeight: 0,
+          width: "100%",
+          overflowX: "hidden",
         }}
       >
         {/* Left: Form */}
@@ -170,17 +177,7 @@ export const AdminDocumentFullView: React.FC<AdminDocumentFullViewProps> = ({
         {/* Right: PDF Reader */}
         <Box sx={{ bgcolor: "grey.100", minHeight: 0, minWidth: 0, position: "relative", display: "flex", flexDirection: "column" }}>
           {pdfUrl ? (
-            <Box
-              component="iframe"
-              src={pdfUrl}
-              title="PDF Preview"
-              sx={{
-                flexGrow: 1,
-                width: "100%",
-                border: 0,
-                bgcolor: "common.white",
-              }}
-            />
+            <PdfViewer url={pdfUrl} />
           ) : (
             <Box
               component="label"

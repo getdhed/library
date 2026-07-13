@@ -642,6 +642,10 @@ func buildOrder(sort string) string {
 		return "ORDER BY d.type ASC, d.title ASC"
 	case "type_desc":
 		return "ORDER BY d.type DESC, d.title ASC"
+	case "views_desc":
+		return "ORDER BY views_count DESC, d.created_at DESC"
+	case "views_asc":
+		return "ORDER BY views_count ASC, d.created_at DESC"
 	default:
 		return "ORDER BY similarity DESC, d.created_at DESC"
 	}
@@ -652,7 +656,7 @@ func parseTextArray(value string) []string {
 	if value == "" {
 		return []string{}
 	}
-	parts := strings.Split(value, ",")
+	parts := strings.Split(value, ";")
 	items := make([]string, 0, len(parts))
 	for _, part := range parts {
 		part = strings.Trim(strings.TrimSpace(part), `"`)
@@ -769,6 +773,8 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 				`(
 					$%d <%% d.title OR d.title ILIKE $%d OR
 					$%d <%% d.author OR d.author ILIKE $%d OR
+					$%d <%% d.executor OR d.executor ILIKE $%d OR
+					$%d <%% d.scientific_advisor OR d.scientific_advisor ILIKE $%d OR
 					EXISTS (
 						SELECT 1 FROM document_tags dt2
 						JOIN tags t2 ON t2.id = dt2.tag_id
@@ -781,18 +787,26 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 				queryArgIndex+3,
 				queryArgIndex+4,
 				queryArgIndex+5,
+				queryArgIndex+6,
+				queryArgIndex+7,
+				queryArgIndex+8,
+				queryArgIndex+9,
 			),
 		)
 		queryArgs = append(
 			queryArgs,
-			requestedQuery,
+			requestedQuery, // title
 			likeQuery,
-			requestedQuery,
+			requestedQuery, // author
 			likeQuery,
-			requestedQuery,
+			requestedQuery, // executor
+			likeQuery,
+			requestedQuery, // scientific_advisor
+			likeQuery,
+			requestedQuery, // tags
 			likeQuery,
 		)
-		queryArgIndex += 6
+		queryArgIndex += 10
 
 		countConditions = append(
 			countConditions,
@@ -800,6 +814,8 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 				`(
 					$%d <%% d.title OR d.title ILIKE $%d OR
 					$%d <%% d.author OR d.author ILIKE $%d OR
+					$%d <%% d.executor OR d.executor ILIKE $%d OR
+					$%d <%% d.scientific_advisor OR d.scientific_advisor ILIKE $%d OR
 					EXISTS (
 						SELECT 1 FROM document_tags dt2
 						JOIN tags t2 ON t2.id = dt2.tag_id
@@ -812,18 +828,26 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 				countArgIndex+3,
 				countArgIndex+4,
 				countArgIndex+5,
+				countArgIndex+6,
+				countArgIndex+7,
+				countArgIndex+8,
+				countArgIndex+9,
 			),
 		)
 		countArgs = append(
 			countArgs,
-			requestedQuery,
+			requestedQuery, // title
 			likeQuery,
-			requestedQuery,
+			requestedQuery, // author
 			likeQuery,
-			requestedQuery,
+			requestedQuery, // executor
+			likeQuery,
+			requestedQuery, // scientific_advisor
+			likeQuery,
+			requestedQuery, // tags
 			likeQuery,
 		)
-		countArgIndex += 6
+		countArgIndex += 10
 	}
 	if strings.TrimSpace(filters.Type) != "" {
 		queryConditions = append(queryConditions, fmt.Sprintf("d.type = $%d", queryArgIndex))
@@ -936,13 +960,15 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			d.updated_at,
 			d.deleted_at,
 			d.is_local,
-			COALESCE(array_to_string(array_agg(DISTINCT t.name), ','), '') AS tags,
+			COALESCE(array_to_string(array_agg(DISTINCT t.name), ';'), '') AS tags,
 			CASE WHEN $1 > 0 THEN EXISTS (
 				SELECT 1 FROM favorites fav WHERE fav.user_id = $1 AND fav.document_id = d.id
 			) ELSE FALSE END AS is_favorite,
+			(SELECT COUNT(*) FROM document_views v WHERE v.document_id = d.id) AS views_count,
 			CASE WHEN $` + fmt.Sprintf("%d", similarityArg) + ` <> '' THEN GREATEST(
 				similarity(d.title, $` + fmt.Sprintf("%d", similarityArg) + `),
 				similarity(d.author, $` + fmt.Sprintf("%d", similarityArg) + `),
+				similarity(d.executor, $` + fmt.Sprintf("%d", similarityArg) + `),
 				similarity(d.type, $` + fmt.Sprintf("%d", similarityArg) + `),
 				similarity(d.description, $` + fmt.Sprintf("%d", similarityArg) + `)
 			) ELSE 0 END AS similarity
@@ -988,6 +1014,7 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			&item.IsLocal,
 			&tags,
 			&item.IsFavorite,
+			&item.ViewsCount,
 			&item.Similarity,
 		); err != nil {
 			return domain.PagedDocuments{}, err
@@ -1042,10 +1069,11 @@ func (r *Repository) GetDocumentByID(ctx context.Context, userID, id int64, admi
 			d.updated_at,
 			d.deleted_at,
 			d.is_local,
-			COALESCE(array_to_string(array_agg(DISTINCT t.name), ','), '') AS tags,
+			COALESCE(array_to_string(array_agg(DISTINCT t.name), ';'), '') AS tags,
 			CASE WHEN $1 > 0 THEN EXISTS (
 				SELECT 1 FROM favorites fav WHERE fav.user_id = $1 AND fav.document_id = d.id
 			) ELSE FALSE END AS is_favorite,
+			(SELECT COUNT(*) FROM document_views v WHERE v.document_id = d.id) AS views_count,
 			0 AS similarity
 		FROM documents d
 		LEFT JOIN document_tags dt ON dt.document_id = d.id
@@ -1083,6 +1111,7 @@ func (r *Repository) GetDocumentByID(ctx context.Context, userID, id int64, admi
 		&document.IsLocal,
 		&tags,
 		&document.IsFavorite,
+		&document.ViewsCount,
 		&document.Similarity,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1177,10 +1206,11 @@ func (r *Repository) listDocumentsByRelation(ctx context.Context, relationTable,
 			d.updated_at,
 			d.deleted_at,
 			d.is_local,
-			COALESCE(array_to_string(array_agg(DISTINCT t.name), ','), '') AS tags,
+			COALESCE(array_to_string(array_agg(DISTINCT t.name), ';'), '') AS tags,
 			EXISTS (
 				SELECT 1 FROM favorites fav WHERE fav.user_id = $1 AND fav.document_id = d.id
 			) AS is_favorite,
+			(SELECT COUNT(*) FROM document_views v WHERE v.document_id = d.id) AS views_count,
 			0 AS similarity
 		FROM `+relationTable+` rel
 		JOIN documents d ON d.id = rel.document_id
@@ -1205,7 +1235,7 @@ func (r *Repository) listDocumentsByRelation(ctx context.Context, relationTable,
 			&item.Year, &item.Type, &item.PlaceOfPublication, &item.Publisher, &item.PeriodicalName,
 			&item.Volume, &item.Description,
 			&item.FilePath, &item.FileName, &item.FileSizeBytes, &item.MimeType, &item.CoverPath,
-			&item.CreatedAt, &item.UpdatedAt, &item.DeletedAt, &item.IsLocal, &tags, &item.IsFavorite, &item.Similarity,
+			&item.CreatedAt, &item.UpdatedAt, &item.DeletedAt, &item.IsLocal, &tags, &item.IsFavorite, &item.ViewsCount, &item.Similarity,
 		); err != nil {
 			return nil, err
 		}
@@ -1264,7 +1294,7 @@ func (r *Repository) UpdateDocument(ctx context.Context, id int64, input domain.
 			author = $3,
 			executor = $4,
 			scientific_advisor = $5,
-			year = $6,
+			year = CASE WHEN $6 = 0 THEN year ELSE $6 END,
 			type = $7,
 			place_of_publication = $8,
 			publisher = $9,
@@ -1817,7 +1847,7 @@ func (r *Repository) Stats(ctx context.Context, filters domain.StatsFilters) (do
 		WHERE created_at >= $1 AND created_at < $2
 		GROUP BY query
 		ORDER BY count DESC, query ASC
-		LIMIT 5
+		LIMIT 15
 	`, dateFrom, dateTo)
 	if err != nil {
 		return stats, err
@@ -1838,7 +1868,7 @@ func (r *Repository) Stats(ctx context.Context, filters domain.StatsFilters) (do
 		WHERE v.created_at >= $1 AND v.created_at < $2
 		GROUP BY d.title
 		ORDER BY count DESC, d.title ASC
-		LIMIT 5
+		LIMIT 15
 	`, dateFrom, dateTo)
 	if err != nil {
 		return stats, err

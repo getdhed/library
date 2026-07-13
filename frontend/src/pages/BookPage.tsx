@@ -16,6 +16,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import FavoriteIcon from "@mui/icons-material/Favorite";
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import { useParams, Link } from "react-router-dom";
 import {
   documentFileUrl,
@@ -31,6 +32,7 @@ import { ContentCard, PageShell } from "../components/mui-primitives";
 import { AdminDocumentFullView } from "../components/AdminDocumentFullView";
 import type { AdminForm } from "../components/DocumentFormFields";
 import type { DocumentItem } from "../types";
+import PdfViewer from "../components/PdfViewer";
 
 function formatFileSize(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) {
@@ -110,8 +112,8 @@ const BookPage: React.FC = () => {
   );
 
   const extraDetails = [
-    { label: "Источник", value: document.isLocal !== undefined ? (document.isLocal ? "Локальный архив библиотеки" : "Внешний документ") : undefined },
-    { label: "Исполнитель", value: document.executor },
+    { label: "Источник", value: document.isLocal !== undefined ? (document.isLocal ? "Институт" : "Прочие") : undefined },
+    { label: "Составитель", value: document.executor },
     { label: "Научный руководитель", value: document.scientificAdvisor },
     { label: "Место издания", value: document.placeOfPublication },
     { label: "Издательство", value: document.publisher },
@@ -136,7 +138,7 @@ const BookPage: React.FC = () => {
       type: document.type, placeOfPublication: document.placeOfPublication ?? "",
       publisher: document.publisher ?? "", periodicalName: document.periodicalName ?? "",
       volume: document.volume ?? "", description: document.description,
-      tags: document.tags.join(", "), isLocal: document.isLocal ?? true, file: null
+      tags: document.tags.join("; "), isLocal: document.isLocal ?? true, file: null
     });
     setEditFormError("");
     setIsEditing(true);
@@ -255,6 +257,12 @@ const BookPage: React.FC = () => {
                     не указан
                   </Typography>
                 )}
+                <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 1.5, color: "text.disabled" }}>
+                  <VisibilityRoundedIcon sx={{ fontSize: "1.2rem" }} />
+                  <Typography variant="body2" fontWeight={500}>
+                    {document.viewsCount || 0} {(document.viewsCount || 0) === 1 ? "просмотр" : [2, 3, 4].includes((document.viewsCount || 0) % 10) && !([12, 13, 14].includes((document.viewsCount || 0) % 100)) ? "просмотра" : "просмотров"}
+                  </Typography>
+                </Stack>
               </Box>
 
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap" useFlexGap>
@@ -373,18 +381,7 @@ const BookPage: React.FC = () => {
               overflow: "hidden",
             }}
           >
-            <Box
-              component="iframe"
-              title={document.title}
-              src={fileUrl}
-              sx={{
-                flex: 1,
-                width: "100%",
-                height: "100%",
-                border: 0,
-                bgcolor: "common.white",
-              }}
-            />
+            <PdfViewer url={fileUrl} />
           </ContentCard>
         </Grid>
       </Grid>

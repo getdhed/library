@@ -1,11 +1,11 @@
 services:
   db:
-    image: postgres:17
-    restart: unless-stopped
+    image: postgres:17.2
+    restart: always
     environment:
-      POSTGRES_DB: library
-      POSTGRES_USER: library
-      POSTGRES_PASSWORD: library
+      POSTGRES_DB: ${POSTGRES_DB:-library}
+      POSTGRES_USER: ${POSTGRES_USER:-library}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-library}
     ports:
       - "5433:5432"
     volumes:
@@ -22,6 +22,7 @@ services:
         max-file: "3"
 
   backend:
+    image: library-backend:2026-07-13
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -33,16 +34,16 @@ services:
             - ./backend/storage/**
             - ./backend/.cache/**
             - ./backend/.git/**
-    restart: unless-stopped
+    restart: always
     environment:
       APP_PORT: 8080
-      DATABASE_URL: postgres://library:library@db:5432/library?sslmode=disable
-      JWT_SECRET: super-secret-local-key
+      DATABASE_URL: ${DATABASE_URL:-postgres://library:library@db:5432/library?sslmode=disable}
+      JWT_SECRET: ${JWT_SECRET}
       STORAGE_PATH: /app/storage
-      CORS_ORIGINS: "*"
-      SEED_ADMIN_USERNAME: admin
-      SEED_ADMIN_NAME: Администратор
-      SEED_ADMIN_PASSWORD: admin12345
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      SEED_ADMIN_USERNAME: ${SEED_ADMIN_USERNAME:-admin}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Администратор}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin12345}
     ports:
       - "8080:8080"
     volumes:
@@ -57,6 +58,7 @@ services:
         max-file: "3"
 
   frontend:
+    image: library-frontend:2026-07-13
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -68,13 +70,13 @@ services:
             - ./frontend/node_modules/**
             - ./frontend/dist/**
             - ./frontend/.git/**
-    restart: unless-stopped
+    restart: always
     environment:
-      BACKEND_PROXY_TARGET: http://backend:8080
-      VITE_API_URL: /api
-      VITE_BACKEND_URL: ""
+      BACKEND_PROXY_TARGET: ${BACKEND_PROXY_TARGET:-http://backend:8080}
+      VITE_API_URL: ${VITE_API_URL:-/api}
+      VITE_BACKEND_URL: ${VITE_BACKEND_URL:-}
     ports:
-      - "80:5173"
+      - "5173:5173"
     depends_on:
       backend:
         condition: service_started

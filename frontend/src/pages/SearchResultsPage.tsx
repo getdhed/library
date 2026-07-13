@@ -181,24 +181,16 @@ const SearchResultsPage: React.FC = () => {
     });
   }
 
-  const getSearchTitle = () => {
-    const parts = [];
-    if (query) parts.push(`"${query}"`);
-    if (author) parts.push(`автору "${author}"`);
-    if (type) parts.push(`типу "${type}"`);
-    if (yearFrom || yearTo) {
-      if (yearFrom && yearTo) parts.push(`годам ${yearFrom}-${yearTo}`);
-      else if (yearFrom) parts.push(`годам от ${yearFrom}`);
-      else parts.push(`годам до ${yearTo}`);
-    }
-    if (tags) parts.push(`тегам "${tags}"`);
-
-    if (parts.length === 0) return "Все документы";
-    return `Результаты по ${parts.join(", ")}`;
-  };
+  const isSearchActive = Boolean(query || author || type || yearFrom || yearTo || tags || isLocal);
 
   return (
     <PageShell>
+      <Box sx={{ mb: 3, px: 0.5, mt: 1 }}>
+        <Typography variant="h4" fontWeight={700}>
+          {isSearchActive ? "Результаты поиска" : "Каталог документов"} <Typography component="span" variant="h5" color="text.secondary">({payload?.total ?? 0})</Typography>
+        </Typography>
+      </Box>
+
       <Box sx={{ display: "flex", gap: { xs: 3, md: 5 }, alignItems: "flex-start", flexDirection: { xs: "column", md: "row" } }}>
         <Box
           sx={{
@@ -219,9 +211,7 @@ const SearchResultsPage: React.FC = () => {
             border: (theme) => `1px solid ${theme.palette.divider}`,
           }}
         >
-          <Typography variant="h4" fontWeight={700}>
-            Поиск <Typography component="span" variant="h5" color="text.secondary">({payload?.total ?? 0})</Typography>
-          </Typography>
+
 
           <SearchBar
             value={searchInput}
@@ -275,7 +265,7 @@ const SearchResultsPage: React.FC = () => {
           <ContentCard sx={{ minHeight: "100%", p: { xs: 0 }, bgcolor: "transparent", border: "none", boxShadow: "none" }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2, px: { xs: 2, md: 0 }, pt: { xs: 2, md: 0 } }}>
               <Typography variant="h5">
-                {getSearchTitle()}
+                {isSearchActive ? "Найденные документы" : "Все документы"}
               </Typography>
               {user?.role === "user" && (
                 <Button component={Link} to="/submit" variant="outlined" size="small">

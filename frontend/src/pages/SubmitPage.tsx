@@ -15,6 +15,7 @@ import { PageShell } from "../components/mui-primitives";
 import { DocumentFormFields, type AdminForm, createEmptyForm } from "../components/DocumentFormFields";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import PdfViewer from "../components/PdfViewer";
 
 const SubmitPage: React.FC = () => {
   const { token, user } = useAuth();
@@ -74,6 +75,15 @@ const SubmitPage: React.FC = () => {
     }
     if (!form.type.trim()) {
       setError("Выберите тип документа.");
+      return;
+    }
+    if (!Number.isInteger(form.year) || form.year < 1 || form.year > 2100) {
+      setError("Введите корректный год.");
+      return;
+    }
+    const maxSizeMB = user?.role === "superadmin" ? 250 : 100;
+    if (form.file && form.file.size > maxSizeMB * 1024 * 1024) {
+      setError(`Размер файла не должен превышать ${maxSizeMB} МБ.`);
       return;
     }
     if (!form.file) {
@@ -152,6 +162,7 @@ const SubmitPage: React.FC = () => {
             <Box
               component="form"
               onSubmit={handleSubmit}
+              noValidate
               sx={{ display: "flex", flexDirection: "column", gap: 3.5 }}
             >
               {!form.file ? (
@@ -238,12 +249,7 @@ const SubmitPage: React.FC = () => {
           }}
         >
           {pdfPreviewUrl ? (
-            <Box
-              component="iframe"
-              src={pdfPreviewUrl}
-              title="Предпросмотр PDF"
-              sx={{ flexGrow: 1, width: "100%", border: 0, bgcolor: "common.white" }}
-            />
+            <PdfViewer url={pdfPreviewUrl} />
           ) : (
             <Box
               component="label"

@@ -63,7 +63,7 @@ function fromDocument(item: DocumentItem): EditForm {
     periodicalName: item.periodicalName ?? "",
     volume: item.volume ?? "",
     description: item.description,
-    tags: item.tags.join(", "),
+    tags: item.tags.join("; "),
     isLocal: item.isLocal ?? true,
     file: null,
   };
@@ -72,8 +72,9 @@ function fromDocument(item: DocumentItem): EditForm {
 function validate(form: EditForm) {
   const missing: string[] = [];
   if (!form.title.trim()) missing.push("название");
-  if (!Number.isFinite(form.year) || form.year <= 0) missing.push("год");
   if (!form.type.trim()) missing.push("тип документа");
+  if (!Number.isInteger(form.year) || form.year < 1 || form.year > 2100) missing.push("корректный год");
+  if (form.file && form.file.size > 100 * 1024 * 1024) missing.push("размер файла не более 100 МБ");
   return missing;
 }
 
@@ -150,6 +151,10 @@ const EditDocumentDialog: React.FC<Props> = ({ token, document, onSaved }) => {
     }
   }
 
+  const yearInvalid = !Number.isInteger(form.year) || form.year < 1 || form.year > 2100;
+  const titleInvalid = !String(form.title || "").trim();
+  const typeInvalid = !String(form.type || "").trim();
+
   return (
     <>
       <Button
@@ -177,7 +182,7 @@ const EditDocumentDialog: React.FC<Props> = ({ token, document, onSaved }) => {
           <Typography variant="caption" color="text.secondary" display="block">
             Редактирование документа
           </Typography>
-          <Typography component="div" variant="h6" fontWeight={700}>
+          <Typography component="div" variant="h6" fontWeight={700} sx={{ wordBreak: "break-word" }}>
             {document.title}
           </Typography>
         </DialogTitle>
@@ -187,11 +192,13 @@ const EditDocumentDialog: React.FC<Props> = ({ token, document, onSaved }) => {
             component="form"
             id="edit-doc-form"
             onSubmit={handleSubmit}
+            noValidate
             sx={{
               display: "grid",
               gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" },
               gap: 2,
               "& > .full": { gridColumn: "1 / -1" },
+              "& .MuiInputBase-inputMultiline": { wordBreak: "break-word" },
             }}
           >
             {/* Основные поля */}
@@ -202,7 +209,9 @@ const EditDocumentDialog: React.FC<Props> = ({ token, document, onSaved }) => {
               onChange={(e) => set("title", e.target.value)}
               required
               fullWidth
-              inputProps={{ "aria-label": "Заглавие" }}
+              inputProps={{ "aria-label": "Заглавие", maxLength: 400 }}
+              error={titleInvalid}
+              helperText={titleInvalid ? "Укажите название документа" : undefined}
             />
 
             <TextField
@@ -214,11 +223,11 @@ const EditDocumentDialog: React.FC<Props> = ({ token, document, onSaved }) => {
             />
 
             <TextField
-              label="Исполнитель"
+              label="Составитель"
               value={form.executor}
               onChange={(e) => set("executor", e.target.value)}
               fullWidth
-              inputProps={{ "aria-label": "Исполнитель" }}
+              inputProps={{ "aria-label": "Составитель" }}
             />
 
             <TextField
@@ -237,6 +246,8 @@ const EditDocumentDialog: React.FC<Props> = ({ token, document, onSaved }) => {
               required
               fullWidth
               inputProps={{ "aria-label": "Тип документа" }}
+              error={typeInvalid}
+              helperText={typeInvalid ? "Выберите тип документа" : undefined}
             >
               {availableTypes.map((t) => (
                 <MenuItem key={t} value={t}>
@@ -252,7 +263,9 @@ const EditDocumentDialog: React.FC<Props> = ({ token, document, onSaved }) => {
               onChange={(e) => set("year", Number(e.target.value))}
               required
               fullWidth
-              inputProps={{ "aria-label": "Год издания" }}
+              inputProps={{ "aria-label": "Год издания", min: 1, max: 2100 }}
+              error={yearInvalid}
+              helperText={yearInvalid ? "Введите корректный год" : undefined}
             />
 
             <FormControlLabel
@@ -308,7 +321,7 @@ const EditDocumentDialog: React.FC<Props> = ({ token, document, onSaved }) => {
               label="Ключевые слова"
               value={form.tags}
               onChange={(e) => set("tags", e.target.value)}
-              placeholder="Через запятую"
+              placeholder="Через ;"
               fullWidth
               inputProps={{ "aria-label": "Ключевые слова" }}
             />
@@ -321,7 +334,7 @@ const EditDocumentDialog: React.FC<Props> = ({ token, document, onSaved }) => {
               multiline
               minRows={3}
               fullWidth
-              inputProps={{ "aria-label": "Аннотация" }}
+              inputProps={{ "aria-label": "Аннотация", maxLength: 600 }}
             />
 
             {/* PDF замена */}

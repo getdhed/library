@@ -163,7 +163,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
               {eyebrow}
             </Typography>
           )}
-          <Typography component="h1" variant="h4" sx={{ mt: eyebrow ? 0.8 : 0 }}>
+          <Typography component="h1" variant="h4" fontWeight={700} sx={{ mt: eyebrow ? 0.8 : 0 }}>
             {title}
           </Typography>
           {description && (

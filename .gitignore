@@ -6,3 +6,10 @@ backend/storage/pdfs
 backend/storage/import
 backend/.cache
 *.log
+backend/storage/covers
+*.exe
+*.tar
+large_test.pdf
+backend/storage/old_library_data
+backend/storage/*.sql
+*.docx

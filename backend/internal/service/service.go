@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -38,6 +39,7 @@ var defaultDocumentTypes = []string{
 	"Автореферат диссертации",
 	"Альбом",
 	"Диссертация",
+	"Другое",
 	"Информационный бюллетень",
 	"Курс лекций",
 	"Материалы обобщения опыта",
@@ -105,14 +107,18 @@ func (s *Service) Login(ctx context.Context, input domain.LoginInput) (domain.Au
 		time.Sleep(200 * time.Millisecond)
 		return domain.AuthPayload{}, apperror.ErrUnauthorized
 	}
-	if user.IsActive && !user.LastLoginAt.IsZero() {
+	if user.DeletedAt == nil && user.IsActive && !user.LastLoginAt.IsZero() {
 		months := int(time.Since(user.LastLoginAt).Hours() / 24 / 30)
 		if months >= 6 {
 			user.IsActive = false
-			user.DeactivationReason = fmt.Sprintf("Автоматическая деактивация (бездействие %d мес.)", months)
+			user.DeactivationReason = "Автоматическая деактивация (бездействие более 6 мес.)"
 			_, _ = s.repo.SetUserActive(ctx, user.ID, false, user.DeactivationReason)
+			_ = s.repo.DeleteUser(ctx, user.ID)
+			now := time.Now()
+			user.DeletedAt = &now
+
 			_ = s.logAudit(ctx, domain.CreateAuditEventInput{
-				Action:        "user_deactivated",
+				Action:        "user_deleted",
 				ActorID:       user.ID,
 				DocumentTitle: fmt.Sprintf("%s (%s)", user.FullName, user.Username),
 				FileName:      user.Username,
@@ -121,9 +127,20 @@ func (s *Service) Login(ctx context.Context, input domain.LoginInput) (domain.Au
 		}
 	}
 
+	if user.DeletedAt != nil {
+		time.Sleep(200 * time.Millisecond)
+		if strings.Contains(user.DeactivationReason, "Автоматическая деактивация") || strings.Contains(user.DeactivationReason, "бездействие") {
+			return domain.AuthPayload{}, errors.New("Ваш аккаунт удален. Причина: Ваш последний заход на аккаунт был свыше полугода назад.")
+		}
+		return domain.AuthPayload{}, errors.New("Ваш аккаунт удален")
+	}
+
 	if !user.IsActive {
 		time.Sleep(200 * time.Millisecond)
-		return domain.AuthPayload{}, apperror.ErrUnauthorized
+		if user.DeactivationReason != "" {
+			return domain.AuthPayload{}, errors.New("Аккаунт не активен. Причина: " + user.DeactivationReason)
+		}
+		return domain.AuthPayload{}, errors.New("Аккаунт не активен. Причина не указана")
 	}
 	if err := auth.ComparePassword(user.PasswordHash, input.Password); err != nil {
 		time.Sleep(200 * time.Millisecond)
@@ -155,7 +172,7 @@ func (s *Service) GetUserByUsername(ctx context.Context, username string) (domai
 }
 
 func validUserRole(role domain.UserRole) bool {
-	return role == domain.RoleUser || role == domain.RoleAdmin
+	return role == domain.RoleUser || role == domain.RoleAdmin || role == domain.RoleSuperAdmin
 }
 
 func validateAdminUserInput(input domain.AdminUserInput, requirePassword bool) error {
@@ -482,8 +499,16 @@ func (s *Service) ParseSubmissionInput(formValue func(string) string) (domain.Cr
 		}
 	}
 
+	isLocal := true
+	if raw := strings.TrimSpace(formValue("isLocal")); raw != "" {
+		v := strings.ToLower(raw)
+		if v == "0" || v == "false" {
+			isLocal = false
+		}
+	}
+
 	input := domain.CreateSubmissionInput{
-		Title:              truncateString(strings.TrimSpace(formValue("title")), 100),
+		Title:              truncateString(strings.TrimSpace(formValue("title")), 400),
 		Author:             truncateString(strings.TrimSpace(formValue("author")), 150),
 		Executor:           truncateString(strings.TrimSpace(formValue("executor")), 150),
 		ScientificAdvisor:  truncateString(strings.TrimSpace(formValue("scientificAdvisor")), 150),
@@ -493,9 +518,10 @@ func (s *Service) ParseSubmissionInput(formValue func(string) string) (domain.Cr
 		Volume:             truncateString(strings.TrimSpace(formValue("volume")), 50),
 		Year:               year,
 		Type:               truncateString(strings.TrimSpace(formValue("type")), 100),
-		Description:        truncateString(strings.TrimSpace(formValue("description")), 500),
+		Description:        truncateString(strings.TrimSpace(formValue("description")), 600),
 		Tags:               truncateString(strings.TrimSpace(formValue("tags")), 500),
 		Comment:            truncateString(strings.TrimSpace(formValue("comment")), 500),
+		IsLocal:            isLocal,
 	}
 	if input.Title == "" {
 		return domain.CreateSubmissionInput{}, apperror.ErrInvalidInput
@@ -515,8 +541,16 @@ func (s *Service) ParseDocumentInput(formValue func(string) string) (domain.Upse
 		}
 	}
 
+	isLocal := true
+	if raw := strings.TrimSpace(formValue("isLocal")); raw != "" {
+		v := strings.ToLower(raw)
+		if v == "0" || v == "false" {
+			isLocal = false
+		}
+	}
+
 	input := domain.UpsertDocumentInput{
-		Title:              truncateString(strings.TrimSpace(formValue("title")), 100),
+		Title:              truncateString(strings.TrimSpace(formValue("title")), 400),
 		Author:             truncateString(strings.TrimSpace(formValue("author")), 150),
 		Executor:           truncateString(strings.TrimSpace(formValue("executor")), 150),
 		ScientificAdvisor:  truncateString(strings.TrimSpace(formValue("scientificAdvisor")), 150),
@@ -526,8 +560,9 @@ func (s *Service) ParseDocumentInput(formValue func(string) string) (domain.Upse
 		Publisher:          truncateString(strings.TrimSpace(formValue("publisher")), 150),
 		PeriodicalName:     truncateString(strings.TrimSpace(formValue("periodicalName")), 150),
 		Volume:             truncateString(strings.TrimSpace(formValue("volume")), 50),
-		Description:        truncateString(strings.TrimSpace(formValue("description")), 500),
+		Description:        truncateString(strings.TrimSpace(formValue("description")), 600),
 		Tags:               splitCSV(truncateString(strings.TrimSpace(formValue("tags")), 500)),
+		IsLocal:            isLocal,
 	}
 	if input.Title == "" {
 		return domain.UpsertDocumentInput{}, apperror.ErrInvalidInput
@@ -775,9 +810,6 @@ func (s *Service) ApproveSubmission(ctx context.Context, submissionID, reviewerI
 
 func (s *Service) RejectSubmission(ctx context.Context, submissionID, reviewerID int64, moderationNote string) (domain.DocumentSubmission, error) {
 	moderationNote = strings.TrimSpace(moderationNote)
-	if moderationNote == "" {
-		return domain.DocumentSubmission{}, apperror.ErrInvalidInput
-	}
 
 	submission, err := s.repo.RejectSubmission(ctx, submissionID, reviewerID, moderationNote)
 	if err != nil {
@@ -972,7 +1004,7 @@ func splitCSV(value string) []string {
 		return []string{}
 	}
 
-	parts := strings.Split(value, ",")
+	parts := strings.Split(value, ";")
 	items := make([]string, 0, len(parts))
 	for _, part := range parts {
 		part = strings.TrimSpace(part)

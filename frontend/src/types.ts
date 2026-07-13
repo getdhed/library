@@ -36,6 +36,7 @@ export interface DocumentItem {
   similarity?: number;
   deletedAt?: string;
   isLocal?: boolean;
+  viewsCount: number;
 }
 
 export type SubmissionStatus = "pending" | "approved" | "rejected";

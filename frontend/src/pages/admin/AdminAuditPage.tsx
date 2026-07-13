@@ -203,6 +203,20 @@ const AdminAuditPage: React.FC = () => {
                 slotProps={{ inputLabel: { shrink: true } }}
                 fullWidth
               />
+              <Button
+                variant="outlined"
+                color="secondary"
+                onClick={() => {
+                  setQ("");
+                  setAction("");
+                  setDateFrom(new Date().toISOString().slice(0, 10));
+                  setDateTo(new Date().toISOString().slice(0, 10));
+                  setPage(1);
+                }}
+                disabled={!q && !action && dateFrom === new Date().toISOString().slice(0, 10) && dateTo === new Date().toISOString().slice(0, 10)}
+              >
+                Сбросить
+              </Button>
             </Stack>
           </Box>
         </Box>
@@ -213,23 +227,37 @@ const AdminAuditPage: React.FC = () => {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Действие</TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>Действие</TableCell>
                     <TableCell>Объект (документ / пользователь)</TableCell>
-                    <TableCell>Пользователь</TableCell>
-                    <TableCell>Дата</TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>Пользователь</TableCell>
+                    <TableCell sx={{ whiteSpace: "nowrap" }}>Дата</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {items.map((event) => (
                     <TableRow key={event.id}>
-                      <TableCell>{formatActionLabel(event.action)}</TableCell>
-                      <TableCell>{event.documentTitle || event.fileName}</TableCell>
-                      <TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{formatActionLabel(event.action)}</TableCell>
+                      <TableCell sx={{ maxWidth: 400, minWidth: 120 }}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            display: "-webkit-box",
+                            WebkitLineClamp: 3,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {event.documentTitle || event.fileName || "—"}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>
                         {event.actorName && event.actorUsername 
                           ? `${event.actorName} (@${event.actorUsername})` 
                           : event.actorUsername || event.actorName || "—"}
                       </TableCell>
-                      <TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>
                         {new Date(event.createdAt).toLocaleString("ru-RU")}
                       </TableCell>
                     </TableRow>
