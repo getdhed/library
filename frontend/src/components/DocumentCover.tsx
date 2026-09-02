@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Box, Chip, Typography } from "@mui/material";
+import { Box, CircularProgress, Typography } from "@mui/material";
 import { ImageNotSupported } from "@mui/icons-material";
 import { documentCoverUrl } from "../api/library";
 import type { DocumentItem } from "../types";
+import { useProtectedBlobUrl } from "./useProtectedBlobUrl";
 
 type Props = {
   item: DocumentItem;
@@ -21,11 +22,11 @@ const DocumentCover: React.FC<Props> = ({
 
   useEffect(() => {
     setCoverFailed(false);
-  }, [item.id, item.coverPath, item.fileName, item.updatedAt]);
+  }, [item.id, item.coverPath, item.fileName, item.updatedAt, token]);
 
   const isPdf = item.mimeType.toLowerCase().includes("pdf");
-  const coverUrl =
-    token && isPdf ? documentCoverUrl(item.id, token, item.updatedAt) : "";
+  const coverSourceUrl = token && isPdf ? documentCoverUrl(item.id, item.updatedAt) : "";
+  const { url: coverUrl, isLoading, error } = useProtectedBlobUrl(coverSourceUrl, token);
   const isCard = variant === "card";
 
   return (
@@ -40,7 +41,7 @@ const DocumentCover: React.FC<Props> = ({
         mx: isCard ? "auto" : 0,
       }}
     >
-        {coverUrl && !coverFailed ? (
+        {coverUrl && !coverFailed && !error ? (
           <Box
             component="img"
             src={coverUrl}
@@ -56,6 +57,13 @@ const DocumentCover: React.FC<Props> = ({
               display: "block",
             }}
           />
+        ) : isLoading ? (
+          <Box
+            aria-label="Загрузка обложки"
+            sx={{ height: "100%", display: "grid", placeItems: "center" }}
+          >
+            <CircularProgress size={28} />
+          </Box>
         ) : (
           <Box
             aria-hidden="true"

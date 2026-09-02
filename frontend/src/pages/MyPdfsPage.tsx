@@ -16,7 +16,6 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   getDocument,
   getMySubmissions,
-  submissionFileUrl,
 } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
 import {
@@ -267,11 +266,13 @@ const MyPdfsPage: React.FC = () => {
                         ) : item.status === "rejected" ? (
                           <Stack direction="row" spacing={1.5} sx={{ mt: { xs: 1.5, sm: 0 }, alignSelf: { sm: "flex-start" } }}>
                             <Button
-                              href={submissionFileUrl(item.id, token ?? "")}
+                              component={Link}
+                              to={`/submissions/${item.id}/read`}
                               variant="outlined"
                               color="secondary"
                               size="small"
                               target="_blank"
+                              rel="noopener noreferrer"
                               sx={{ borderRadius: 2 }}
                             >
                               Открыть PDF
@@ -280,11 +281,13 @@ const MyPdfsPage: React.FC = () => {
                         ) : (
                           <Stack direction="row" spacing={1.5} sx={{ mt: { xs: 1.5, sm: 0 }, alignSelf: { sm: "flex-start" } }}>
                             <Button
-                              href={submissionFileUrl(item.id, token ?? "")}
+                              component={Link}
+                              to={`/submissions/${item.id}/read`}
                               variant="outlined"
                               color="secondary"
                               size="small"
                               target="_blank"
+                              rel="noopener noreferrer"
                               sx={{ borderRadius: 2 }}
                             >
                               Открыть PDF

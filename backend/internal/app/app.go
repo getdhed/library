@@ -3,7 +3,9 @@ package app
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
+	"net/http"
 	"sync"
 	"time"
 
@@ -18,91 +20,131 @@ import (
 )
 
 type App struct {
-	db     *sql.DB
-	server interface {
-		Run(addr ...string) error
-	}
+	db           *sql.DB
+	server       *http.Server
 	cfg          config.Config
 	logger       *slog.Logger
 	svc          *service.Service
 	cancel       context.CancelFunc
 	backgroundWg sync.WaitGroup
+	closeOnce    sync.Once
+	closeErr     error
 }
 
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
-	_, cancel := context.WithCancel(ctx)
-	db, err := database.Open(ctx, cfg.DatabaseURL)
+	appCtx, cancel := context.WithCancel(ctx)
+	db, err := database.Open(appCtx, cfg.DatabaseURL)
 	if err != nil {
 		cancel()
 		return nil, err
 	}
+	initialized := false
+	defer func() {
+		if !initialized {
+			cancel()
+			_ = db.Close()
+		}
+	}()
 
-	if err := database.Migrate(ctx, db, logger); err != nil {
-		cancel()
+	if err := database.Migrate(appCtx, db, logger); err != nil {
 		return nil, err
 	}
 
 	files := storage.New(cfg.StoragePath)
 	if err := files.Ensure(); err != nil {
-		cancel()
 		return nil, err
 	}
 	renderer, err := preview.New()
 	if err != nil {
-		cancel()
 		return nil, err
 	}
 
 	repo := repository.New(db)
-	passwordHash, err := auth.HashPassword(cfg.SeedAdminPass)
+	bootstrapCompleted, err := files.BootstrapCompleted()
 	if err != nil {
-		cancel()
 		return nil, err
 	}
-	logger.Info("ensuring seed admin user", "username", cfg.SeedAdminUsername)
-	if _, err := repo.EnsureSystemUser(ctx, cfg.SeedAdminUsername, cfg.SeedAdminName, passwordHash); err != nil {
-		cancel()
+	passwordHash, err := auth.HashPassword(cfg.SeedAdminPass)
+	if err != nil {
 		return nil, err
+	}
+	logger.Info("ensuring an active superadmin exists", "bootstrap_allowed", !bootstrapCompleted)
+	if _, err := repo.EnsureSystemUser(appCtx, cfg.SeedAdminUsername, cfg.SeedAdminName, passwordHash, !bootstrapCompleted); err != nil {
+		return nil, err
+	}
+	if !bootstrapCompleted {
+		if err := files.MarkBootstrapCompleted(); err != nil {
+			return nil, err
+		}
 	}
 	tokens := auth.NewTokenManager(cfg.JWTSecret, cfg.TokenTTL)
 	svc := service.New(repo, tokens, files, renderer)
 	router := httpapi.NewRouter(cfg, svc, logger)
+	server := &http.Server{
+		Addr:              cfg.Address(),
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       10 * time.Minute,
+		WriteTimeout:      30 * time.Minute,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
 
 	application := &App{
 		db:     db,
-		server: router,
+		server: server,
 		cfg:    cfg,
 		logger: logger,
 		svc:    svc,
 		cancel: cancel,
 	}
 
-	application.startArchiver(ctx)
+	application.startArchiver(appCtx)
+	initialized = true
 
 	return application, nil
 }
 
 func (a *App) Run() error {
 	a.logger.Info("starting http server", "address", a.cfg.Address())
-	return a.server.Run(a.cfg.Address())
+	err := a.server.ListenAndServe()
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
 }
 
 func (a *App) Close() error {
-	if a.cancel != nil {
-		a.cancel()
-	}
-	a.backgroundWg.Wait()
-	if a.db != nil {
-		return a.db.Close()
-	}
-	return nil
+	a.closeOnce.Do(func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer shutdownCancel()
+
+		var shutdownErr error
+		if a.server != nil {
+			shutdownErr = a.server.Shutdown(shutdownCtx)
+			if shutdownErr != nil {
+				shutdownErr = errors.Join(shutdownErr, a.server.Close())
+			}
+		}
+		if a.cancel != nil {
+			a.cancel()
+		}
+		a.backgroundWg.Wait()
+
+		var dbErr error
+		if a.db != nil {
+			dbErr = a.db.Close()
+		}
+		a.closeErr = errors.Join(shutdownErr, dbErr)
+	})
+	return a.closeErr
 }
 
 func (a *App) startArchiver(ctx context.Context) {
 	a.backgroundWg.Add(1)
 	go func() {
 		defer a.backgroundWg.Done()
-		
+
 		// Run once on startup
 		if err := a.svc.ArchiveOldLogs(ctx); err != nil {
 			a.logger.Error("failed to archive old logs on startup", "error", err)
@@ -145,4 +187,3 @@ func (a *App) startArchiver(ctx context.Context) {
 		}
 	}()
 }
-

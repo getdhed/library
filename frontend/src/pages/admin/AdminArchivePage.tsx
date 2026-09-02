@@ -31,7 +31,7 @@ import {
   createEmptyForm,
 } from "../../components/DocumentFormFields";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
-import SettingsBackupRestoreRoundedIcon from "@mui/icons-material/SettingsBackupRestoreRounded";
+import { SettingsBackupRestoreRounded as SettingsBackupRestoreRoundedIcon } from "@mui/icons-material";
 import DeleteForeverRoundedIcon from "@mui/icons-material/DeleteForeverRounded";
 import {
   getAdminDocuments,

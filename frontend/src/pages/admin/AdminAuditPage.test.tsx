@@ -32,7 +32,7 @@ function renderWithProviders(ui: React.ReactNode, token: string | null = "admin-
   return render(
     <MemoryRouter initialEntries={["/admin/audit"]}>
       <ThemeProvider>
-        <AuthContext.Provider value={{ token, user: null, login: vi.fn(), logout: vi.fn(), isLoading: false }}>
+        <AuthContext.Provider value={{ token, user: null, login: vi.fn(), register: vi.fn(), logout: vi.fn(), ready: true }}>
           <Routes>
             <Route path="/admin/audit" element={ui} />
           </Routes>

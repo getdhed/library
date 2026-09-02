@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"library-backend/internal/apperror"
 	"library-backend/internal/domain"
 )
 
@@ -52,8 +53,18 @@ func (r *Repository) GetRejectedSubmissionsForCleanup(ctx context.Context, older
 }
 
 func (r *Repository) HardDeleteDocument(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM documents WHERE id = $1`, id)
-	return err
+	result, err := r.db.ExecContext(ctx, `DELETE FROM documents WHERE id = $1 AND deleted_at IS NOT NULL`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return apperror.ErrConflict
+	}
+	return nil
 }
 
 func (r *Repository) HardDeleteSubmission(ctx context.Context, id int64) error {

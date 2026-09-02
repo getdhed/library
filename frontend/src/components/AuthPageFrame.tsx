@@ -1,5 +1,6 @@
 import React from "react";
 import { Box, Paper, Stack, Typography, createTheme, ThemeProvider } from "@mui/material";
+import { getBackgroundUrl } from "../api/library";
 
 const darkAuthTheme = createTheme({
   palette: {
@@ -88,8 +89,8 @@ const AuthPageFrame: React.FC<AuthPageFrameProps> = ({
         px: 3,
         py: 4,
         backgroundColor: "#121212", 
-        backgroundImage: "url('/auth-bg.png?v=2')",
-        backgroundSize: "cover",
+        backgroundImage: `url('${getBackgroundUrl()}'), url('/auth-bg.png?v=2')`,
+        backgroundSize: "cover, cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
         position: "relative",

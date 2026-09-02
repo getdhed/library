@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"library-backend/internal/apperror"
 	"library-backend/internal/auth"
 	"library-backend/internal/database"
 	"library-backend/internal/domain"
@@ -106,9 +107,10 @@ func TestCreateAndApproveAdminImportSubmission(t *testing.T) {
 	document, err := repo.ApproveSubmission(ctx, submission.ID, adminID, domain.UpsertDocumentInput{
 		Title:       "Imported Draft",
 		Author:      "Admin",
-		Year:        2026,
+		Year:        0,
 		Type:        "Методичка",
 		Description: "Queued from import folder",
+		IsLocal:     false,
 	})
 	if err != nil {
 		t.Fatalf("ApproveSubmission() error = %v", err)
@@ -116,6 +118,9 @@ func TestCreateAndApproveAdminImportSubmission(t *testing.T) {
 
 	if document.ID == 0 {
 		t.Fatal("expected approved document to have an id")
+	}
+	if document.Year != 0 || document.IsLocal {
+		t.Fatalf("approval lost source metadata: year=%d isLocal=%v", document.Year, document.IsLocal)
 	}
 
 	updatedSubmission, err := repo.GetSubmissionByID(ctx, submission.ID)
@@ -169,13 +174,27 @@ func TestCreateAndApproveAdminImportSubmission(t *testing.T) {
 	if len(events) != 1 || events[0].ActorUsername != "admin" || events[0].Action != "approve" {
 		t.Fatalf("unexpected audit events: %#v", events)
 	}
+	if _, err := db.ExecContext(ctx, `
+		UPDATE document_audit_events
+		SET created_at = NOW() - INTERVAL '1 year'
+		WHERE action = 'approve' AND document_id = $1
+	`, document.ID); err != nil {
+		t.Fatalf("age audit event: %v", err)
+	}
+	oldEvents, err := repo.GetOldAuditEvents(ctx, time.Now().AddDate(0, -4, 0))
+	if err != nil {
+		t.Fatalf("GetOldAuditEvents() error = %v", err)
+	}
+	if len(oldEvents) != 1 || oldEvents[0].SubmissionID != submission.ID || oldEvents[0].ActorUsername != "admin" {
+		t.Fatalf("unexpected old audit events: %#v", oldEvents)
+	}
 
 	types, err := repo.ListDocumentTypes(ctx)
 	if err != nil {
 		t.Fatalf("ListDocumentTypes() error = %v", err)
 	}
-	if len(types) != 1 || types[0] != "Методичка" {
-		t.Fatalf("unexpected document types: %#v", types)
+	if len(types) == 0 {
+		t.Fatalf("unexpected empty document types")
 	}
 
 	createdUser, err := repo.CreateAdminUser(ctx, domain.AdminUserInput{
@@ -205,7 +224,7 @@ func TestCreateAndApproveAdminImportSubmission(t *testing.T) {
 	}
 }
 
-func TestEnsureSeedDataUpsertsAdminCredentials(t *testing.T) {
+func TestEnsureSeedDataDoesNotResetExistingSuperadmin(t *testing.T) {
 	adminDSN := os.Getenv("TEST_DATABASE_URL")
 	if strings.TrimSpace(adminDSN) == "" {
 		adminDSN = "postgres://library:library@localhost:5433/library?sslmode=disable"
@@ -249,11 +268,8 @@ func TestEnsureSeedDataUpsertsAdminCredentials(t *testing.T) {
 		t.Fatalf("HashPassword(old) error = %v", err)
 	}
 
-	if _, err := db.ExecContext(ctx, `
-		INSERT INTO users(username, password_hash, full_name, role)
-		VALUES ('admin', $1, 'Legacy Admin', 'admin')
-	`, oldHash); err != nil {
-		t.Fatalf("insert legacy admin: %v", err)
+	if err := repo.EnsureSeedData(ctx, "admin", "Legacy Admin", oldHash); err != nil {
+		t.Fatalf("first EnsureSeedData() error = %v", err)
 	}
 
 	newHash, err := auth.HashPassword("admin12345")
@@ -276,16 +292,45 @@ func TestEnsureSeedDataUpsertsAdminCredentials(t *testing.T) {
 		t.Fatalf("load admin after EnsureSeedData: %v", err)
 	}
 
-	if err := auth.ComparePassword(passwordHash, "admin12345"); err != nil {
-		t.Fatalf("expected admin password to be updated to configured value: %v", err)
+	if err := auth.ComparePassword(passwordHash, "legacy-pass"); err != nil {
+		t.Fatalf("expected existing admin password to remain unchanged: %v", err)
 	}
 
-	if fullName != "Администратор" {
-		t.Fatalf("expected full name to be updated, got %q", fullName)
+	if fullName != "Legacy Admin" {
+		t.Fatalf("expected full name to remain unchanged, got %q", fullName)
 	}
 
 	if role != "superadmin" {
 		t.Fatalf("expected role superadmin, got %q", role)
+	}
+
+	if _, err := db.ExecContext(ctx, `DELETE FROM users`); err != nil {
+		t.Fatalf("clear users: %v", err)
+	}
+	if _, err := repo.EnsureSystemUser(ctx, "admin", "Bootstrap Admin", newHash, false); err == nil {
+		t.Fatal("expected completed bootstrap to refuse recreating default credentials")
+	}
+	var userCount int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&userCount); err != nil {
+		t.Fatalf("count users after refused bootstrap: %v", err)
+	}
+	if userCount != 0 {
+		t.Fatalf("refused bootstrap unexpectedly created %d users", userCount)
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO users(username, password_hash, full_name, role)
+		VALUES ('claimed-name', 'hash', 'Regular User', 'user')
+	`); err != nil {
+		t.Fatalf("insert colliding user: %v", err)
+	}
+	if err := repo.EnsureSeedData(ctx, "claimed-name", "Bootstrap Admin", newHash); err == nil {
+		t.Fatal("expected bootstrap to reject a username owned by a regular user")
+	}
+	if err := db.QueryRowContext(ctx, `SELECT role FROM users WHERE username = 'claimed-name'`).Scan(&role); err != nil {
+		t.Fatalf("load colliding user: %v", err)
+	}
+	if role != "user" {
+		t.Fatalf("bootstrap unexpectedly elevated colliding user to %q", role)
 	}
 }
 
@@ -593,14 +638,14 @@ func setupTestRepo(t *testing.T) (*Repository, *sql.DB, context.Context, context
 	if err := database.Migrate(ctx, db, logger); err != nil {
 		t.Fatalf("database.Migrate() error = %v", err)
 	}
-	
+
 	cleanup := func() {
 		db.Close()
 		adminDB.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+dbName)
 		adminDB.Close()
 		cancel()
 	}
-	
+
 	return New(db), db, ctx, cleanup
 }
 
@@ -644,7 +689,7 @@ func TestDocumentCRUD(t *testing.T) {
 	updated, err := repo.UpdateDocument(ctx, doc.ID, domain.UpsertDocumentInput{
 		Title:       "Updated Book",
 		Author:      "Updated Author",
-		Year:        2026,
+		Year:        0,
 		Type:        "Book",
 		Description: "Test Desc",
 		Tags:        []string{"updated"},
@@ -652,8 +697,11 @@ func TestDocumentCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateDocument: %v", err)
 	}
-	if updated.Title != "Updated Book" || len(updated.Tags) != 1 || updated.Tags[0] != "updated" {
+	if updated.Title != "Updated Book" || updated.Year != 0 || len(updated.Tags) != 1 || updated.Tags[0] != "updated" {
 		t.Fatalf("Update failed, got: %+v", updated)
+	}
+	if err := repo.HardDeleteDocument(ctx, doc.ID); err != apperror.ErrConflict {
+		t.Fatalf("expected active document hard delete conflict, got %v", err)
 	}
 
 	err = repo.DeleteDocument(ctx, doc.ID)

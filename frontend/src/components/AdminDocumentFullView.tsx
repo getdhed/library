@@ -20,6 +20,7 @@ export type AdminDocumentFullViewProps = {
   title: string;
   subtitle?: string;
   pdfUrl: string;
+  token?: string | null;
   onClose: () => void;
   form: AdminForm;
   setForm: React.Dispatch<React.SetStateAction<AdminForm>>;
@@ -38,6 +39,7 @@ export const AdminDocumentFullView: React.FC<AdminDocumentFullViewProps> = ({
   title,
   subtitle,
   pdfUrl,
+  token,
   onClose,
   form,
   setForm,
@@ -177,7 +179,7 @@ export const AdminDocumentFullView: React.FC<AdminDocumentFullViewProps> = ({
         {/* Right: PDF Reader */}
         <Box sx={{ bgcolor: "grey.100", minHeight: 0, minWidth: 0, position: "relative", display: "flex", flexDirection: "column" }}>
           {pdfUrl ? (
-            <PdfViewer url={pdfUrl} />
+            <PdfViewer url={pdfUrl} token={token} />
           ) : (
             <Box
               component="label"

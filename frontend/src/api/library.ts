@@ -4,7 +4,9 @@ import type {
   AuthPayload,
   DocumentAuditEvent,
   DocumentItem,
+  DocumentTypeItem,
   HomePayload,
+  LanguageItem,
   PagedAuditEvents,
   PagedDocuments,
   PagedUsers,
@@ -25,6 +27,7 @@ export type DocumentQuery = {
   yearTo?: string | number;
   includeDeleted?: string | number;
   isLocal?: boolean | string;
+  hasTranslation?: boolean | string;
 }
 
 function buildQuery(params: Record<string, string | number | boolean | undefined>) {
@@ -122,6 +125,10 @@ export function toggleDocumentFavorite(
 
 export function getDocumentTypes() {
   return request<{ items: string[] }>("/catalog/document-types");
+}
+
+export function getLanguages() {
+  return request<{ items: string[] }>("/catalog/languages");
 }
 
 export function getRecent(token: string) {
@@ -349,7 +356,6 @@ export function rejectSubmission(
 
 export function documentFileUrl(
   id: number,
-  token: string,
   download = false,
   version?: string
 ) {
@@ -357,25 +363,24 @@ export function documentFileUrl(
   if (download) {
     params.set("download", "1");
   }
-  params.set("token", token);
   if (version) {
     params.set("v", version);
   }
-  return `${import.meta.env.VITE_BACKEND_URL ?? ""}/api/documents/${id}/file?${params.toString()}`;
+  const query = params.toString();
+  return `${import.meta.env.VITE_API_URL ?? "/api"}/documents/${id}/file${query ? `?${query}` : ""}`;
 }
 
-export function documentCoverUrl(id: number, token: string, version?: string) {
+export function documentCoverUrl(id: number, version?: string) {
   const params = new URLSearchParams();
-  params.set("token", token);
   if (version) {
     params.set("v", version);
   }
-  return `${import.meta.env.VITE_BACKEND_URL ?? ""}/api/documents/${id}/cover?${params.toString()}`;
+  const query = params.toString();
+  return `${import.meta.env.VITE_API_URL ?? "/api"}/documents/${id}/cover${query ? `?${query}` : ""}`;
 }
 
 export function submissionFileUrl(
   id: number,
-  token: string,
   download = false,
   version?: string
 ) {
@@ -383,9 +388,100 @@ export function submissionFileUrl(
   if (download) {
     params.set("download", "1");
   }
-  params.set("token", token);
   if (version) {
     params.set("v", version);
   }
-  return `${import.meta.env.VITE_BACKEND_URL ?? ""}/api/submissions/${id}/file?${params.toString()}`;
+  const query = params.toString();
+  return `${import.meta.env.VITE_API_URL ?? "/api"}/submissions/${id}/file${query ? `?${query}` : ""}`;
+}
+
+export function adminGetDocumentTypes(token: string, page: number = 1, limit: number = 50) {
+  return request<{ items: DocumentTypeItem[], total: number }>(`/admin/document-types?page=${page}&limit=${limit}`, { token });
+}
+
+export function adminCreateDocumentType(token: string, name: string) {
+  return request<DocumentTypeItem>(`/admin/document-types`, {
+    token,
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function adminUpdateDocumentType(token: string, id: number, name: string) {
+  return request<void>(`/admin/document-types/${id}`, {
+    token,
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function adminDeleteDocumentType(token: string, id: number) {
+  return request<void>(`/admin/document-types/${id}`, {
+    token,
+    method: "DELETE",
+  });
+}
+
+export function adminGetLanguages(token: string, page: number = 1, limit: number = 50) {
+  return request<{ items: LanguageItem[], total: number }>(`/admin/languages?page=${page}&limit=${limit}`, { token });
+}
+
+export function adminCreateLanguage(token: string, name: string) {
+  return request<LanguageItem>(`/admin/languages`, {
+    token,
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function adminUpdateLanguage(token: string, id: number, name: string) {
+  return request<void>(`/admin/languages/${id}`, {
+    token,
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function adminToggleLanguageVisibility(token: string, id: number, isHidden: boolean) {
+  return request<void>(`/admin/languages/${id}/visibility`, {
+    token,
+    method: "PATCH",
+    body: JSON.stringify({ isHidden }),
+  });
+}
+
+export function adminDeleteLanguage(token: string, id: number) {
+  return request<void>(`/admin/languages/${id}`, {
+    token,
+    method: "DELETE",
+  });
+}
+
+export function adminToggleDocumentTypeVisibility(token: string, id: number, isHidden: boolean) {
+  return request<void>(`/admin/document-types/${id}/visibility`, {
+    token,
+    method: "PATCH",
+    body: JSON.stringify({ isHidden }),
+  });
+}
+
+export function adminUploadBackground(token: string, file: File) {
+  const formData = new FormData();
+  formData.append("image", file);
+
+  return request<void>(`/admin/settings/background`, {
+    token,
+    method: "POST",
+    body: formData,
+  });
+}
+
+let bgCacheBuster = Date.now();
+
+export function getBackgroundUrl() {
+  return `${import.meta.env.VITE_BACKEND_URL ?? ""}/api/public/background?t=${bgCacheBuster}`;
+}
+
+export function refreshBackgroundCache() {
+  bgCacheBuster = Date.now();
 }

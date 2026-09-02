@@ -1,35 +1,67 @@
 import React, { useState } from "react";
-import { Alert, Box, Button, Paper, Stack, TextField, Typography } from "@mui/material";
+import { Alert, Box, Button, Stack, TextField, Typography } from "@mui/material";
 import { ContentCard, PageHeader, PageShell } from "../components/mui-primitives";
-import { useTheme } from "../theme/ThemeContext";
 import { useAuth } from "../auth/AuthContext";
 import { changeMyPassword } from "../api/library";
 
 const SettingsPage: React.FC = () => {
-  const { theme } = useTheme();
   const { token } = useAuth();
+
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [saving, setSaving] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({ oldPassword: "", newPassword: "", confirmPassword: "" });
 
   async function onChangePassword(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setSuccess("");
+    const newFieldErrors = { oldPassword: "", newPassword: "", confirmPassword: "" };
+    let hasError = false;
+
     if (!token) {
       setError("Требуется авторизация");
       return;
     }
-    const oldPw = oldPassword.trim();
-    const newPw = newPassword.trim();
-    const confirmPw = confirmPassword.trim();
-    if (!oldPw || newPw.length < 6 || newPw !== confirmPw) {
-      setError(newPw !== confirmPw ? "Пароли не совпадают" : "Укажите текущий пароль и новый (минимум 6 символов)");
+
+    const oldPw = oldPassword;
+    const newPw = newPassword;
+    const confirmPw = confirmPassword;
+
+    if (!oldPw) {
+      newFieldErrors.oldPassword = "Текущий пароль обязателен для заполнения";
+      hasError = true;
+    }
+
+    if (!newPw) {
+      newFieldErrors.newPassword = "Новый пароль обязателен для заполнения";
+      hasError = true;
+    } else if (newPw.length < 6) {
+      newFieldErrors.newPassword = "Пароль должен содержать минимум 6 символов";
+      hasError = true;
+    } else if (oldPw === newPw) {
+      newFieldErrors.newPassword = "Старый и новый пароль совпадают";
+      hasError = true;
+    }
+
+    if (!confirmPw) {
+      newFieldErrors.confirmPassword = "Подтверждение пароля обязательно для заполнения";
+      hasError = true;
+    } else if (newPw !== confirmPw) {
+      newFieldErrors.confirmPassword = "Пароли не совпадают";
+      hasError = true;
+    }
+
+    if (hasError) {
+      setFieldErrors(newFieldErrors);
       return;
     }
+
+    setFieldErrors({ oldPassword: "", newPassword: "", confirmPassword: "" });
+
     try {
       setSaving(true);
       await changeMyPassword(token, { oldPassword: oldPw, newPassword: newPw });
@@ -46,45 +78,30 @@ const SettingsPage: React.FC = () => {
 
   return (
     <PageShell>
-      <PageHeader
-        title="Настройки"
-        description="Управление пользовательскими параметрами интерфейса."
-      />
+      <Box sx={{ maxWidth: 500, width: "100%", mx: "auto" }}>
+        <PageHeader
+          title="Настройки"
+        />
 
-      <ContentCard>
-        <Stack spacing={2}>
-          <Paper sx={{ p: 2, borderRadius: 0 }}>
-            <Stack spacing={1.2}>
-              <Typography variant="overline">Оформление</Typography>
-              <Typography variant="h5">Единый режим интерфейса</Typography>
-              <Typography color="text.secondary">
-                Для текущей итерации используется единый визуальный стиль
-                библиотеки. Переключение темы временно отключено.
-              </Typography>
-              <Box sx={{ pt: 0.3 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Активный режим:{" "}
-                  <Box component="span" sx={{ fontWeight: 700, color: "text.primary" }}>
-                    {theme === "dark" ? "Тёмный" : "Светлый"}
-                  </Box>
-                </Typography>
-              </Box>
-            </Stack>
-          </Paper>
-
-          <Paper sx={{ p: 2, borderRadius: 0 }}>
+        <Box sx={{ mt: 2 }}>
+          <ContentCard>
             <Stack spacing={1.2}>
               <Typography variant="overline">Безопасность</Typography>
               <Typography variant="h5">Сменить пароль</Typography>
+
               {error && <Alert severity="error">{error}</Alert>}
               {success && <Alert severity="success" onClose={() => setSuccess("")}>{success}</Alert>}
-              <Box component="form" onSubmit={onChangePassword} noValidate>
+
+              <Box component="form" onSubmit={onChangePassword} noValidate sx={{ mt: 1 }}>
                 <Stack spacing={2}>
                   <TextField
                     label="Текущий пароль"
                     type="password"
                     value={oldPassword}
                     onChange={(e) => setOldPassword(e.target.value)}
+                    inputProps={{ maxLength: 30 }}
+                    error={!!fieldErrors.oldPassword}
+                    helperText={fieldErrors.oldPassword}
                     fullWidth
                   />
                   <TextField
@@ -92,6 +109,9 @@ const SettingsPage: React.FC = () => {
                     type="password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
+                    inputProps={{ maxLength: 30 }}
+                    error={!!fieldErrors.newPassword}
+                    helperText={fieldErrors.newPassword}
                     fullWidth
                   />
                   <TextField
@@ -99,17 +119,22 @@ const SettingsPage: React.FC = () => {
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
+                    inputProps={{ maxLength: 30 }}
+                    error={!!fieldErrors.confirmPassword}
+                    helperText={fieldErrors.confirmPassword}
                     fullWidth
                   />
-                  <Box>
-                    <Button variant="contained" type="submit" disabled={saving}>Сохранить</Button>
+                  <Box sx={{ pt: 1 }}>
+                    <Button variant="contained" type="submit" disabled={saving}>
+                      Сохранить
+                    </Button>
                   </Box>
                 </Stack>
               </Box>
             </Stack>
-          </Paper>
-        </Stack>
-      </ContentCard>
+          </ContentCard>
+        </Box>
+      </Box>
     </PageShell>
   );
 };

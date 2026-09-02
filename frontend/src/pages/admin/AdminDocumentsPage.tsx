@@ -63,6 +63,7 @@ import type {
 function createEditForm(item: DocumentItem): AdminForm {
   return {
     title: item.title,
+    titleTranslations: item.titleTranslations || {},
     author: item.author,
     executor: item.executor || "",
     scientificAdvisor: item.scientificAdvisor || "",
@@ -112,6 +113,7 @@ function buildDocumentFormData(form: AdminForm) {
   formData.set("description", form.description.trim());
   formData.set("tags", form.tags);
   formData.set("isLocal", String(form.isLocal));
+  formData.set("titleTranslations", JSON.stringify(form.titleTranslations));
 
   if (form.file) {
     formData.set("file", form.file);
@@ -452,11 +454,12 @@ const AdminDocumentsPage: React.FC = () => {
                         <TableCell sx={{ maxWidth: 560 }}>
                           <Typography variant="body2" sx={{
                             display: "-webkit-box",
-                            WebkitLineClamp: 2,
+                            WebkitLineClamp: 4,
                             WebkitBoxOrient: "vertical",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
-                            wordBreak: "break-word"
+                            wordBreak: "break-word",
+                            whiteSpace: "pre-wrap"
                           }}>
                             {item.title}
                           </Typography>
@@ -569,7 +572,8 @@ const AdminDocumentsPage: React.FC = () => {
         open={!!editingDocument}
         title="Редактировать документ"
         subtitle={editingDocument?.title}
-        pdfUrl={editPreviewUrl || (editingDocument ? documentFileUrl(editingDocument.id, token ?? "", false, editingDocument.updatedAt) : "")}
+        pdfUrl={editPreviewUrl || (editingDocument ? documentFileUrl(editingDocument.id, false, editingDocument.updatedAt) : "")}
+        token={token}
         onClose={resetEditing}
         form={editForm}
         setForm={setEditForm}

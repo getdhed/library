@@ -30,7 +30,7 @@ function renderWithProviders(ui: React.ReactNode, route = "/read/1") {
   return render(
     <MemoryRouter initialEntries={[route]}>
       <ThemeProvider>
-        <AuthContext.Provider value={{ token: "token", user: { id: 1, username: "user", role: "user" }, login: vi.fn(), logout: vi.fn(), isLoading: false }}>
+        <AuthContext.Provider value={{ token: "token", user: { id: 1, username: "user", fullName: "User", role: "user", isActive: true, createdAt: "", updatedAt: "" }, login: vi.fn(), register: vi.fn(), logout: vi.fn(), ready: true }}>
           <Routes>
             <Route path="/read/:id" element={ui} />
             <Route path="/submission/:id" element={ui} />

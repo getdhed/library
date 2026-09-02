@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -37,34 +39,34 @@ type Handler struct {
 }
 
 func (h *Handler) changeMyPassword(c *gin.Context) {
-    var input domain.ChangePasswordInput
-    if err := c.ShouldBindJSON(&input); err != nil {
-        writeError(c, apperror.ErrInvalidInput)
-        return
-    }
-    if err := h.service.ChangeMyPassword(c.Request.Context(), currentUserID(c), input); err != nil {
-        writeError(c, err)
-        return
-    }
-    c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	var input domain.ChangePasswordInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	if err := h.service.ChangeMyPassword(c.Request.Context(), currentUserID(c), input); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func (h *Handler) adminResetUserPassword(c *gin.Context) {
-    userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-    if err != nil {
-        writeError(c, apperror.ErrInvalidInput)
-        return
-    }
-    var input domain.ResetPasswordInput
-    if err := c.ShouldBindJSON(&input); err != nil {
-        writeError(c, apperror.ErrInvalidInput)
-        return
-    }
-    if err := h.service.ResetUserPassword(c.Request.Context(), currentUserID(c), currentUserRole(c), userID, input); err != nil {
-        writeError(c, err)
-        return
-    }
-    c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	var input domain.ResetPasswordInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	if err := h.service.ResetUserPassword(c.Request.Context(), currentUserID(c), currentUserRole(c), userID, input); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gin.Engine {
@@ -72,14 +74,38 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
-	router.MaxMultipartMemory = cfg.MaxUploadSizeBytes()
-	router.Use(bodySizeMiddleware(cfg.MaxUploadSizeBytes(), svc))
+	if err := router.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+		logger.Error("invalid trusted proxy configuration; proxy headers disabled", "error", err)
+		_ = router.SetTrustedProxies(nil)
+	}
+	router.MaxMultipartMemory = cfg.MultipartMemoryBytes()
+	router.Use(bodySizeMiddleware(cfg.MaxUploadSizeBytes()))
 	router.Use(requestLogger(logger))
 	router.Use(recoveryLogger(logger))
 	router.Use(corsMiddleware(cfg.CORSOrigins))
 
+	router.GET("/health", handler.health)
+
 	// Swagger documentation
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	// Buffered channel for async API request logging (bounded concurrency).
+	// A single background worker processes log entries sequentially to avoid
+	// spawning unbounded goroutines that can exhaust the DB connection pool.
+	type apiLogEntry struct {
+		method   string
+		path     string
+		status   int
+		duration int
+	}
+	logCh := make(chan apiLogEntry, 256)
+	go func() {
+		for entry := range logCh {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = handler.service.LogAPIRequest(ctx, entry.method, entry.path, entry.status, entry.duration)
+			cancel()
+		}
+	}()
 
 	// Middleware to log API requests for application load tracking
 	router.Use(func(c *gin.Context) {
@@ -87,18 +113,26 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 		c.Next()
 		durationMs := int(time.Since(start).Milliseconds())
 
-		// Do this asynchronously so it doesn't block the request response
-		go func(ctx context.Context, method, path string, status int, duration int) {
-			_ = handler.service.LogAPIRequest(ctx, method, path, status, duration)
-		}(context.Background(), c.Request.Method, c.Request.URL.Path, c.Writer.Status(), durationMs)
+		select {
+		case logCh <- apiLogEntry{
+			method:   c.Request.Method,
+			path:     c.Request.URL.Path,
+			status:   c.Writer.Status(),
+			duration: durationMs,
+		}:
+		default:
+			// Channel full — drop the log entry to protect the server
+		}
 	})
 
 	api := router.Group("/api")
 	{
 		api.POST("/auth/register", rateLimitMiddleware(1.0, 3), handler.register)
 		api.POST("/auth/login", rateLimitMiddleware(2.0, 5), handler.login)
-		api.POST("/stats/visit", handler.logVisit)
+		api.POST("/stats/visit", rateLimitMiddleware(0.1, 2), handler.logVisit)
 		api.GET("/catalog/document-types", handler.listDocumentTypes)
+		api.GET("/catalog/languages", handler.listLanguages)
+		api.GET("/public/background", handler.serveBackground)
 
 		authenticated := api.Group("/")
 		authenticated.Use(rateLimitMiddleware(20.0, 50), handler.requireAuth())
@@ -130,7 +164,7 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 			admin.POST("/documents", handler.adminCreateDocument)
 			admin.PUT("/documents/:id", handler.adminUpdateDocument)
 			admin.DELETE("/documents/:id", handler.adminDeleteDocument)
-			admin.DELETE("/documents/:id/hard", handler.adminHardDeleteDocument)
+			admin.DELETE("/documents/:id/hard", handler.requireRole(domain.RoleSuperAdmin), handler.adminHardDeleteDocument)
 			admin.POST("/documents/:id/restore", handler.adminRestoreDocument)
 			admin.GET("/documents/:id/audit", handler.adminDocumentAudit)
 			admin.GET("/audit", handler.adminAudit)
@@ -147,13 +181,38 @@ func NewRouter(cfg config.Config, svc *service.Service, logger *slog.Logger) *gi
 
 			admin.GET("/backup/db", handler.requireRole(domain.RoleSuperAdmin), handler.adminDownloadDBBackup)
 
+			admin.GET("/document-types", handler.adminListDocumentTypes)
+			admin.POST("/document-types", handler.adminCreateDocumentType)
+			admin.PUT("/document-types/:id", handler.adminUpdateDocumentType)
+			admin.PATCH("/document-types/:id/visibility", handler.adminToggleDocumentTypeVisibility)
+			admin.DELETE("/document-types/:id", handler.adminDeleteDocumentType)
+
+			admin.GET("/languages", handler.adminListLanguages)
+			admin.POST("/languages", handler.adminCreateLanguage)
+			admin.PUT("/languages/:id", handler.adminUpdateLanguage)
+			admin.PATCH("/languages/:id/visibility", handler.adminToggleLanguageVisibility)
+			admin.DELETE("/languages/:id", handler.adminDeleteLanguage)
+
+			admin.POST("/settings/background", handler.requireRole(domain.RoleSuperAdmin), handler.uploadBackground)
+
 			admin.DELETE("/users/:id", handler.adminDeleteUser)
-			admin.DELETE("/users/:id/hard", handler.adminHardDeleteUser)
+			admin.DELETE("/users/:id/hard", handler.requireRole(domain.RoleSuperAdmin), handler.adminHardDeleteUser)
 			admin.POST("/users/:id/restore", handler.adminRestoreUser)
 		}
 	}
 
 	return router
+}
+
+func (h *Handler) health(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+	defer cancel()
+	if err := h.service.Health(ctx); err != nil {
+		h.logger.Warn("health check failed", "error", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func corsMiddleware(origins []string) gin.HandlerFunc {
@@ -190,20 +249,14 @@ func corsMiddleware(origins []string) gin.HandlerFunc {
 	}
 }
 
-func bodySizeMiddleware(maxBytes int64, svc *service.Service) gin.HandlerFunc {
+func bodySizeMiddleware(maxBytes int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		limit := maxBytes
-
-		header := strings.TrimSpace(c.GetHeader("Authorization"))
-		if strings.HasPrefix(header, "Bearer ") {
-			token := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
-			if claims, err := svc.ParseToken(token); err == nil {
-				if claims.Role == domain.RoleSuperAdmin {
-					limit = 250 * 1024 * 1024 // 250 MB
-				}
-			}
+		limit := int64(1 * 1024 * 1024)
+		if strings.HasPrefix(strings.ToLower(c.GetHeader("Content-Type")), "multipart/form-data") {
+			limit = maxBytes
+		} else if maxBytes < limit {
+			limit = maxBytes
 		}
-
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
 		c.Next()
 	}
@@ -226,16 +279,7 @@ func (h *Handler) logVisit(c *gin.Context) {
 
 func (h *Handler) requireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		header := strings.TrimSpace(c.GetHeader("Authorization"))
-		token := ""
-		if strings.HasPrefix(header, "Bearer ") {
-			token = strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
-		} else {
-			path := c.Request.URL.Path
-			if c.Request.Method == http.MethodGet && (strings.HasSuffix(path, "/file") || strings.HasSuffix(path, "/cover")) {
-				token = strings.TrimSpace(c.Query("token"))
-			}
-		}
+		token := authorizationBearerToken(c.Request)
 
 		if token == "" {
 			h.logger.Warn("missing auth token", "path", c.FullPath(), "method", c.Request.Method, "remote_addr", c.ClientIP())
@@ -266,17 +310,31 @@ func (h *Handler) requireAuth() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		if claims.TokenVersion != user.TokenVersion {
+			h.logger.Warn("revoked auth token", "user_id", claims.Sub, "path", c.FullPath())
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_token"})
+			c.Abort()
+			return
+		}
 
 		c.Set(contextUserIDKey, claims.Sub)
-		c.Set(contextUserRoleKey, string(claims.Role))
+		c.Set(contextUserRoleKey, string(user.Role))
 		c.Next()
 	}
+}
+
+func authorizationBearerToken(request *http.Request) string {
+	header := strings.TrimSpace(request.Header.Get("Authorization"))
+	if !strings.HasPrefix(header, "Bearer ") {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
 }
 
 func (h *Handler) requireRole(role domain.UserRole) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		currentRole := c.GetString(contextUserRoleKey)
-		
+
 		hasAccess := false
 		if currentRole == string(role) {
 			hasAccess = true
@@ -544,6 +602,9 @@ func (h *Handler) serveStoredFile(c *gin.Context, relativePath, fileName, conten
 	c.Header("Content-Type", contentType)
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("Referrer-Policy", "no-referrer")
+	if contentType == "application/pdf" {
+		c.Header("Content-Security-Policy", "sandbox")
+	}
 	if dispositionType == "attachment" {
 		c.Header("X-Frame-Options", "DENY")
 	}
@@ -603,7 +664,7 @@ func (h *Handler) serveDocument(c *gin.Context) {
 		}
 	}
 
-	h.serveStoredFile(c, document.FilePath, document.FileName, document.MimeType, dispositionType)
+	h.serveStoredFile(c, document.FilePath, document.FileName, "application/pdf", dispositionType)
 }
 
 // @Summary Download/View submission file
@@ -644,7 +705,7 @@ func (h *Handler) serveSubmissionFile(c *gin.Context) {
 		dispositionType = "attachment"
 	}
 
-	h.serveStoredFile(c, submission.FilePath, submission.FileName, submission.MimeType, dispositionType)
+	h.serveStoredFile(c, submission.FilePath, submission.FileName, "application/pdf", dispositionType)
 }
 
 // @Summary Get document cover image
@@ -749,6 +810,191 @@ func (h *Handler) listDocumentTypes(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) adminListDocumentTypes(c *gin.Context) {
+	page, _ := strconv.Atoi(c.Query("page"))
+	if page < 1 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	if limit < 1 {
+		limit = 50
+	}
+	items, total, err := h.service.ListDocumentTypesFull(c.Request.Context(), page, limit)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items, "total": total, "page": page, "limit": limit})
+}
+
+func (h *Handler) adminCreateDocumentType(c *gin.Context) {
+	var input struct {
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	item, err := h.service.CreateDocumentType(c.Request.Context(), input.Name)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, item)
+}
+
+func (h *Handler) adminUpdateDocumentType(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	var input struct {
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	if err := h.service.UpdateDocumentType(c.Request.Context(), id, input.Name); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) adminDeleteDocumentType(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	if err := h.service.DeleteDocumentType(c.Request.Context(), id); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// @Summary List languages
+// @Tags settings
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Failure 500 {object} map[string]string "error"
+// @Router /catalog/languages [get]
+func (h *Handler) listLanguages(c *gin.Context) {
+	items, err := h.service.Languages(c.Request.Context())
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) adminListLanguages(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+
+	items, total, err := h.service.ListLanguagesFull(c.Request.Context(), page, limit)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"items": items,
+		"total": total,
+	})
+}
+
+func (h *Handler) adminCreateLanguage(c *gin.Context) {
+	var input struct {
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	item, err := h.service.CreateLanguage(c.Request.Context(), input.Name)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, item)
+}
+
+func (h *Handler) adminUpdateLanguage(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	var input struct {
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	if err := h.service.UpdateLanguage(c.Request.Context(), id, input.Name); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.Status(http.StatusOK)
+}
+
+func (h *Handler) adminToggleLanguageVisibility(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	var input struct {
+		IsHidden bool `json:"isHidden"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	if err := h.service.ToggleLanguageVisibility(c.Request.Context(), id, input.IsHidden); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.Status(http.StatusOK)
+}
+
+func (h *Handler) adminDeleteLanguage(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	if err := h.service.DeleteLanguage(c.Request.Context(), id); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) adminToggleDocumentTypeVisibility(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	var input struct {
+		IsHidden bool `json:"isHidden"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeError(c, apperror.ErrInvalidInput)
+		return
+	}
+	if err := h.service.ToggleDocumentTypeVisibility(c.Request.Context(), id, input.IsHidden); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func (h *Handler) profileRecent(c *gin.Context) {
@@ -1146,8 +1392,6 @@ func (h *Handler) adminSetUserStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
-
-
 func (h *Handler) adminDeleteUser(c *gin.Context) {
 	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -1209,6 +1453,13 @@ func parseFilters(c *gin.Context) domain.DocumentFilters {
 		isLocal = &val
 	}
 
+	var hasTranslation *bool
+	hasTranslationQuery := c.Query("hasTranslation")
+	if hasTranslationQuery == "true" {
+		val := true
+		hasTranslation = &val
+	}
+
 	return domain.DocumentFilters{
 		Query:          strings.TrimSpace(c.Query("q")),
 		Type:           strings.TrimSpace(c.Query("type")),
@@ -1217,6 +1468,7 @@ func parseFilters(c *gin.Context) domain.DocumentFilters {
 		Sort:           strings.TrimSpace(c.DefaultQuery("sort", "relevance")),
 		IncludeDeleted: c.Query("includeDeleted") == "1",
 		IsLocal:        isLocal,
+		HasTranslation: hasTranslation,
 		Page:           page,
 		PageSize:       pageSize,
 		YearFrom:       yearFrom,
@@ -1269,6 +1521,10 @@ func writeError(c *gin.Context, err error) {
 			msg = "Пользователь с таким логином уже существует"
 		} else if strings.HasPrefix(path, "/api/admin/submissions") {
 			msg = "Операция недоступна для текущего статуса заявки"
+		} else if strings.HasPrefix(path, "/api/admin/document-types") {
+			msg = "Тип документа с таким названием уже существует"
+		} else if strings.HasPrefix(path, "/api/admin/languages") {
+			msg = "Язык с таким названием уже существует"
 		}
 		c.JSON(http.StatusConflict, gin.H{"error": msg})
 	case apperror.ErrNotFound:
@@ -1305,22 +1561,63 @@ func writeError(c *gin.Context, err error) {
 func (h *Handler) adminDownloadDBBackup(c *gin.Context) {
 	dbURL := h.config.DatabaseURL
 	if dbURL == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "database_url_not_configured"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
+		return
+	}
+
+	tempFile, err := os.CreateTemp("", "library-backup-*.dump")
+	if err != nil {
+		h.logger.Error("failed to create temporary db backup file", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
+		return
+	}
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath)
+	if err := tempFile.Close(); err != nil {
+		h.logger.Error("failed to close temporary db backup file", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Minute)
+	defer cancel()
+
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "pg_dump", "-d", dbURL, "-F", "c", "-f", tempPath)
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		h.logger.Error("failed to generate db backup", "error", err, "stderr", limitedCommandOutput(stderr.String()))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
+		return
+	}
+
+	info, err := os.Stat(tempPath)
+	if err != nil || info.Size() == 0 {
+		h.logger.Error("pg_dump produced an empty db backup", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
+		return
+	}
+
+	stderr.Reset()
+	validate := exec.CommandContext(ctx, "pg_restore", "--list", tempPath)
+	validate.Stdout = io.Discard
+	validate.Stderr = &stderr
+	if err := validate.Run(); err != nil {
+		h.logger.Error("generated db backup failed validation", "error", err, "stderr", limitedCommandOutput(stderr.String()))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
 		return
 	}
 
 	c.Header("Content-Disposition", "attachment; filename=\"library_backup.bak\"")
 	c.Header("Content-Type", "application/octet-stream")
+	c.File(tempPath)
+}
 
-	cmd := exec.Command("pg_dump", "-d", dbURL, "-F", "c")
-	cmd.Stdout = c.Writer
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		h.logger.Error("failed to generate db backup", "error", err)
-		// We might have already written some headers or bytes, so we can't properly send a JSON error.
-		// Just abort the request.
-		c.AbortWithError(http.StatusInternalServerError, err)
-		return
+func limitedCommandOutput(value string) string {
+	const maxLength = 4096
+	value = strings.TrimSpace(value)
+	if len(value) <= maxLength {
+		return value
 	}
+	return value[:maxLength] + "..."
 }

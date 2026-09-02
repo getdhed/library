@@ -5,11 +5,12 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"mime"
 	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -25,14 +26,18 @@ import (
 )
 
 type Service struct {
-	repo     *repository.Repository
-	tokens   *auth.TokenManager
-	files    *storage.FileStorage
-	covers   *preview.Renderer
+	repo   *repository.Repository
+	tokens *auth.TokenManager
+	files  *storage.FileStorage
+	covers *preview.Renderer
 }
 
 func New(repo *repository.Repository, tokens *auth.TokenManager, files *storage.FileStorage, covers *preview.Renderer) *Service {
 	return &Service{repo: repo, tokens: tokens, files: files, covers: covers}
+}
+
+func (s *Service) Health(ctx context.Context) error {
+	return s.repo.Ping(ctx)
 }
 
 var defaultDocumentTypes = []string{
@@ -107,7 +112,11 @@ func (s *Service) Login(ctx context.Context, input domain.LoginInput) (domain.Au
 		time.Sleep(200 * time.Millisecond)
 		return domain.AuthPayload{}, apperror.ErrUnauthorized
 	}
-	if user.DeletedAt == nil && user.IsActive && !user.LastLoginAt.IsZero() {
+	if err := auth.ComparePassword(user.PasswordHash, input.Password); err != nil {
+		time.Sleep(200 * time.Millisecond)
+		return domain.AuthPayload{}, apperror.ErrUnauthorized
+	}
+	if user.Role == domain.RoleUser && user.DeletedAt == nil && user.IsActive && !user.LastLoginAt.IsZero() {
 		months := int(time.Since(user.LastLoginAt).Hours() / 24 / 30)
 		if months >= 6 {
 			user.IsActive = false
@@ -142,11 +151,6 @@ func (s *Service) Login(ctx context.Context, input domain.LoginInput) (domain.Au
 		}
 		return domain.AuthPayload{}, errors.New("Аккаунт не активен. Причина не указана")
 	}
-	if err := auth.ComparePassword(user.PasswordHash, input.Password); err != nil {
-		time.Sleep(200 * time.Millisecond)
-		return domain.AuthPayload{}, apperror.ErrUnauthorized
-	}
-
 	// Best-effort update of last successful login timestamp
 	_ = s.repo.UpdateLastLoginAt(ctx, user.ID)
 
@@ -213,7 +217,7 @@ func (s *Service) CreateAdminUser(ctx context.Context, actorID int64, actorRole 
 
 	password := strings.TrimSpace(input.Password)
 	requirePassword := true
-	
+
 	if input.Role != domain.RoleUser && actorRole != domain.RoleSuperAdmin {
 		return domain.User{}, "", apperror.ErrForbidden
 	}
@@ -246,7 +250,7 @@ func (s *Service) UpdateUser(ctx context.Context, actorID int64, actorRole domai
 	if err := validateAdminUserInput(input, false); err != nil {
 		return domain.User{}, err
 	}
-	
+
 	targetUser, err := s.repo.GetUserByID(ctx, id)
 	if err != nil {
 		return domain.User{}, err
@@ -254,6 +258,9 @@ func (s *Service) UpdateUser(ctx context.Context, actorID int64, actorRole domai
 
 	if input.Role != targetUser.Role && actorRole != domain.RoleSuperAdmin {
 		return domain.User{}, apperror.ErrForbidden // Only superadmin can change roles
+	}
+	if actorID == id && targetUser.Role == domain.RoleSuperAdmin && input.Role != domain.RoleSuperAdmin {
+		return domain.User{}, apperror.ErrForbidden // A superadmin cannot remove their own last-resort access
 	}
 
 	if targetUser.Role != domain.RoleUser && actorRole != domain.RoleSuperAdmin && actorID != id {
@@ -304,13 +311,11 @@ func (s *Service) SetUserActive(ctx context.Context, actorID int64, actorRole do
 	return updatedUser, nil
 }
 
-
-
 func (s *Service) DeleteUser(ctx context.Context, actorID int64, actorRole domain.UserRole, id int64) error {
 	if actorID == id {
 		return apperror.ErrForbidden // Cannot delete yourself
 	}
-	
+
 	targetUser, err := s.repo.GetUserByID(ctx, id)
 	if err != nil {
 		return err
@@ -318,7 +323,7 @@ func (s *Service) DeleteUser(ctx context.Context, actorID int64, actorRole domai
 	if targetUser.Role != domain.RoleUser && actorRole != domain.RoleSuperAdmin {
 		return apperror.ErrForbidden // Only superadmin can delete an admin
 	}
-	
+
 	err = s.repo.DeleteUser(ctx, id)
 	if err == nil {
 		_ = s.logAudit(ctx, domain.CreateAuditEventInput{
@@ -336,15 +341,18 @@ func (s *Service) HardDeleteUser(ctx context.Context, actorID int64, actorRole d
 	if actorID == id {
 		return apperror.ErrForbidden // Cannot delete yourself
 	}
-	
+	if actorRole != domain.RoleSuperAdmin {
+		return apperror.ErrForbidden // Only superadmin can hard delete a user
+	}
+
 	targetUser, err := s.repo.GetUserByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	if actorRole != domain.RoleSuperAdmin {
-		return apperror.ErrForbidden // Only superadmin can hard delete a user
+	if targetUser.DeletedAt == nil {
+		return apperror.ErrConflict
 	}
-	
+
 	err = s.repo.HardDeleteUser(ctx, id)
 	if err == nil {
 		_ = s.logAudit(ctx, domain.CreateAuditEventInput{
@@ -397,6 +405,9 @@ func (s *Service) Home(ctx context.Context, userID int64) (domain.HomePayload, e
 }
 
 func (s *Service) ListDocuments(ctx context.Context, userID int64, filters domain.DocumentFilters, adminMode bool) (domain.PagedDocuments, error) {
+	if !adminMode {
+		filters.IncludeDeleted = false
+	}
 	if userID > 0 && strings.TrimSpace(filters.Query) != "" {
 		if err := s.repo.SaveSearchHistory(ctx, userID, filters.Query); err != nil {
 			return domain.PagedDocuments{}, err
@@ -451,33 +462,67 @@ func (s *Service) SearchHistory(ctx context.Context, userID int64) ([]domain.Sea
 }
 
 func (s *Service) DocumentTypes(ctx context.Context) ([]string, error) {
-	existing, err := s.repo.ListDocumentTypes(ctx)
-	if err != nil {
-		return nil, err
-	}
+	return s.repo.ListDocumentTypes(ctx)
+}
 
-	seen := map[string]struct{}{}
-	types := make([]string, 0, len(defaultDocumentTypes)+len(existing))
-	for _, item := range defaultDocumentTypes {
-		key := strings.ToLower(strings.TrimSpace(item))
-		if key == "" {
-			continue
-		}
-		seen[key] = struct{}{}
-		types = append(types, strings.TrimSpace(item))
+func (s *Service) ListDocumentTypesFull(ctx context.Context, page, limit int) ([]domain.DocumentType, int, error) {
+	return s.repo.ListDocumentTypesFull(ctx, page, limit)
+}
+
+func (s *Service) CreateDocumentType(ctx context.Context, name string) (domain.DocumentType, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return domain.DocumentType{}, apperror.ErrInvalidInput
 	}
-	for _, item := range existing {
-		key := strings.ToLower(strings.TrimSpace(item))
-		if key == "" {
-			continue
-		}
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		types = append(types, strings.TrimSpace(item))
+	return s.repo.CreateDocumentType(ctx, name)
+}
+
+func (s *Service) UpdateDocumentType(ctx context.Context, id int64, newName string) error {
+	newName = strings.TrimSpace(newName)
+	if newName == "" {
+		return apperror.ErrInvalidInput
 	}
-	return types, nil
+	return s.repo.UpdateDocumentType(ctx, id, newName)
+}
+
+func (s *Service) DeleteDocumentType(ctx context.Context, id int64) error {
+	return s.repo.DeleteDocumentType(ctx, id)
+}
+
+func (s *Service) ToggleDocumentTypeVisibility(ctx context.Context, id int64, isHidden bool) error {
+	return s.repo.ToggleDocumentTypeVisibility(ctx, id, isHidden)
+}
+
+func (s *Service) Languages(ctx context.Context) ([]string, error) {
+	return s.repo.ListLanguages(ctx, true)
+}
+
+func (s *Service) ListLanguagesFull(ctx context.Context, page, limit int) ([]domain.Language, int, error) {
+	return s.repo.ListLanguagesFull(ctx, page, limit)
+}
+
+func (s *Service) CreateLanguage(ctx context.Context, name string) (domain.Language, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return domain.Language{}, apperror.ErrInvalidInput
+	}
+	return s.repo.CreateLanguage(ctx, name)
+}
+
+func (s *Service) UpdateLanguage(ctx context.Context, id int64, newName string) error {
+	newName = strings.TrimSpace(newName)
+	if newName == "" {
+		return apperror.ErrInvalidInput
+	}
+	return s.repo.UpdateLanguage(ctx, id, newName)
+}
+
+func (s *Service) DeleteLanguage(ctx context.Context, id int64) error {
+	return s.repo.DeleteLanguage(ctx, id)
+}
+
+func (s *Service) ToggleLanguageVisibility(ctx context.Context, id int64, isHidden bool) error {
+	return s.repo.ToggleLanguageVisibility(ctx, id, isHidden)
 }
 
 func truncateString(s string, max int) string {
@@ -494,7 +539,7 @@ func truncateString(s string, max int) string {
 func (s *Service) ParseSubmissionInput(formValue func(string) string) (domain.CreateSubmissionInput, error) {
 	year := 0
 	if value := strings.TrimSpace(formValue("year")); value != "" {
-		if parsedYear, err := strconv.Atoi(value); err == nil && parsedYear > 0 {
+		if parsedYear, err := strconv.Atoi(value); err == nil && parsedYear >= 0 {
 			year = parsedYear
 		}
 	}
@@ -506,9 +551,16 @@ func (s *Service) ParseSubmissionInput(formValue func(string) string) (domain.Cr
 			isLocal = false
 		}
 	}
+	var translations domain.TitleTranslations
+	if rawTranslations := strings.TrimSpace(formValue("titleTranslations")); rawTranslations != "" {
+		if err := json.Unmarshal([]byte(rawTranslations), &translations); err != nil {
+			return domain.CreateSubmissionInput{}, apperror.ErrInvalidInput
+		}
+	}
 
 	input := domain.CreateSubmissionInput{
 		Title:              truncateString(strings.TrimSpace(formValue("title")), 400),
+		TitleTranslations:  translations,
 		Author:             truncateString(strings.TrimSpace(formValue("author")), 150),
 		Executor:           truncateString(strings.TrimSpace(formValue("executor")), 150),
 		ScientificAdvisor:  truncateString(strings.TrimSpace(formValue("scientificAdvisor")), 150),
@@ -536,7 +588,7 @@ func (s *Service) ParseDocumentInput(formValue func(string) string) (domain.Upse
 		if err != nil {
 			return domain.UpsertDocumentInput{}, apperror.ErrInvalidInput
 		}
-		if parsedYear > 0 {
+		if parsedYear >= 0 {
 			year = parsedYear
 		}
 	}
@@ -549,8 +601,16 @@ func (s *Service) ParseDocumentInput(formValue func(string) string) (domain.Upse
 		}
 	}
 
+	var translations domain.TitleTranslations
+	if rawTranslations := strings.TrimSpace(formValue("titleTranslations")); rawTranslations != "" {
+		if err := json.Unmarshal([]byte(rawTranslations), &translations); err != nil {
+			return domain.UpsertDocumentInput{}, apperror.ErrInvalidInput
+		}
+	}
+
 	input := domain.UpsertDocumentInput{
 		Title:              truncateString(strings.TrimSpace(formValue("title")), 400),
+		TitleTranslations:  translations,
 		Author:             truncateString(strings.TrimSpace(formValue("author")), 150),
 		Executor:           truncateString(strings.TrimSpace(formValue("executor")), 150),
 		ScientificAdvisor:  truncateString(strings.TrimSpace(formValue("scientificAdvisor")), 150),
@@ -571,19 +631,38 @@ func (s *Service) ParseDocumentInput(formValue func(string) string) (domain.Upse
 }
 
 func (s *Service) SaveMultipartFile(file multipart.File, header *multipart.FileHeader) (string, int64, string, error) {
+	if file == nil || header == nil || !strings.EqualFold(filepath.Ext(header.Filename), ".pdf") {
+		if file != nil {
+			_ = file.Close()
+		}
+		return "", 0, "", apperror.ErrInvalidInput
+	}
+
+	probe := make([]byte, 512)
+	readBytes, readErr := io.ReadFull(file, probe)
+	if readErr != nil && !errors.Is(readErr, io.EOF) && !errors.Is(readErr, io.ErrUnexpectedEOF) {
+		_ = file.Close()
+		return "", 0, "", apperror.ErrInvalidInput
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		_ = file.Close()
+		return "", 0, "", err
+	}
+	if readBytes < 5 || http.DetectContentType(probe[:readBytes]) != "application/pdf" {
+		_ = file.Close()
+		return "", 0, "", apperror.ErrInvalidInput
+	}
+
 	relative, size, err := s.files.SavePDF(file, header)
 	if err != nil {
 		return "", 0, "", err
 	}
+	if err := s.validatePDFPath(s.files.Resolve(relative), relative); err != nil {
+		_ = s.files.Delete(relative)
+		return "", 0, "", apperror.ErrInvalidInput
+	}
 
-	contentType := header.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = mime.TypeByExtension(filepath.Ext(header.Filename))
-	}
-	if contentType == "" {
-		contentType = "application/pdf"
-	}
-	return relative, size, contentType, nil
+	return relative, size, "application/pdf", nil
 }
 
 func (s *Service) logAudit(ctx context.Context, input domain.CreateAuditEventInput) error {
@@ -875,12 +954,15 @@ func (s *Service) RestoreDocument(ctx context.Context, id int64, actorID int64) 
 }
 
 func (s *Service) HardDeleteDocument(ctx context.Context, id int64, actorID int64, actorRole domain.UserRole) error {
+	if actorRole != domain.RoleSuperAdmin {
+		return apperror.ErrForbidden
+	}
 	document, err := s.repo.GetDocumentByID(ctx, 0, id, true)
 	if err != nil {
 		return err
 	}
-	if actorRole != domain.RoleAdmin && actorRole != domain.RoleSuperAdmin {
-		return apperror.ErrForbidden
+	if document.DeletedAt == nil {
+		return apperror.ErrConflict
 	}
 
 	if err := s.logAudit(ctx, domain.CreateAuditEventInput{
@@ -895,16 +977,16 @@ func (s *Service) HardDeleteDocument(ctx context.Context, id int64, actorID int6
 	}); err != nil {
 		return err
 	}
-	
+
 	if err := s.repo.HardDeleteDocument(ctx, id); err != nil {
 		return err
 	}
-	
+
 	_ = s.files.Delete(document.FilePath)
 	if document.CoverPath != "" {
 		_ = s.files.Delete(document.CoverPath)
 	}
-	
+
 	return nil
 }
 
@@ -1063,63 +1145,101 @@ func (s *Service) validatePDFPath(path, label string) error {
 }
 
 func (s *Service) ArchiveOldLogs(ctx context.Context) error {
-	// Define the threshold: 4 months ago
+	// Audit/API logs and analytics have different retention windows. Run each
+	// cleanup independently so an empty audit archive never prevents analytics
+	// tables from being pruned.
 	threshold := time.Now().AddDate(0, -4, 0)
-	
-	// 1. Delete old api_requests_log (no need to export)
+	analyticsThreshold := time.Now().AddDate(0, -6, 0)
+
+	var cleanupErrors []error
 	if err := s.repo.DeleteOldAPIRequests(ctx, threshold); err != nil {
-		return err
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("delete old API request logs: %w", err))
 	}
-	
-	// 2. Export old document_audit_events
+	if err := s.repo.DeleteOldDocumentViews(ctx, analyticsThreshold); err != nil {
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("delete old document views: %w", err))
+	}
+	if err := s.repo.DeleteOldDocumentDownloads(ctx, analyticsThreshold); err != nil {
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("delete old document downloads: %w", err))
+	}
+	if err := s.repo.DeleteOldSearchHistory(ctx, analyticsThreshold); err != nil {
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("delete old search history: %w", err))
+	}
+	if err := s.repo.DeleteOldSiteVisits(ctx, analyticsThreshold); err != nil {
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("delete old site visits: %w", err))
+	}
+
 	events, err := s.repo.GetOldAuditEvents(ctx, threshold)
 	if err != nil {
-		return err
+		return errors.Join(append(cleanupErrors, fmt.Errorf("load old audit events: %w", err))...)
 	}
-	
+
 	if len(events) == 0 {
-		return nil
+		return errors.Join(cleanupErrors...)
 	}
-	
-	filename := fmt.Sprintf("audit_archive_%s.csv", time.Now().Format("2006-01-02_15-04-05"))
+
+	filename := fmt.Sprintf("audit_archive_%s.csv", time.Now().Format("2006-01-02_15-04-05.000000000"))
 	archivePath := s.files.Resolve(filepath.Join("archives", filename))
-	
-	file, err := os.Create(archivePath)
+	temporaryPath := archivePath + ".part"
+
+	file, err := os.Create(temporaryPath)
 	if err != nil {
-		return err
+		return errors.Join(append(cleanupErrors, fmt.Errorf("create audit archive: %w", err))...)
 	}
-	defer file.Close()
-	
+	archiveComplete := false
+	defer func() {
+		if !archiveComplete {
+			_ = file.Close()
+			_ = os.Remove(temporaryPath)
+		}
+	}()
+
 	writer := csv.NewWriter(file)
-	
-	// Write header
-	writer.Write([]string{"ID", "Action", "DocumentID", "DocumentTitle", "FileName", "ActorID", "ActorUsername", "ActorName", "CreatedAt"})
-	
+	if err := writer.Write([]string{"ID", "Action", "DocumentID", "SubmissionID", "DocumentTitle", "FileName", "ActorID", "ActorUsername", "ActorName", "Details", "CreatedAt"}); err != nil {
+		return errors.Join(append(cleanupErrors, fmt.Errorf("write audit archive header: %w", err))...)
+	}
+
 	for _, e := range events {
-		writer.Write([]string{
+		rawDetails, marshalErr := json.Marshal(e.Details)
+		if marshalErr != nil {
+			return errors.Join(append(cleanupErrors, fmt.Errorf("marshal audit event %d details: %w", e.ID, marshalErr))...)
+		}
+		if err := writer.Write([]string{
 			fmt.Sprint(e.ID),
 			e.Action,
 			fmt.Sprint(e.DocumentID),
+			fmt.Sprint(e.SubmissionID),
 			e.DocumentTitle,
 			e.FileName,
 			fmt.Sprint(e.ActorID),
 			e.ActorUsername,
 			e.ActorName,
+			string(rawDetails),
 			e.CreatedAt.Format(time.RFC3339),
-		})
+		}); err != nil {
+			return errors.Join(append(cleanupErrors, fmt.Errorf("write audit event %d: %w", e.ID, err))...)
+		}
 	}
-	
+
 	writer.Flush()
 	if err := writer.Error(); err != nil {
-		return err
+		return errors.Join(append(cleanupErrors, fmt.Errorf("flush audit archive: %w", err))...)
 	}
-	
-	// 3. Delete from DB
+	if err := file.Sync(); err != nil {
+		return errors.Join(append(cleanupErrors, fmt.Errorf("sync audit archive: %w", err))...)
+	}
+	if err := file.Close(); err != nil {
+		return errors.Join(append(cleanupErrors, fmt.Errorf("close audit archive: %w", err))...)
+	}
+	if err := os.Rename(temporaryPath, archivePath); err != nil {
+		return errors.Join(append(cleanupErrors, fmt.Errorf("publish audit archive: %w", err))...)
+	}
+	archiveComplete = true
+
 	if err := s.repo.DeleteOldAuditEvents(ctx, threshold); err != nil {
-		return err
+		return errors.Join(append(cleanupErrors, fmt.Errorf("delete archived audit events: %w", err))...)
 	}
-	
-	return nil
+
+	return errors.Join(cleanupErrors...)
 }
 
 func (s *Service) LogVisit(ctx context.Context) error {

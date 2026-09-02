@@ -49,14 +49,13 @@ const {
 }));
 
 vi.mock("../../api/library", () => ({
-  createAdminUser: (...args: unknown[]) => createAdminUserMock(...args),
-  getAdminUsers: (...args: unknown[]) => getAdminUsersMock(...args),
-  resetAdminUserPassword: (...args: unknown[]) =>
-    resetAdminUserPasswordMock(...args),
-  setAdminUserStatus: (...args: unknown[]) => setAdminUserStatusMock(...args),
-  updateAdminUser: (...args: unknown[]) => updateAdminUserMock(...args),
-  getAdminStats: (...args: unknown[]) => getAdminStatsMock(...args),
-  getAdminSubmissions: (...args: unknown[]) => getAdminSubmissionsMock(...args),
+  createAdminUser: createAdminUserMock,
+  getAdminUsers: getAdminUsersMock,
+  resetAdminUserPassword: resetAdminUserPasswordMock,
+  setAdminUserStatus: setAdminUserStatusMock,
+  updateAdminUser: updateAdminUserMock,
+  getAdminStats: getAdminStatsMock,
+  getAdminSubmissions: getAdminSubmissionsMock,
 }));
 
 function renderPage() {
@@ -116,6 +115,9 @@ describe("AdminUsersPage", () => {
     fireEvent.change(usernameInput, {
       target: { value: "newreader" },
     });
+    fireEvent.change(await screen.findByLabelText("Пароль"), {
+      target: { value: "secret123" },
+    });
     
     fireEvent.click(screen.getByRole("button", { name: "Создать" }));
 
@@ -126,6 +128,7 @@ describe("AdminUsersPage", () => {
           username: "newreader",
           fullName: "New Reader",
           role: "user",
+          password: "secret123",
         })
       );
     });

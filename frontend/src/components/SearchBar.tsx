@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, IconButton, InputBase, Paper, Button, Typography, type SxProps, type Theme } from "@mui/material";
-import SearchIcon from "@mui/icons-material/Search";
+import { Search as SearchIcon } from "@mui/icons-material";
 
 type DropdownItem = {
   key: string | number;

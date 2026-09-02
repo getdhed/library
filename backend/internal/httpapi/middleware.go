@@ -58,6 +58,8 @@ func recoveryLogger(logger *slog.Logger) gin.HandlerFunc {
 }
 
 func rateLimitMiddleware(limitRequestsPerSecond float64, burst int) gin.HandlerFunc {
+	const maxTrackedClients = 10_000
+
 	type client struct {
 		limiter  *rate.Limiter
 		lastSeen time.Time
@@ -83,11 +85,18 @@ func rateLimitMiddleware(limitRequestsPerSecond float64, burst int) gin.HandlerF
 
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
+		now := time.Now()
 		mu.Lock()
 		if _, found := clients[ip]; !found {
+			if len(clients) >= maxTrackedClients {
+				mu.Unlock()
+				c.JSON(http.StatusTooManyRequests, gin.H{"error": "too_many_requests"})
+				c.Abort()
+				return
+			}
 			clients[ip] = &client{limiter: rate.NewLimiter(rate.Limit(limitRequestsPerSecond), burst)}
 		}
-		clients[ip].lastSeen = time.Now()
+		clients[ip].lastSeen = now
 		limiter := clients[ip].limiter
 		mu.Unlock()
 

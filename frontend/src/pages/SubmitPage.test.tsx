@@ -7,7 +7,8 @@ import SubmitPage from "./SubmitPage";
 
 vi.mock("../api/library", () => ({
   createSubmission: vi.fn(),
-  getDocumentTypes: vi.fn().mockResolvedValue({ items: ["Учебник"] }),
+  getDocumentTypes: vi.fn().mockResolvedValue({ items: ["Другое", "Учебник"] }),
+  getLanguages: vi.fn().mockResolvedValue({ items: [] }),
 }));
 
 import {
@@ -116,6 +117,9 @@ describe("SubmitPage", () => {
     fireEvent.change(screen.getByPlaceholderText("Название документа"), {
       target: { value: "Distributed Systems" },
     });
+    const sourceToggle = document.querySelector('input[name="isLocal"]');
+    expect(sourceToggle).not.toBeNull();
+    fireEvent.click(sourceToggle!);
     // file is already uploaded above
 
     const submitButton = screen.getByRole("button", { name: "Отправить на проверку" });
@@ -126,6 +130,9 @@ describe("SubmitPage", () => {
         screen.getByRole("button", { name: "Отправка..." })
       ).toBeDisabled();
     });
+
+    const submittedForm = vi.mocked(createSubmission).mock.calls[0][1];
+    expect(submittedForm.get("isLocal")).toBe("false");
 
     resolveSubmission?.();
 

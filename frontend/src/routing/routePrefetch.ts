@@ -18,6 +18,7 @@ export const routeLoaders = {
   adminStats: () => import("../pages/admin/AdminStatsPage"),
   adminUsers: () => import("../pages/admin/AdminUsersPage"),
   adminAudit: () => import("../pages/admin/AdminAuditPage"),
+  adminSettings: () => import("../pages/admin/AdminSettingsPage"),
   login: () => import("../pages/LoginPage"),
   register: () => import("../pages/RegisterPage"),
 } as const;

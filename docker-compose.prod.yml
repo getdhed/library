@@ -1,7 +1,11 @@
-version: '3.8'
-
+# Production is published by IIS on the Windows host. This overlay does not
+# start nginx and does not expose any container port on a public interface.
 services:
+  backend:
+    environment:
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1,::1,172.16.0.0/12}
+
   frontend:
     environment:
-      VITE_API_URL: /api
-      VITE_BACKEND_URL: /
+      BACKEND_PROXY_TARGET: ${BACKEND_PROXY_TARGET:-http://backend:8080}

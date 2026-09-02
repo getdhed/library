@@ -15,6 +15,7 @@ export interface User {
 export interface DocumentItem {
   id: number;
   title: string;
+  titleTranslations?: Record<string, string>;
   author: string;
   executor?: string;
   scientificAdvisor?: string;
@@ -39,13 +40,27 @@ export interface DocumentItem {
   viewsCount: number;
 }
 
+export interface DocumentTypeItem {
+  id: number;
+  name: string;
+  isHidden: boolean;
+}
+
+export interface LanguageItem {
+  id: number;
+  name: string;
+  isHidden: boolean;
+}
+
 export type SubmissionStatus = "pending" | "approved" | "rejected";
+export type SubmissionSource = "user_upload" | "admin_import";
 
 export interface SubmissionItem {
   id: number;
   userId: number;
   title: string;
-  source: string;
+  titleTranslations?: Record<string, string>;
+  source: SubmissionSource;
   author?: string;
   executor?: string;
   scientificAdvisor?: string;
@@ -74,7 +89,7 @@ export interface SubmissionItem {
   updatedAt: string;
   uploaderName?: string;
   uploaderUsername?: string;
-  isLocal?: boolean;
+  isLocal: boolean;
 }
 
 

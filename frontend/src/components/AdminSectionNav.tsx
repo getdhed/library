@@ -2,10 +2,12 @@ import React, { useEffect, useState } from "react";
 import { Badge, Button, Stack } from "@mui/material";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
-import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
 import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ArchiveOutlinedIcon from "@mui/icons-material/ArchiveOutlined";
+import {
+  PeopleAltOutlined as PeopleAltOutlinedIcon,
+  SettingsRounded as SettingsRoundedIcon,
+} from "@mui/icons-material";
 import { NavLink } from "react-router-dom";
 import CheckCircleOutlineRoundedIcon from "@mui/icons-material/CheckCircleOutlineRounded";
 import { useAuth } from "../auth/AuthContext";
@@ -42,10 +44,15 @@ const sections = [
     label: "Архив",
     icon: <ArchiveOutlinedIcon fontSize="small" />,
   },
+  {
+    to: "/admin/settings",
+    label: "Настройки",
+    icon: <SettingsRoundedIcon fontSize="small" />,
+  },
 ];
 
 const AdminSectionNav: React.FC = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
@@ -61,9 +68,11 @@ const AdminSectionNav: React.FC = () => {
     return () => window.removeEventListener("admin_submissions_changed", fetchCount);
   }, [token]);
 
+  const displaySections = sections;
+
   return (
     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap aria-label="Разделы админки">
-      {sections.map((section) => {
+      {displaySections.map((section) => {
         const isModeration = section.to === "/admin/moderation";
         return (
           <Button
@@ -111,4 +120,3 @@ const AdminSectionNav: React.FC = () => {
 };
 
 export default AdminSectionNav;
-

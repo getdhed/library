@@ -73,7 +73,7 @@ const DocumentListItem: React.FC<Props> = ({
               <Chip size="small" color="secondary" variant="outlined" label="Прочие источники" />
             )}
             <Typography variant="caption" color="text.secondary">
-              {item.year > 0 ? item.year : "—"}
+              {item.year > 0 ? item.year : "без года"}
             </Typography>
             <Stack direction="row" spacing={0.5} alignItems="center" sx={{ color: "text.disabled" }}>
               <VisibilityRounded sx={{ fontSize: "1.1rem" }} />
@@ -87,6 +87,11 @@ const DocumentListItem: React.FC<Props> = ({
             sx={{
               lineHeight: 1.2,
               letterSpacing: "0.01em",
+              display: "-webkit-box",
+              WebkitLineClamp: 7,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+              whiteSpace: "pre-wrap",
             }}
           >
             {item.title}

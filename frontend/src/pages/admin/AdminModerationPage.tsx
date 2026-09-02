@@ -25,7 +25,8 @@ import {
 } from "../../components/DocumentFormFields";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
-import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
+import { PictureAsPdfRounded as PictureAsPdfRoundedIcon } from "@mui/icons-material";
+import { Link } from "react-router-dom";
 import {
   approveSubmission,
   getAdminSubmissions,
@@ -51,10 +52,11 @@ type ModerationFilterValue = SubmissionStatus | "";
 function createApprovalForm(item: SubmissionItem): AdminForm {
   return {
     title: item.title,
+    titleTranslations: item.titleTranslations || {},
     author: item.author || "",
     executor: item.executor || "",
     scientificAdvisor: item.scientificAdvisor || "",
-    year: item.year || new Date().getFullYear(),
+    year: item.year ?? 0,
     type: item.type || "Учебник",
     placeOfPublication: item.placeOfPublication || "",
     publisher: item.publisher || "",
@@ -62,6 +64,7 @@ function createApprovalForm(item: SubmissionItem): AdminForm {
     volume: item.volume || "",
     description: item.description || "",
     tags: item.tags || "",
+    isLocal: item.isLocal,
     file: null,
   };
 }
@@ -120,6 +123,8 @@ function buildDocumentFormData(form: AdminForm) {
   formData.set("volume", form.volume.trim());
   formData.set("description", form.description.trim());
   formData.set("tags", form.tags);
+  formData.set("isLocal", String(form.isLocal));
+  formData.set("titleTranslations", JSON.stringify(form.titleTranslations));
 
   if (form.file) {
     formData.set("file", form.file);
@@ -367,8 +372,8 @@ const AdminModerationPage: React.FC = () => {
                           <Button
                             size="small"
                             variant="outlined"
-                            component="a"
-                            href={submissionFileUrl(item.id, token ?? "", false, item.updatedAt)}
+                            component={Link}
+                            to={`/submissions/${item.id}/read`}
                             target="_blank"
                             rel="noopener noreferrer"
                           >
@@ -404,7 +409,8 @@ const AdminModerationPage: React.FC = () => {
         open={!!approvingSubmission}
         title="Одобрить заявку"
         subtitle={approvingSubmission?.title}
-        pdfUrl={approvePreviewUrl || (approvingSubmission ? submissionFileUrl(approvingSubmission.id, token ?? "", false, approvingSubmission.updatedAt) : "")}
+        pdfUrl={approvePreviewUrl || (approvingSubmission ? submissionFileUrl(approvingSubmission.id, false, approvingSubmission.updatedAt) : "")}
+        token={token}
         onClose={resetApproving}
         form={approveForm}
         setForm={setApproveForm}

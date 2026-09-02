@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useEffect } from "react";
 import { request } from "./api/client";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
-import { AdminRoute, ProtectedRoute } from "./components/ProtectedRoute";
+import { AdminRoute, ProtectedRoute, SuperAdminRoute } from "./components/ProtectedRoute";
 import Seo, { type SeoProps } from "./components/Seo";
 import { routeLoaders } from "./routing/routePrefetch";
 
@@ -21,6 +21,7 @@ const AdminArchivePage = lazy(routeLoaders.adminTrash);
 const AdminStatsPage = lazy(routeLoaders.adminStats);
 const AdminUsersPage = lazy(routeLoaders.adminUsers);
 const AdminAuditPage = lazy(routeLoaders.adminAudit);
+const AdminSettingsPage = lazy(routeLoaders.adminSettings);
 const LoginPage = lazy(routeLoaders.login);
 const RegisterPage = lazy(routeLoaders.register);
 
@@ -248,6 +249,20 @@ const App: React.FC = () => {
                 description: "Журнал действий в библиотеке.",
                 noIndex: true,
                 canonicalPath: "/admin/audit",
+              }
+            )}
+          />
+          <Route
+            path="/admin/settings"
+            element={withSeo(
+              <AdminRoute>
+                <AdminSettingsPage />
+              </AdminRoute>,
+              {
+                title: "Управление: настройки",
+                description: "Общие настройки библиотеки.",
+                noIndex: true,
+                canonicalPath: "/admin/settings",
               }
             )}
           />

@@ -13,7 +13,7 @@ import { createSubmission, getDocumentTypes } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
 import { PageShell } from "../components/mui-primitives";
 import { DocumentFormFields, type AdminForm, createEmptyForm } from "../components/DocumentFormFields";
-import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
+import { PictureAsPdfRounded as PictureAsPdfRoundedIcon } from "@mui/icons-material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import PdfViewer from "../components/PdfViewer";
 
@@ -77,11 +77,11 @@ const SubmitPage: React.FC = () => {
       setError("Выберите тип документа.");
       return;
     }
-    if (!Number.isInteger(form.year) || form.year < 1 || form.year > 2100) {
+    if (!Number.isInteger(form.year) || (form.year !== 0 && (form.year < 1 || form.year > 2100))) {
       setError("Введите корректный год.");
       return;
     }
-    const maxSizeMB = user?.role === "superadmin" ? 250 : 100;
+    const maxSizeMB = 50;
     if (form.file && form.file.size > maxSizeMB * 1024 * 1024) {
       setError(`Размер файла не должен превышать ${maxSizeMB} МБ.`);
       return;
@@ -105,6 +105,9 @@ const SubmitPage: React.FC = () => {
     if (form.volume.trim()) formData.set("volume", form.volume.trim());
     if (form.description.trim()) formData.set("description", form.description.trim());
     if (form.tags.trim()) formData.set("tags", form.tags.trim());
+
+    formData.set("titleTranslations", JSON.stringify(form.titleTranslations || {}));
+    formData.set("isLocal", String(form.isLocal));
 
     if (comment.trim()) {
       formData.set("comment", comment.trim());

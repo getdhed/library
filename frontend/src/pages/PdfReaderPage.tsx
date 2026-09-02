@@ -23,6 +23,7 @@ import {
   getDocumentTypes,
   deleteDocument,
 } from "../api/library";
+import { downloadProtectedFile } from "../api/protectedFiles";
 import { useAuth } from "../auth/AuthContext";
 import { type AdminForm, createEmptyForm } from "../components/DocumentFormFields";
 import { AdminDocumentFullView } from "../components/AdminDocumentFullView";
@@ -82,10 +83,11 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
         // Initialize edit form with current document metadata for immediate edit/preview
         setEditForm({
           title: document.title || "",
+          titleTranslations: document.titleTranslations || {},
           author: document.author || "",
           executor: document.executor || "",
           scientificAdvisor: document.scientificAdvisor || "",
-          year: document.year || new Date().getFullYear(),
+          year: document.year ?? new Date().getFullYear(),
           type: document.type || "Учебник",
           placeOfPublication: document.placeOfPublication || "",
           publisher: document.publisher || "",
@@ -138,8 +140,8 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
       return "";
     }
     return kind === "document"
-      ? documentFileUrl(numericId, token, false, version)
-      : submissionFileUrl(numericId, token, false, version);
+      ? documentFileUrl(numericId, false, version)
+      : submissionFileUrl(numericId, false, version);
   }, [kind, numericId, token, version]);
 
   const downloadUrl = useMemo(() => {
@@ -147,8 +149,8 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
       return "";
     }
     return kind === "document"
-      ? documentFileUrl(numericId, token, true, version)
-      : submissionFileUrl(numericId, token, true, version);
+      ? documentFileUrl(numericId, true, version)
+      : submissionFileUrl(numericId, true, version);
   }, [kind, numericId, token, version]);
 
   function requestFullscreen() {
@@ -164,6 +166,7 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
     try {
       const formData = new FormData();
       formData.append("title", editForm.title);
+      formData.append("titleTranslations", JSON.stringify(editForm.titleTranslations || {}));
       formData.append("author", editForm.author);
       formData.append("executor", editForm.executor);
       formData.append("scientificAdvisor", editForm.scientificAdvisor);
@@ -271,8 +274,12 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
             </Button>
           )}
           <Button
-            component="a"
-            href={downloadUrl}
+            type="button"
+            onClick={() => {
+              if (token && downloadUrl) {
+                void downloadProtectedFile(downloadUrl, token, fileName).catch(console.error);
+              }
+            }}
             variant="outlined"
             color="inherit"
             startIcon={<DownloadIcon />}
@@ -306,7 +313,7 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
             </Box>
           )}
           {!isLoading && !error && fileUrl && (
-            <PdfViewer url={fileUrl} />
+            <PdfViewer url={fileUrl} token={token} />
           )}
         </Box>
       </Box>
@@ -317,6 +324,7 @@ const PdfReaderPage: React.FC<PdfReaderPageProps> = ({ kind }) => {
           title="Редактировать документ"
           subtitle={title}
           pdfUrl={modalPdfUrl}
+          token={token}
           onClose={closeEdit}
           form={editForm}
           setForm={setEditForm}

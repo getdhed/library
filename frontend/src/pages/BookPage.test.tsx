@@ -6,7 +6,7 @@ import { AuthContext } from "../auth/AuthContext";
 import BookPage from "./BookPage";
 
 vi.mock("../api/library", () => ({
-  documentFileUrl: vi.fn((id: number, _token: string, download?: boolean) =>
+  documentFileUrl: vi.fn((id: number, download?: boolean) =>
     download ? `/api/documents/${id}/file?download=1` : `/api/documents/${id}/file`
   ),
   favoriteDocument: vi.fn(),

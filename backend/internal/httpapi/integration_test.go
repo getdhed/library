@@ -78,15 +78,15 @@ func setupTestRouter(t *testing.T) (*gin.Engine, *sql.DB, context.Context, conte
 	repo := repository.New(db)
 	fileStorage := storage.New(t.TempDir())
 	renderer, _ := preview.New()
-	
+
 	cfg := config.Config{
 		JWTSecret:       "test-secret",
 		TokenTTL:        24 * time.Hour,
 		MaxUploadSizeMB: 100,
 	}
-	
+
 	tokens := auth.NewTokenManager("test-secret", 24*time.Hour)
-	
+
 	svc := service.New(repo, tokens, fileStorage, renderer)
 	router := NewRouter(cfg, svc, logger)
 
@@ -130,7 +130,7 @@ func TestHTTP_AuthFlow(t *testing.T) {
 	if w2.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d. body: %s", w2.Code, w2.Body.String())
 	}
-	
+
 	var userResponse domain.User
 	if err := json.Unmarshal(w2.Body.Bytes(), &userResponse); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
@@ -155,7 +155,7 @@ func TestHTTP_Home(t *testing.T) {
 	req1.Header.Set("Content-Type", "application/json")
 	w1 := httptest.NewRecorder()
 	router.ServeHTTP(w1, req1)
-	
+
 	var authResponse domain.AuthPayload
 	json.Unmarshal(w1.Body.Bytes(), &authResponse)
 
@@ -184,7 +184,7 @@ func TestHTTP_AdminProtect(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	
+
 	var authResponse domain.AuthPayload
 	json.Unmarshal(w.Body.Bytes(), &authResponse)
 
@@ -198,12 +198,23 @@ func TestHTTP_AdminProtect(t *testing.T) {
 		t.Fatalf("expected status 403 Forbidden, got %d", w2.Code)
 	}
 
+	// The signed role claim is informational only. Authorization must use the
+	// current role stored in the database.
+	tokens := auth.NewTokenManager("test-secret", 24*time.Hour)
+	forgedRoleToken, _ := tokens.Create(domain.User{ID: authResponse.User.ID, Role: domain.RoleSuperAdmin})
+	forgedReq, _ := http.NewRequest(http.MethodGet, "/api/admin/users", nil)
+	forgedReq.Header.Set("Authorization", "Bearer "+forgedRoleToken)
+	forgedResponse := httptest.NewRecorder()
+	router.ServeHTTP(forgedResponse, forgedReq)
+	if forgedResponse.Code != http.StatusForbidden {
+		t.Fatalf("expected database role to reject forged claim with 403, got %d", forgedResponse.Code)
+	}
+
 	// Register admin user directly via DB since API doesn't allow registering admins directly
 	var adminID int64
 	db.QueryRow("INSERT INTO users(username, password_hash, full_name, role) VALUES ('admin2', 'hash', 'Admin', 'admin') RETURNING id").Scan(&adminID)
 
 	// Actually, easier to use auth.TokenManager to generate a token for admin2
-	tokens := auth.NewTokenManager("test-secret", 24*time.Hour)
 	adminToken, _ := tokens.Create(domain.User{ID: adminID, Role: domain.RoleAdmin})
 
 	req3, _ := http.NewRequest(http.MethodGet, "/api/admin/users", nil)
@@ -213,6 +224,17 @@ func TestHTTP_AdminProtect(t *testing.T) {
 
 	if w3.Code != http.StatusOK {
 		t.Fatalf("expected status 200 OK for admin, got %d", w3.Code)
+	}
+
+	if _, err := db.Exec(`UPDATE users SET role = 'user', token_version = token_version + 1 WHERE id = $1`, adminID); err != nil {
+		t.Fatalf("demote admin: %v", err)
+	}
+	revokedReq, _ := http.NewRequest(http.MethodGet, "/api/admin/users", nil)
+	revokedReq.Header.Set("Authorization", "Bearer "+adminToken)
+	revokedResponse := httptest.NewRecorder()
+	router.ServeHTTP(revokedResponse, revokedReq)
+	if revokedResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("expected stale token to be rejected with 401, got %d", revokedResponse.Code)
 	}
 }
 

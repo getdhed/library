@@ -10,7 +10,6 @@ import { useSearchParams, Link } from "react-router-dom";
 import {
   getDocuments,
   getDocumentTypes,
-  markOpened,
   toggleDocumentFavorite,
 } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
@@ -29,6 +28,7 @@ type FilterDraft = {
   tags: string;
   sort: string;
   isLocal: string;
+  hasTranslation: boolean;
 };
 
 const emptyDraft: FilterDraft = {
@@ -39,6 +39,7 @@ const emptyDraft: FilterDraft = {
   tags: "",
   sort: "date_desc",
   isLocal: "",
+  hasTranslation: false,
 };
 
 const BrowsePage: React.FC = () => {
@@ -55,6 +56,7 @@ const BrowsePage: React.FC = () => {
   const tags = params.get("tags") ?? "";
   const sort = params.get("sort") ?? "date_desc";
   const isLocal = params.get("isLocal") ?? "";
+  const hasTranslation = params.get("hasTranslation") === "true";
   const page = Number(params.get("page") ?? 1);
 
   const [searchQuery, setSearchQuery] = useState(q);
@@ -67,6 +69,7 @@ const BrowsePage: React.FC = () => {
     tags,
     sort,
     isLocal,
+    hasTranslation,
   });
 
   useEffect(() => {
@@ -82,8 +85,9 @@ const BrowsePage: React.FC = () => {
       tags,
       sort,
       isLocal,
+      hasTranslation,
     });
-  }, [author, sort, tags, type, yearFrom, yearTo, isLocal]);
+  }, [author, sort, tags, type, yearFrom, yearTo, isLocal, hasTranslation]);
 
   useEffect(() => {
     getDocumentTypes()
@@ -105,10 +109,11 @@ const BrowsePage: React.FC = () => {
       yearTo,
       tags,
       isLocal,
+      hasTranslation: hasTranslation ? "true" : undefined,
       page,
     });
     setPayload(response);
-  }, [q, author, page, sort, tags, token, type, yearFrom, yearTo, isLocal]);
+  }, [q, author, page, sort, tags, token, type, yearFrom, yearTo, isLocal, hasTranslation]);
 
   useEffect(() => {
     loadDocuments().catch(console.error);
@@ -134,11 +139,6 @@ const BrowsePage: React.FC = () => {
     setParams(copy);
   }
 
-  function handleQuickOpen(id: number) {
-    if (!token) return;
-    void markOpened(token, id).catch(console.error);
-  }
-
   async function toggleFavorite(id: number, isFavorite: boolean) {
     if (!token) return;
     await toggleDocumentFavorite(token, id, isFavorite);
@@ -155,6 +155,7 @@ const BrowsePage: React.FC = () => {
       tags: draftFilters.tags.trim(),
       sort: draftFilters.sort,
       isLocal: draftFilters.isLocal,
+      hasTranslation: draftFilters.hasTranslation ? "true" : "",
       page: "1",
     });
   }
@@ -175,11 +176,12 @@ const BrowsePage: React.FC = () => {
       tags: "",
       sort: "date_desc",
       isLocal: "",
+      hasTranslation: "",
       page: "1",
     });
   }
 
-  const isSearchActive = Boolean(q || author || type || yearFrom || yearTo || tags || isLocal);
+  const isSearchActive = Boolean(q || author || type || yearFrom || yearTo || tags || isLocal || hasTranslation);
 
   return (
     <PageShell>
@@ -250,6 +252,10 @@ const BrowsePage: React.FC = () => {
               onIsLocalChange={(value) =>
                 setDraftFilters((current) => ({ ...current, isLocal: value }))
               }
+              hasTranslationValue={draftFilters.hasTranslation}
+              onHasTranslationChange={(value) =>
+                setDraftFilters((current) => ({ ...current, hasTranslation: value }))
+              }
               includeSort
               sortValue={draftFilters.sort}
               onSortChange={(value) =>
@@ -280,8 +286,6 @@ const BrowsePage: React.FC = () => {
                   actions={
                     <DocumentCardActions
                       item={item}
-                      token={token}
-                      onOpen={handleQuickOpen}
                       onToggleFavorite={toggleFavorite}
                     />
                   }

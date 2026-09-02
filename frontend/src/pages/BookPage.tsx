@@ -16,7 +16,9 @@ import DownloadIcon from "@mui/icons-material/Download";
 import FavoriteIcon from "@mui/icons-material/Favorite";
 import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
-import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
+import { VisibilityRounded as VisibilityRoundedIcon } from "@mui/icons-material";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import { useParams, Link } from "react-router-dom";
 import {
   documentFileUrl,
@@ -27,6 +29,7 @@ import {
   updateDocument,
   deleteDocument,
 } from "../api/library";
+import { downloadProtectedFile } from "../api/protectedFiles";
 import { useAuth } from "../auth/AuthContext";
 import { ContentCard, PageShell } from "../components/mui-primitives";
 import { AdminDocumentFullView } from "../components/AdminDocumentFullView";
@@ -56,13 +59,14 @@ const BookPage: React.FC = () => {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<AdminForm>({
-    title: "", author: "", executor: "", scientificAdvisor: "", year: new Date().getFullYear(),
+    title: "", titleTranslations: {}, author: "", executor: "", scientificAdvisor: "", year: new Date().getFullYear(),
     type: "", placeOfPublication: "", publisher: "", periodicalName: "", volume: "", description: "", tags: "", isLocal: true, file: null
   });
   const [editFormError, setEditFormError] = useState("");
   const [documentTypes, setDocumentTypes] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editPreviewUrl, setEditPreviewUrl] = useState("");
+  const [showTranslations, setShowTranslations] = useState(true);
   const { token, user } = useAuth();
   const { id } = useParams();
   const isAdmin = user?.role === "admin" || user?.role === "superadmin";
@@ -99,14 +103,12 @@ const BookPage: React.FC = () => {
 
   const downloadUrl = documentFileUrl(
     document.id,
-    token,
     true,
     document.updatedAt
   );
 
   const fileUrl = documentFileUrl(
     document.id,
-    token,
     false,
     document.updatedAt
   );
@@ -133,7 +135,7 @@ const BookPage: React.FC = () => {
   function startEdit() {
     if (!document) return;
     setEditForm({
-      title: document.title, author: document.author, executor: document.executor ?? "",
+      title: document.title, titleTranslations: document.titleTranslations || {}, author: document.author, executor: document.executor ?? "",
       scientificAdvisor: document.scientificAdvisor ?? "", year: document.year,
       type: document.type, placeOfPublication: document.placeOfPublication ?? "",
       publisher: document.publisher ?? "", periodicalName: document.periodicalName ?? "",
@@ -148,7 +150,7 @@ const BookPage: React.FC = () => {
   function validate(form: AdminForm) {
     const missing: string[] = [];
     if (!form.title.trim()) missing.push("название");
-    if (!Number.isFinite(form.year) || form.year <= 0) missing.push("год");
+    if (!Number.isFinite(form.year) || form.year < 0) missing.push("год");
     return missing;
   }
 
@@ -174,6 +176,7 @@ const BookPage: React.FC = () => {
     fd.set("description", editForm.description.trim());
     fd.set("tags", editForm.tags);
     fd.set("isLocal", String(editForm.isLocal));
+    fd.set("titleTranslations", JSON.stringify(editForm.titleTranslations || {}));
     if (editForm.file) fd.set("file", editForm.file);
 
     setIsSubmitting(true);
@@ -219,10 +222,34 @@ const BookPage: React.FC = () => {
             }}
           >
             <Stack spacing={3}>
-              <Box>
-                <Typography component="h1" variant="h4" fontWeight={800} sx={{ lineHeight: 1.2, mb: 1 }}>
+              <Stack spacing={1.5}>
+                <Typography component="h1" variant="h4" fontWeight={800} sx={{ fontSize: "1.75rem", lineHeight: 1.05, whiteSpace: "pre-wrap" }}>
                   {document.title}
                 </Typography>
+                {document.titleTranslations && Object.keys(document.titleTranslations).length > 0 && (
+                  <Box>
+                    <Button
+                      size="small"
+                      onClick={() => setShowTranslations(!showTranslations)}
+                      endIcon={showTranslations ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+                      sx={{ p: 0, minWidth: 'auto', textTransform: 'none', fontSize: '0.85rem', color: 'text.secondary', '&:hover': { background: 'transparent', color: 'text.primary' } }}
+                      disableRipple
+                    >
+                      {showTranslations ? "Скрыть переводы" : "Показать переводы"}
+                    </Button>
+                    <Collapse in={showTranslations}>
+                      <Stack spacing={0} sx={{ mt: 0.5 }}>
+                        {Object.entries(document.titleTranslations).map(([lang, val]) => {
+                          return (
+                            <Typography key={lang} variant="subtitle1" color="text.secondary" sx={{ fontStyle: "italic", lineHeight: 1.3 }}>
+                              {lang}: {val}
+                            </Typography>
+                          );
+                        })}
+                      </Stack>
+                    </Collapse>
+                  </Box>
+                )}
                 {document.author ? (
                   <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
                     {document.author.split(",").map((a) => a.trim()).filter(Boolean).map((authorName, index, arr) => (
@@ -254,21 +281,21 @@ const BookPage: React.FC = () => {
                   </Box>
                 ) : (
                   <Typography variant="h6" sx={{ fontWeight: 500, color: "text.secondary" }}>
-                    не указан
+                    Автор не указан
                   </Typography>
                 )}
-                <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 1.5, color: "text.disabled" }}>
+                <Stack direction="row" spacing={0.5} alignItems="center" sx={{ color: "text.disabled" }}>
                   <VisibilityRoundedIcon sx={{ fontSize: "1.2rem" }} />
                   <Typography variant="body2" fontWeight={500}>
                     {document.viewsCount || 0} {(document.viewsCount || 0) === 1 ? "просмотр" : [2, 3, 4].includes((document.viewsCount || 0) % 10) && !([12, 13, 14].includes((document.viewsCount || 0) % 100)) ? "просмотра" : "просмотров"}
                   </Typography>
                 </Stack>
-              </Box>
+              </Stack>
 
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap" useFlexGap>
                 <Button
-                  component="a"
-                  href={downloadUrl}
+                  type="button"
+                  onClick={() => void downloadProtectedFile(downloadUrl, token, document.fileName).catch(console.error)}
                   variant="contained"
                   startIcon={<DownloadIcon />}
                   sx={{ borderRadius: 0, px: 3 }}
@@ -332,7 +359,7 @@ const BookPage: React.FC = () => {
                   </Box>
                   <Box>
                     <Typography component="span" sx={{ color: "text.secondary", mr: 1 }}>Год издания:</Typography>
-                    <Typography component="span" sx={{ color: "text.primary" }}>{document.year}</Typography>
+                    <Typography component="span" sx={{ color: "text.primary" }}>{document.year > 0 ? document.year : "без года"}</Typography>
                   </Box>
                   {document.volume && (
                     <Box>
@@ -381,7 +408,7 @@ const BookPage: React.FC = () => {
               overflow: "hidden",
             }}
           >
-            <PdfViewer url={fileUrl} />
+            <PdfViewer url={fileUrl} token={token} />
           </ContentCard>
         </Grid>
       </Grid>
@@ -391,7 +418,8 @@ const BookPage: React.FC = () => {
           open={isEditing}
           title="Редактировать документ"
           subtitle={document.title}
-          pdfUrl={editPreviewUrl || documentFileUrl(document.id, token, false, document.updatedAt)}
+          pdfUrl={editPreviewUrl || documentFileUrl(document.id, false, document.updatedAt)}
+          token={token}
           onClose={() => setIsEditing(false)}
           form={editForm}
           setForm={setEditForm}

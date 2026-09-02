@@ -26,8 +26,8 @@ const { getAdminStatsMock, getAdminSubmissionsMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("../../api/library", () => ({
-  getAdminStats: (...args: unknown[]) => getAdminStatsMock(...args),
-  getAdminSubmissions: (...args: unknown[]) => getAdminSubmissionsMock(...args),
+  getAdminStats: getAdminStatsMock,
+  getAdminSubmissions: getAdminSubmissionsMock,
 }));
 
 function renderPage() {

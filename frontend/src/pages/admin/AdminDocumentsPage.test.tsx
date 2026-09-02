@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
         {
           id: 5,
           title: "Документ каталога",
+          titleTranslations: { English: "Catalog document" },
           author: "Иванов",
           year: 2026,
           type: "Методичка",
@@ -26,6 +27,8 @@ const mocks = vi.hoisted(() => ({
           updatedAt: new Date().toISOString(),
           tags: ["tag"],
           isFavorite: false,
+          isLocal: false,
+          viewsCount: 0,
         },
       ],
       page: 1,
@@ -70,9 +73,12 @@ const mocks = vi.hoisted(() => ({
   rejectSubmissionMock: vi.fn(() => Promise.resolve({})),
   submissionFileUrlMock: vi.fn((id: number) => `/api/submissions/${id}/file`),
   getDocumentTypesMock: vi.fn(() =>
-    Promise.resolve({ items: ["Учебник", "Методичка"] })
+    Promise.resolve({ items: ["Учебник", "Методичка", "Другое"] })
   ),
-  updateDocumentMock: vi.fn(() => Promise.resolve({ id: 5 })),
+  getLanguagesMock: vi.fn(() => Promise.resolve({ items: [] })),
+  updateDocumentMock: vi.fn((_token: string, _id: number, _formData: FormData) =>
+    Promise.resolve({ id: 5 })
+  ),
   documentFileUrlMock: vi.fn((id: number) => `/api/documents/${id}/file`),
   documentCoverUrlMock: vi.fn((id: number) => `/api/documents/${id}/cover`),
   getAdminStatsMock: vi.fn(() => Promise.resolve({ documentsCount: 0 })),
@@ -82,11 +88,11 @@ vi.mock("../../api/library", () => ({
   approveSubmission: mocks.approveSubmissionMock,
   createDocument: mocks.createDocumentMock,
   deleteDocument: mocks.deleteDocumentMock,
-  getAdminDocumentAudit: (...args: any[]) =>
-    mocks.getAdminDocumentAuditMock(...args),
+  getAdminDocumentAudit: mocks.getAdminDocumentAuditMock,
   getAdminDocuments: mocks.getAdminDocumentsMock,
   getAdminSubmissions: mocks.getAdminSubmissionsMock,
   getDocumentTypes: mocks.getDocumentTypesMock,
+  getLanguages: mocks.getLanguagesMock,
   rejectSubmission: mocks.rejectSubmissionMock,
   submissionFileUrl: mocks.submissionFileUrlMock,
   documentFileUrl: mocks.documentFileUrlMock,
@@ -183,6 +189,11 @@ describe("AdminDocumentsPage", () => {
     await waitFor(() => {
       expect(updateDocumentMock).toHaveBeenCalledTimes(1);
     });
+    const submittedForm = updateDocumentMock.mock.calls[0][2];
+    expect(submittedForm.get("titleTranslations")).toBe(
+      JSON.stringify({ English: "Catalog document" })
+    );
+    expect(submittedForm.get("isLocal")).toBe("false");
     await waitFor(() => {
       expect(screen.queryByText("Редактировать документ")).not.toBeInTheDocument();
     });

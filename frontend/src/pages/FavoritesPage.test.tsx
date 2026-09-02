@@ -58,6 +58,7 @@ describe("FavoritesPage", () => {
           updatedAt: new Date().toISOString(),
           tags: [],
           isFavorite: true,
+          viewsCount: 0,
         },
       ],
     });

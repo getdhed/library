@@ -74,7 +74,7 @@ describe("Layout", () => {
     ).not.toBeInTheDocument();
 
     expect(screen.getByLabelText("Открыть меню аккаунта")).toBeInTheDocument();
-    expect(screen.getByText(/© Государственный пограничный комитет/i)).toBeInTheDocument();
+    expect(screen.getByText(/Институт пограничной службы Республики Беларусь/i)).toBeInTheDocument();
     expect(screen.queryByLabelText("Открыть меню")).not.toBeInTheDocument();
   });
 

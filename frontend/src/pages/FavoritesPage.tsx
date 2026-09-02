@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Box, Stack, Typography, Paper, InputBase, IconButton, Tooltip } from "@mui/material";
-import SearchIcon from "@mui/icons-material/Search";
+import { Search as SearchIcon } from "@mui/icons-material";
 import DownloadIcon from "@mui/icons-material/Download";
 import FavoriteIcon from "@mui/icons-material/Favorite";
 import { getFavorites, toggleDocumentFavorite, documentFileUrl } from "../api/library";
+import { downloadProtectedFile } from "../api/protectedFiles";
 import { useAuth } from "../auth/AuthContext";
 import { ContentCard, PageShell, cardActionIconButtonSx, cardActionIconButtonActiveSx } from "../components/mui-primitives";
 import PaginatedDocumentList from "../components/PaginatedDocumentList";
@@ -84,8 +85,16 @@ const FavoritesPage: React.FC = () => {
             <Stack direction="row" spacing={0.8} alignItems="center">
               <Tooltip title="Скачать PDF" arrow>
                 <IconButton
-                  component="a"
-                  href={documentFileUrl(item.id, token!, true)}
+                  type="button"
+                  onClick={() => {
+                    if (token) {
+                      void downloadProtectedFile(
+                        documentFileUrl(item.id, true, item.updatedAt),
+                        token,
+                        item.fileName
+                      ).catch(console.error);
+                    }
+                  }}
                   aria-label="Скачать"
                   sx={cardActionIconButtonSx}
                 >

@@ -12,7 +12,7 @@ import (
 func TestTokenManagerRoundTrip(t *testing.T) {
 	manager := NewTokenManager("secret", time.Hour)
 
-	token, err := manager.Create(domain.User{ID: 42, Role: domain.RoleAdmin})
+	token, err := manager.Create(domain.User{ID: 42, Role: domain.RoleAdmin, TokenVersion: 7})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
@@ -27,6 +27,9 @@ func TestTokenManagerRoundTrip(t *testing.T) {
 	}
 	if claims.Role != domain.RoleAdmin {
 		t.Fatalf("expected role %q, got %q", domain.RoleAdmin, claims.Role)
+	}
+	if claims.TokenVersion != 7 {
+		t.Fatalf("expected token version 7, got %d", claims.TokenVersion)
 	}
 }
 

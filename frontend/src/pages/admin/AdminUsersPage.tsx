@@ -31,7 +31,7 @@ import {
   Typography,
 } from "@mui/material";
 import BlockRoundedIcon from "@mui/icons-material/BlockRounded";
-import RestoreRoundedIcon from "@mui/icons-material/RestoreRounded";
+import { RestoreRounded as RestoreRoundedIcon } from "@mui/icons-material";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import DeleteForeverRoundedIcon from "@mui/icons-material/DeleteForeverRounded";
 import {

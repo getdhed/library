@@ -2,8 +2,17 @@ frontend/node_modules
 frontend/dist
 frontend/playwright-report
 frontend/test-results
+.env
+.env.*
+!.env.example
+/backups/
+/.library-maintenance.lock
+*.dump
+*.bak
 backend/storage/pdfs
 backend/storage/import
+backend/storage/settings
+backend/storage/.superadmin-bootstrap-complete
 backend/.cache
 *.log
 backend/storage/covers
@@ -13,4 +22,4 @@ large_test.pdf
 backend/storage/old_library_data
 backend/storage/*.sql
 *.docx
-отчеты по практике/
+РѕС‚С‡РµС‚С‹ РїРѕ РїСЂР°РєС‚РёРєРµ/

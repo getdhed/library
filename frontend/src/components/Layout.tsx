@@ -8,7 +8,6 @@ import {
   Stack,
   Typography,
   alpha,
-  useTheme as useMuiTheme,
 } from "@mui/material";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
@@ -46,11 +45,10 @@ const linkReset = {
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuth();
-  const muiTheme = useMuiTheme();
   const location = useLocation();
   const [accountAnchor, setAccountAnchor] = useState<HTMLElement | null>(null);
 
-  const tokens = getThemeTokens(muiTheme.palette.mode);
+  const tokens = getThemeTokens();
   const items = useMemo(() => {
     const base = [...navItems];
     if (user?.role === "user") {
@@ -119,7 +117,22 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <Divider />
 
 
-        <Box sx={{ p: 1 }}>
+        <Box sx={{ p: 1, display: "flex", flexDirection: "column", gap: 0.5 }}>
+          <Button
+            component={Link}
+            to="/settings"
+            fullWidth
+            color="inherit"
+            onClick={closeAccountMenu}
+            sx={{
+              minHeight: 40,
+              borderRadius: 0,
+              justifyContent: "flex-start",
+              px: 2,
+            }}
+          >
+            Настройки
+          </Button>
           <Button
             fullWidth
             color="inherit"
@@ -127,6 +140,8 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             sx={{
               minHeight: 40,
               borderRadius: 0,
+              justifyContent: "flex-start",
+              px: 2,
             }}
           >
             Выйти

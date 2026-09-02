@@ -163,19 +163,6 @@ export function createAppTheme() {
           },
         },
       },
-      MuiIconButton: {
-        styleOverrides: {
-          root: {
-            borderRadius: 0,
-            border: `1px solid ${alpha(t.line, 0.9)}`,
-            backgroundColor: alpha(t.panel, 0.92),
-            "&:hover": {
-              borderColor: t.accent,
-              backgroundColor: alpha(t.accent, 0.12),
-            },
-          },
-        },
-      },
       MuiOutlinedInput: {
         styleOverrides: {
           root: {

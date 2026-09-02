@@ -97,7 +97,7 @@ npm run e2e
 Правила доступа к API:
 - Использовать общий helper `request` из `src/api/client.ts`.
 - Для защищенных запросов передавать `token` (заголовок `Authorization: Bearer ...` формируется в helper).
-- Для URL файлов/обложек использовать функции `documentFileUrl`, `documentCoverUrl`, `submissionFileUrl` из `src/api/library.ts` (там используется `VITE_BACKEND_URL` и query `token`).
+- Для URL файлов/обложек использовать функции `documentFileUrl`, `documentCoverUrl`, `submissionFileUrl` из `src/api/library.ts`; JWT передавать только в `Authorization`, а защищенные файлы загружать через `fetch` и временный `blob:` URL.
 
 ## PDF/файловый контур
 - Основные файлы документов хранятся в `backend/storage/pdfs`.

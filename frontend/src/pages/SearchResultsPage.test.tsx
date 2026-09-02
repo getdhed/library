@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthContext } from "../auth/AuthContext";
 import SearchResultsPage from "./SearchResultsPage";
 
-const documentFileUrlMock = vi.fn(() => "/api/documents/1/file");
-const favoriteDocumentMock = vi.fn(() => Promise.resolve());
-const getDocumentsMock = vi.fn(() =>
+const documentFileUrlMock = vi.fn((..._args: unknown[]) => "/api/documents/1/file");
+const favoriteDocumentMock = vi.fn((..._args: unknown[]) => Promise.resolve());
+const getDocumentsMock = vi.fn((..._args: unknown[]) =>
   Promise.resolve({
     items: [
       {
@@ -32,12 +32,12 @@ const getDocumentsMock = vi.fn(() =>
     total: 1,
   })
 );
-const getDocumentTypesMock = vi.fn(() =>
+const getDocumentTypesMock = vi.fn((..._args: unknown[]) =>
   Promise.resolve({ items: ["Учебник", "Методическое пособие"] })
 );
-const getSuggestionsMock = vi.fn(() => Promise.resolve({ items: [] }));
-const markOpenedMock = vi.fn(() => Promise.resolve());
-const unfavoriteDocumentMock = vi.fn(() => Promise.resolve());
+const getSuggestionsMock = vi.fn((..._args: unknown[]) => Promise.resolve({ items: [] }));
+const markOpenedMock = vi.fn((..._args: unknown[]) => Promise.resolve());
+const unfavoriteDocumentMock = vi.fn((..._args: unknown[]) => Promise.resolve());
 const toggleDocumentFavoriteMock = vi.fn(
   (token: string, id: number, isFavorite: boolean) =>
     isFavorite
@@ -47,15 +47,19 @@ const toggleDocumentFavoriteMock = vi.fn(
 
 vi.mock("../api/library", () => ({
   documentCoverUrl: vi.fn(() => "/api/documents/1/cover"),
-  documentFileUrl: (...args: any[]) => documentFileUrlMock(...args),
-  favoriteDocument: (...args: any[]) => favoriteDocumentMock(...args),
-  getDocuments: (...args: any[]) => getDocumentsMock(...args),
-  getDocumentTypes: (...args: any[]) => getDocumentTypesMock(...args),
-  getSuggestions: (...args: any[]) => getSuggestionsMock(...args),
-  markOpened: (...args: any[]) => markOpenedMock(...args),
-  toggleDocumentFavorite: (...args: any[]) =>
+  documentFileUrl: (...args: unknown[]) => documentFileUrlMock(...args),
+  favoriteDocument: (...args: unknown[]) => favoriteDocumentMock(...args),
+  getDocuments: (...args: unknown[]) => getDocumentsMock(...args),
+  getDocumentTypes: (...args: unknown[]) => getDocumentTypesMock(...args),
+  getSuggestions: (...args: unknown[]) => getSuggestionsMock(...args),
+  markOpened: (...args: unknown[]) => markOpenedMock(...args),
+  toggleDocumentFavorite: (...args: [string, number, boolean]) =>
     toggleDocumentFavoriteMock(...args),
-  unfavoriteDocument: (...args: any[]) => unfavoriteDocumentMock(...args),
+  unfavoriteDocument: (...args: unknown[]) => unfavoriteDocumentMock(...args),
+}));
+
+vi.mock("../api/protectedFiles", () => ({
+  fetchProtectedBlob: vi.fn(() => Promise.resolve(new Blob(["cover"]))),
 }));
 
 function renderPage(initialEntry = "/search?q=devops") {
@@ -105,7 +109,7 @@ describe("SearchResultsPage", () => {
     });
 
     expect(screen.getByDisplayValue("devops")).toBeInTheDocument();
-    expect(screen.getByAltText("Обложка DevOps Playbook")).toBeInTheDocument();
+    expect(await screen.findByAltText("Обложка DevOps Playbook")).toBeInTheDocument();
     expect(screen.getAllByLabelText("Открыть документ").length).toBeGreaterThan(0);
     expect(screen.getAllByLabelText("Добавить в избранное").length).toBeGreaterThan(0);
   });
@@ -121,9 +125,7 @@ describe("SearchResultsPage", () => {
     });
 
     fireEvent.click(screen.getAllByLabelText("Открыть документ")[0]);
-    await waitFor(() => {
-      expect(markOpenedMock).toHaveBeenCalledWith("token", 1);
-    });
+    expect(markOpenedMock).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(screen.getByText("Document page")).toBeInTheDocument();
     });
@@ -147,6 +149,7 @@ describe("SearchResultsPage", () => {
     fireEvent.change(screen.getByLabelText("Ключевые слова"), {
       target: { value: "devops pdf" },
     });
+    fireEvent.click(screen.getByRole("checkbox", { name: "С переводом" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Поиск" }));
 
@@ -162,6 +165,7 @@ describe("SearchResultsPage", () => {
           yearFrom: "2020",
           yearTo: "2026",
           tags: "devops pdf",
+          hasTranslation: "true",
         })
       );
     });

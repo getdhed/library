@@ -17,28 +17,16 @@ type ActionableDocument = {
 
 type DocumentCardActionsProps = {
   item: ActionableDocument;
-  token?: string | null;
-  onOpen: (id: number) => void | Promise<void>;
   onToggleFavorite: (id: number, isFavorite: boolean) => void | Promise<void>;
 };
 
 const DocumentCardActions: React.FC<DocumentCardActionsProps> = ({
   item,
-  token,
-  onOpen,
   onToggleFavorite,
 }) => {
   const favoriteLabel = item.isFavorite
     ? "Убрать из избранного"
     : "Добавить в избранное";
-
-  function handleQuickOpen() {
-    if (!token) {
-      return;
-    }
-
-    void onOpen(item.id);
-  }
 
   return (
     <Stack direction="row" spacing={0.8} alignItems="center">
@@ -46,7 +34,6 @@ const DocumentCardActions: React.FC<DocumentCardActionsProps> = ({
         <IconButton
           component={Link}
           to={`/documents/${item.id}`}
-          onClick={handleQuickOpen}
           aria-label="Открыть документ"
           sx={cardActionIconButtonSx}
         >

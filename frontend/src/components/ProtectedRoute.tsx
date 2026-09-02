@@ -37,6 +37,25 @@ export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   return <>{children}</>;
 };
 
+export const SuperAdminRoute: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const auth = useAuth();
+
+  if (!auth.ready) {
+    return <LoadingState />;
+  }
+
+  if (!auth.token) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (auth.user?.role !== "superadmin") {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+};
 export const AdminRoute: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {

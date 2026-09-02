@@ -16,7 +16,7 @@ describe("RegisterPage", () => {
     render(
       <ThemeProvider>
         <AuthContext.Provider
-          value={{ token: null, user: null, login: vi.fn(), logout: vi.fn(), register: registerMock, me: vi.fn(), initialized: true }}
+          value={{ token: null, user: null, login: vi.fn(), logout: vi.fn(), register: registerMock, ready: true }}
         >
           <MemoryRouter initialEntries={["/register"]}>
             <Routes>
@@ -53,7 +53,7 @@ describe("RegisterPage", () => {
     render(
       <ThemeProvider>
         <AuthContext.Provider
-          value={{ token: null, user: null, login: vi.fn(), logout: vi.fn(), register: registerMock, me: vi.fn(), initialized: true }}
+          value={{ token: null, user: null, login: vi.fn(), logout: vi.fn(), register: registerMock, ready: true }}
         >
           <MemoryRouter>
             <RegisterPage />
@@ -82,7 +82,7 @@ describe("RegisterPage", () => {
     render(
       <ThemeProvider>
         <AuthContext.Provider
-          value={{ token: "fake-token", user: null, login: vi.fn(), logout: vi.fn(), register: vi.fn(), me: vi.fn(), initialized: true }}
+          value={{ token: "fake-token", user: null, login: vi.fn(), logout: vi.fn(), register: vi.fn(), ready: true }}
         >
           <MemoryRouter initialEntries={["/register"]}>
             <Routes>

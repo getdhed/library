@@ -19,6 +19,7 @@ describe("EditDocumentDialog", () => {
     year: 2020,
     type: "Учебник",
     description: "Old Description",
+    fileName: "old.pdf",
     fileSizeBytes: 1024,
     mimeType: "application/pdf",
     createdAt: "2020-01-01T00:00:00Z",
@@ -26,6 +27,7 @@ describe("EditDocumentDialog", () => {
     isFavorite: false,
     isLocal: true,
     tags: [],
+    viewsCount: 0,
   };
 
   afterEach(() => {

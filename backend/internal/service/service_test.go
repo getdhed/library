@@ -151,3 +151,24 @@ func TestParseSubmissionInputRejectsInvalidData(t *testing.T) {
 		t.Fatalf("expected invalid input error, got %v", err)
 	}
 }
+
+func TestParseInputsRejectInvalidTitleTranslations(t *testing.T) {
+	svc := &Service{}
+	formValue := func(key string) string {
+		switch key {
+		case "title":
+			return "Document"
+		case "titleTranslations":
+			return "not-json"
+		default:
+			return ""
+		}
+	}
+
+	if _, err := svc.ParseDocumentInput(formValue); err != apperror.ErrInvalidInput {
+		t.Fatalf("expected invalid document translations error, got %v", err)
+	}
+	if _, err := svc.ParseSubmissionInput(formValue); err != apperror.ErrInvalidInput {
+		t.Fatalf("expected invalid submission translations error, got %v", err)
+	}
+}

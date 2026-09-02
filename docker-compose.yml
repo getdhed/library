@@ -5,13 +5,14 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-library}
       POSTGRES_USER: ${POSTGRES_USER:-library}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-library}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
-      - "5433:5432"
+      # Local maintenance access only. Other containers use db:5432.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U library -d library"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -35,22 +36,34 @@ services:
             - ./backend/.cache/**
             - ./backend/.git/**
     restart: always
+    stop_grace_period: 30s
     environment:
       APP_PORT: 8080
-      DATABASE_URL: ${DATABASE_URL:-postgres://library:library@db:5432/library?sslmode=disable}
-      JWT_SECRET: ${JWT_SECRET}
+      LISTEN_HOST: ${LISTEN_HOST:-0.0.0.0}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (at least 32 random characters)}
       STORAGE_PATH: /app/storage
-      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1,::1,172.16.0.0/12}
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-50}
+      MULTIPART_MEMORY_MB: ${MULTIPART_MEMORY_MB:-8}
       SEED_ADMIN_USERNAME: ${SEED_ADMIN_USERNAME:-admin}
       SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Администратор}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin12345}
     ports:
-      - "8080:8080"
+      # IIS on this host may proxy /api here; the port is not public.
+      - "127.0.0.1:${BACKEND_HOST_PORT:-8080}:8080"
     volumes:
       - ./backend/storage:/app/storage
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/health >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
     logging:
       driver: "json-file"
       options:
@@ -71,15 +84,21 @@ services:
             - ./frontend/dist/**
             - ./frontend/.git/**
     restart: always
+    stop_grace_period: 30s
     environment:
       BACKEND_PROXY_TARGET: ${BACKEND_PROXY_TARGET:-http://backend:8080}
-      VITE_API_URL: ${VITE_API_URL:-/api}
-      VITE_BACKEND_URL: ${VITE_BACKEND_URL:-}
     ports:
-      - "5173:5173"
+      # IIS is the public entry point and proxies to this loopback port.
+      - "127.0.0.1:${FRONTEND_HOST_PORT:-5173}:5173"
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:5173/ >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     logging:
       driver: "json-file"
       options:

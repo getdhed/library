@@ -14,6 +14,8 @@ type FileStorage struct {
 	basePath string
 }
 
+const bootstrapMarkerName = ".superadmin-bootstrap-complete"
+
 func New(basePath string) *FileStorage {
 	return &FileStorage{basePath: basePath}
 }
@@ -31,6 +33,29 @@ func (s *FileStorage) Ensure() error {
 	return nil
 }
 
+func (s *FileStorage) BootstrapCompleted() (bool, error) {
+	info, err := os.Stat(filepath.Join(s.basePath, bootstrapMarkerName))
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if info.IsDir() {
+		return false, fmt.Errorf("bootstrap marker is a directory")
+	}
+	return true, nil
+}
+
+func (s *FileStorage) MarkBootstrapCompleted() error {
+	markerPath := filepath.Join(s.basePath, bootstrapMarkerName)
+	marker, err := os.OpenFile(markerPath, os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	return marker.Close()
+}
+
 func (s *FileStorage) SavePDF(file multipart.File, header *multipart.FileHeader) (string, int64, error) {
 	defer file.Close()
 
@@ -45,7 +70,13 @@ func (s *FileStorage) SavePDF(file multipart.File, header *multipart.FileHeader)
 	if err != nil {
 		return "", 0, err
 	}
-	defer dst.Close()
+	committed := false
+	defer func() {
+		_ = dst.Close()
+		if !committed {
+			_ = os.Remove(tmpPath)
+		}
+	}()
 
 	size, err := io.Copy(dst, file)
 	if err != nil {
@@ -55,10 +86,14 @@ func (s *FileStorage) SavePDF(file multipart.File, header *multipart.FileHeader)
 	if err := dst.Sync(); err != nil {
 		return "", 0, err
 	}
+	if err := dst.Close(); err != nil {
+		return "", 0, err
+	}
 
 	if err := os.Rename(tmpPath, absolutePath); err != nil {
 		return "", 0, err
 	}
+	committed = true
 
 	return filepath.ToSlash(relativePath), size, nil
 }
@@ -95,12 +130,7 @@ func sanitizeName(value string) string {
 
 func (s *FileStorage) newPDFPath(fileName string) (string, string) {
 	filename := sanitizeName(strings.TrimSuffix(fileName, filepath.Ext(fileName)))
-	ext := strings.ToLower(filepath.Ext(fileName))
-	if ext == "" {
-		ext = ".pdf"
-	}
-
-	relativePath := filepath.Join("pdfs", fmt.Sprintf("%d-%s%s", time.Now().UnixNano(), filename, ext))
+	relativePath := filepath.Join("pdfs", fmt.Sprintf("%d-%s.pdf", time.Now().UnixNano(), filename))
 	return relativePath, filepath.Join(s.basePath, relativePath)
 }
 
@@ -114,7 +144,7 @@ func (s *FileStorage) Archive(relativePath string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	
+
 	err := os.Rename(src, dst)
 	if err != nil && !os.IsNotExist(err) {
 		return err
@@ -132,7 +162,7 @@ func (s *FileStorage) Restore(relativePath string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	
+
 	err := os.Rename(src, dst)
 	if err != nil && !os.IsNotExist(err) {
 		return err

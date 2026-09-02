@@ -8,6 +8,8 @@ import {
   Stack,
   TextField,
   Box,
+  Checkbox,
+  FormControlLabel,
 } from "@mui/material";
 import { catalogSortOptions } from "../constants/documentFilters";
 
@@ -31,6 +33,8 @@ type CatalogFiltersProps = {
   yearToValue?: string;
   onYearFromChange?: (value: string) => void;
   onYearToChange?: (value: string) => void;
+  hasTranslationValue?: boolean;
+  onHasTranslationChange?: (value: boolean) => void;
 };
 
 const CatalogFilters: React.FC<CatalogFiltersProps> = ({
@@ -53,6 +57,8 @@ const CatalogFilters: React.FC<CatalogFiltersProps> = ({
   yearToValue = "",
   onYearFromChange,
   onYearToChange,
+  hasTranslationValue = false,
+  onHasTranslationChange,
 }) => {
   const isDateError =
     yearFromValue &&
@@ -60,8 +66,8 @@ const CatalogFilters: React.FC<CatalogFiltersProps> = ({
     Number(yearFromValue) > Number(yearToValue);
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <FormControl fullWidth>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+      <FormControl fullWidth size="small">
         <InputLabel id={`${idPrefix}-type-label`}>Тип документа</InputLabel>
         <Select
           labelId={`${idPrefix}-type-label`}
@@ -78,7 +84,7 @@ const CatalogFilters: React.FC<CatalogFiltersProps> = ({
         </Select>
       </FormControl>
 
-      <FormControl fullWidth>
+      <FormControl fullWidth size="small">
         <InputLabel id={`${idPrefix}-local-label`}>Источник</InputLabel>
         <Select
           labelId={`${idPrefix}-local-label`}
@@ -98,6 +104,7 @@ const CatalogFilters: React.FC<CatalogFiltersProps> = ({
         onChange={(event) => onAuthorChange?.(event.target.value)}
         placeholder="Введите автора"
         fullWidth
+        size="small"
         inputProps={{ "aria-label": "Автор" }}
       />
 
@@ -109,6 +116,7 @@ const CatalogFilters: React.FC<CatalogFiltersProps> = ({
           type="number"
           placeholder="например, 2010"
           fullWidth
+          size="small"
           error={!!isDateError}
           inputProps={{ "aria-label": "Год с", min: 1900, max: 2100 }}
         />
@@ -119,6 +127,7 @@ const CatalogFilters: React.FC<CatalogFiltersProps> = ({
           type="number"
           placeholder="например, 2025"
           fullWidth
+          size="small"
           error={!!isDateError}
           helperText={isDateError ? "Неверный диапазон" : undefined}
           inputProps={{ "aria-label": "Год по", min: 1900, max: 2100 }}
@@ -131,11 +140,26 @@ const CatalogFilters: React.FC<CatalogFiltersProps> = ({
         onChange={(event) => onTagsChange?.(event.target.value)}
         placeholder="Теги через пробел, запятую или ;"
         fullWidth
+        size="small"
         inputProps={{ "aria-label": "Ключевые слова" }}
       />
 
+      {onHasTranslationChange && (
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={hasTranslationValue}
+              onChange={(e) => onHasTranslationChange(e.target.checked)}
+              color="primary"
+              size="small"
+            />
+          }
+          label="С переводом"
+        />
+      )}
+
       {includeSort && (
-        <FormControl fullWidth>
+        <FormControl fullWidth size="small">
           <InputLabel id={`${idPrefix}-sort-label`}>Сортировка</InputLabel>
           <Select
             labelId={`${idPrefix}-sort-label`}

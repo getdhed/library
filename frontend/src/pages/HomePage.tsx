@@ -12,7 +12,6 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   getHome,
   getSuggestions,
-  markOpened,
   toggleDocumentFavorite,
 } from "../api/library";
 import { useAuth } from "../auth/AuthContext";
@@ -21,6 +20,7 @@ import { ContentCard, PageShell } from "../components/mui-primitives";
 import PaginatedDocumentList from "../components/PaginatedDocumentList";
 import SearchBar from "../components/SearchBar";
 import type { DocumentItem } from "../types";
+import { getBackgroundUrl } from "../api/library";
 
 const HomePage: React.FC = () => {
   const { token, user } = useAuth();
@@ -75,11 +75,7 @@ const HomePage: React.FC = () => {
         key: `doc-${item.id}`,
         label: item.title,
         type: item.type,
-        onClick: async () => {
-          if (!token) return;
-          await markOpened(token, item.id);
-          navigate(`/documents/${item.id}`);
-        },
+        onClick: () => navigate(`/documents/${item.id}`),
       }));
     }
 
@@ -89,20 +85,9 @@ const HomePage: React.FC = () => {
       type: "",
       onClick: () => navigate(`/search?q=${encodeURIComponent(item.query)}`),
     }));
-  }, [historyItems, navigate, query, suggestions, token]);
+  }, [historyItems, navigate, query, suggestions]);
 
   const showDropdown = showHistory && dropdownItems.length > 0;
-
-  async function openSuggestedDocument(item: DocumentItem) {
-    if (!token) return;
-    await markOpened(token, item.id);
-    navigate(`/documents/${item.id}`);
-  }
-
-  function handleQuickOpen(id: number) {
-    if (!token) return;
-    void markOpened(token, id).catch(console.error);
-  }
 
   async function toggleFavorite(id: number, isFavorite: boolean) {
     if (!token) return;
@@ -136,97 +121,82 @@ const HomePage: React.FC = () => {
         component="section"
         sx={{
           p: 0,
-          overflow: "visible",
-          bgcolor: "primary.dark",
-          borderColor: (theme) => alpha(theme.palette.secondary.main, 0.4),
-          color: (theme) => alpha(theme.palette.primary.contrastText, 0.95),
+          overflow: "hidden",
           position: "relative",
+          bgcolor: "primary.dark",
         }}
       >
         <Box
           sx={{
-            position: "absolute",
-            inset: 0,
-            backgroundImage:
-              "linear-gradient(rgba(154,171,130,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(154,171,130,0.08) 1px, transparent 1px)",
-            backgroundSize: "42px 42px",
-            opacity: 0.45,
-            pointerEvents: "none",
-          }}
-        />
-
-        <Box
-          sx={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: 4,
-            height: "100%",
-            background: (theme) =>
-              `linear-gradient(to bottom, ${theme.palette.secondary.main}, transparent)`,
-          }}
-        />
-
-        <Box
-          sx={{
             position: "relative",
+            zIndex: 1,
             p: 3.2,
-            display: "flex",
-            gap: 3,
-            alignItems: "flex-start",
+            color: "primary.contrastText",
           }}
         >
-          <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Box sx={{ mb: 1.8 }}>
+            <Typography
+              component="span"
+              sx={{
+                display: "block",
+                fontSize: "clamp(1.1rem, 1.5vw, 1.5rem)",
+                opacity: 0.9,
+                mb: 0.5,
+                fontWeight: 500,
+              }}
+            >
+              Онлайн-библиотека
+            </Typography>
             <Typography
               component="h1"
               variant="h1"
               sx={{
                 mt: 0,
-                fontSize: "clamp(2.0rem, 3.6vw, 3.6rem)",
-                color: "primary.contrastText",
-                mb: 1.8,
+                fontSize: "clamp(1.1rem, 2.2vw, 2.2rem)",
+                lineHeight: 1.2,
               }}
             >
-              Онлайн-библиотека
-              <br />
-              ИНСТИТУТА ПОГРАНИЧНОЙ СЛУЖБЫ
+              ГУО «ИНСТИТУТ ПОГРАНИЧНОЙ СЛУЖБЫ РЕСПУБЛИКИ БЕЛАРУСЬ»
             </Typography>
+          </Box>
 
-            <Paper
-              component="aside"
-              sx={{
-                p: 2.1,
-                borderRadius: 0,
-                backgroundColor: "rgba(255,255,255,0.04)",
-                borderColor: "rgba(154,171,130,0.24)",
-                position: "relative",
-                mb: 2.1,
-                width: "100%",
-                "&::before": {
-                  content: '""',
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 2,
-                  background: (theme) =>
-                    `linear-gradient(to right, ${theme.palette.secondary.main}, transparent)`,
-                },
-              }}
-            >
-              <Box component="form" onSubmit={submitSearch}>
-                <Box sx={{ display: "flex", gap: 1.2 }}>
-                  <Box sx={{ position: "relative", flex: 1, minWidth: 0 }}>
-                    <InputBase
+          <Paper
+            component="aside"
+            sx={{
+              p: 2.1,
+              borderRadius: 0,
+              backgroundColor: "rgba(255,255,255,0.08)",
+              borderColor: "rgba(154,171,130,0.24)",
+              position: "relative",
+              mb: 0,
+              width: "100%",
+              backdropFilter: "blur(8px)",
+              "&::before": {
+                content: '""',
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 2,
+                background: (theme) =>
+                  `linear-gradient(to right, ${theme.palette.secondary.main}, transparent)`,
+              },
+            }}
+          >
+            <Box component="form" onSubmit={submitSearch}>
+              <Box sx={{ display: "flex", gap: 1.2 }}>
+                <Box sx={{ position: "relative", flex: 1, minWidth: 0 }}>
+                  <InputBase
                     placeholder="Название, автор, тип документа"
                     inputProps={{ "aria-label": "Поиск документов" }}
                     sx={{
                       width: "100%",
                       px: 2.2,
                       py: 1.1,
-                      border: (theme) => `1px solid ${theme.palette.divider}`,
-                      backgroundColor: "background.paper",
+                      border: (theme) => `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+                      backgroundColor: "rgba(255,255,255,0.92)",
                       fontSize: 16,
+                      color: "#1a2e1a",
                     }}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
@@ -302,23 +272,22 @@ const HomePage: React.FC = () => {
                       ))}
                     </Paper>
                   )}
-                  </Box>
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    size="large"
-                    sx={{
-                      px: 3.5,
-                      boxShadow: "none",
-                      fontSize: 15,
-                    }}
-                  >
-                    Поиск
-                  </Button>
                 </Box>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  size="large"
+                  sx={{
+                    px: 3.5,
+                    boxShadow: "none",
+                    fontSize: 15,
+                  }}
+                >
+                  Поиск
+                </Button>
               </Box>
-            </Paper>
-          </Box>
+            </Box>
+          </Paper>
         </Box>
       </Paper>
 
@@ -345,15 +314,13 @@ const HomePage: React.FC = () => {
             total={displayedRecentItems.length}
             page={1}
             pageSize={4}
-            onPageChange={() => {}}
+            onPageChange={() => { }}
             token={token}
             limit={4}
             emptyMessage="Вы пока не просматривали документы"
             actionsRenderer={(item) => (
               <DocumentCardActions
                 item={item}
-                token={token}
-                onOpen={handleQuickOpen}
                 onToggleFavorite={toggleFavorite}
               />
             )}

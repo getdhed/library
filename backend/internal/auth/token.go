@@ -19,9 +19,10 @@ type TokenManager struct {
 }
 
 type Claims struct {
-	Sub  int64           `json:"sub"`
-	Role domain.UserRole `json:"role"`
-	Exp  int64           `json:"exp"`
+	Sub          int64           `json:"sub"`
+	Role         domain.UserRole `json:"role"`
+	TokenVersion int64           `json:"ver"`
+	Exp          int64           `json:"exp"`
 }
 
 func NewTokenManager(secret string, ttl time.Duration) *TokenManager {
@@ -38,9 +39,10 @@ func (m *TokenManager) Create(user domain.User) (string, error) {
 	}
 
 	claims, err := json.Marshal(Claims{
-		Sub:  user.ID,
-		Role: user.Role,
-		Exp:  time.Now().Add(m.ttl).Unix(),
+		Sub:          user.ID,
+		Role:         user.Role,
+		TokenVersion: user.TokenVersion,
+		Exp:          time.Now().Add(m.ttl).Unix(),
 	})
 	if err != nil {
 		return "", err

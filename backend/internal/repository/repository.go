@@ -25,6 +25,10 @@ func New(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
+func (r *Repository) Ping(ctx context.Context) error {
+	return r.db.PingContext(ctx)
+}
+
 func splitFilterTerms(value string) []string {
 	rawItems := strings.Fields(strings.NewReplacer(",", " ", ";", " ").Replace(value))
 	items := make([]string, 0, len(rawItems))
@@ -62,37 +66,104 @@ func scanUser(row rowScanner) (domain.User, error) {
 	return user, err
 }
 
-func (r *Repository) EnsureSeedData(ctx context.Context, adminUsername, adminName, adminPasswordHash string) error {
-	if _, err := r.db.ExecContext(ctx, `
-		INSERT INTO users(username, password_hash, full_name, role)
-		VALUES ($1, $2, $3, 'superadmin')
-		ON CONFLICT (username) DO UPDATE
-		SET password_hash = EXCLUDED.password_hash,
-			full_name = EXCLUDED.full_name,
-			role = 'superadmin',
-			is_active = TRUE,
-			updated_at = NOW()
-	`, strings.ToLower(strings.TrimSpace(adminUsername)), adminPasswordHash, strings.TrimSpace(adminName)); err != nil {
-		return fmt.Errorf("seed admin: %w", err)
+const activeSuperAdminLockName = "library.active-superadmin"
+
+func lockActiveSuperAdminInvariant(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, activeSuperAdminLockName)
+	return err
+}
+
+// ensureActiveSuperAdminRemains must be called after
+// lockActiveSuperAdminInvariant and before an operation which can remove the
+// target from the set of active, non-deleted super-administrators.
+func ensureActiveSuperAdminRemains(ctx context.Context, tx *sql.Tx, targetID int64) error {
+	var targetIsActiveSuperAdmin bool
+	err := tx.QueryRowContext(ctx, `
+		SELECT role = 'superadmin' AND is_active AND deleted_at IS NULL
+		FROM users
+		WHERE id = $1
+		FOR UPDATE
+	`, targetID).Scan(&targetIsActiveSuperAdmin)
+	if errors.Is(err, sql.ErrNoRows) {
+		return apperror.ErrNotFound
+	}
+	if err != nil || !targetIsActiveSuperAdmin {
+		return err
 	}
 
+	var anotherExists bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM users
+			WHERE role = 'superadmin'
+				AND is_active
+				AND deleted_at IS NULL
+				AND id <> $1
+		)
+	`, targetID).Scan(&anotherExists); err != nil {
+		return err
+	}
+	if !anotherExists {
+		return apperror.ErrConflict
+	}
 	return nil
 }
 
-func (r *Repository) EnsureSystemUser(ctx context.Context, username, fullName, passwordHash string) (domain.User, error) {
-	var user domain.User
-	err := r.db.QueryRowContext(ctx, `
+func (r *Repository) EnsureSeedData(ctx context.Context, adminUsername, adminName, adminPasswordHash string) error {
+	_, err := r.EnsureSystemUser(ctx, adminUsername, adminName, adminPasswordHash, true)
+	return err
+}
+
+func (r *Repository) EnsureSystemUser(ctx context.Context, username, fullName, passwordHash string, allowBootstrap bool) (domain.User, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.User{}, err
+	}
+	defer tx.Rollback()
+
+	// Serialize bootstrap with every operation which can remove the last active
+	// superadmin. Existing credentials are never reset and a matching ordinary
+	// user is never elevated implicitly.
+	if err := lockActiveSuperAdminInvariant(ctx, tx); err != nil {
+		return domain.User{}, fmt.Errorf("lock seed admin: %w", err)
+	}
+
+	user, err := scanUser(tx.QueryRowContext(ctx, `
+		SELECT id, username, full_name, role, avatar_url, is_active, last_login_at,
+			created_at, updated_at, deleted_at, deactivation_reason
+		FROM users
+		WHERE role = 'superadmin' AND is_active AND deleted_at IS NULL
+		ORDER BY id
+		LIMIT 1
+	`))
+	if err == nil {
+		if err := tx.Commit(); err != nil {
+			return domain.User{}, err
+		}
+		return user, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return domain.User{}, err
+	}
+	if !allowBootstrap {
+		return domain.User{}, errors.New("no active superadmin exists after bootstrap was completed; refusing to recreate default credentials")
+	}
+
+	user, err = scanUser(tx.QueryRowContext(ctx, `
 		INSERT INTO users(username, password_hash, full_name, role)
 		VALUES ($1, $2, $3, 'superadmin')
-		ON CONFLICT (username) DO UPDATE
-		SET full_name = EXCLUDED.full_name,
-			role = 'superadmin',
-			is_active = TRUE,
-			updated_at = NOW()
-		RETURNING id, username, full_name, role, avatar_url, is_active, last_login_at, created_at, updated_at, deleted_at
-	`, strings.ToLower(strings.TrimSpace(username)), passwordHash, strings.TrimSpace(fullName)).
-		Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt)
+		ON CONFLICT (username) DO NOTHING
+		RETURNING id, username, full_name, role, avatar_url, is_active, last_login_at,
+			created_at, updated_at, deleted_at, deactivation_reason
+	`, strings.ToLower(strings.TrimSpace(username)), passwordHash, strings.TrimSpace(fullName)))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.User{}, fmt.Errorf("seed admin username %q is already in use; refusing to elevate it", username)
+	}
 	if err != nil {
+		return domain.User{}, fmt.Errorf("seed admin: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
 		return domain.User{}, err
 	}
 	return user, nil
@@ -118,11 +189,11 @@ func (r *Repository) CreateUser(ctx context.Context, input domain.RegisterInput,
 func (r *Repository) GetUserByUsername(ctx context.Context, username string) (domain.User, error) {
 	var user domain.User
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, username, full_name, role, avatar_url, is_active, password_hash, last_login_at, created_at, updated_at, deleted_at, deactivation_reason
+		SELECT id, username, full_name, role, avatar_url, is_active, password_hash, token_version, last_login_at, created_at, updated_at, deleted_at, deactivation_reason
 		FROM users
 		WHERE username = $1
 	`, strings.ToLower(strings.TrimSpace(username))).
-		Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.PasswordHash, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt, &user.DeactivationReason)
+		Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.PasswordHash, &user.TokenVersion, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt, &user.DeactivationReason)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.User{}, apperror.ErrNotFound
 	}
@@ -132,10 +203,10 @@ func (r *Repository) GetUserByUsername(ctx context.Context, username string) (do
 func (r *Repository) GetUserByID(ctx context.Context, id int64) (domain.User, error) {
 	var user domain.User
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, username, full_name, role, avatar_url, is_active, last_login_at, created_at, updated_at, deleted_at, deactivation_reason
+		SELECT id, username, full_name, role, avatar_url, is_active, token_version, last_login_at, created_at, updated_at, deleted_at, deactivation_reason
 		FROM users
 		WHERE id = $1
-	`, id).Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt, &user.DeactivationReason)
+	`, id).Scan(&user.ID, &user.Username, &user.FullName, &user.Role, &user.AvatarURL, &user.IsActive, &user.TokenVersion, &user.LastLoginAt, &user.CreatedAt, &user.UpdatedAt, &user.DeletedAt, &user.DeactivationReason)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.User{}, apperror.ErrNotFound
 	}
@@ -239,11 +310,27 @@ func (r *Repository) CreateAdminUser(ctx context.Context, input domain.AdminUser
 }
 
 func (r *Repository) UpdateUser(ctx context.Context, id int64, input domain.AdminUserInput) (domain.User, error) {
-	user, err := scanUser(r.db.QueryRowContext(ctx, `
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.User{}, err
+	}
+	defer tx.Rollback()
+
+	if err := lockActiveSuperAdminInvariant(ctx, tx); err != nil {
+		return domain.User{}, err
+	}
+	if input.Role != domain.RoleSuperAdmin {
+		if err := ensureActiveSuperAdminRemains(ctx, tx, id); err != nil {
+			return domain.User{}, err
+		}
+	}
+
+	user, err := scanUser(tx.QueryRowContext(ctx, `
 		UPDATE users
 		SET username = $2,
 			full_name = $3,
 			role = $4,
+			token_version = token_version + CASE WHEN role IS DISTINCT FROM $4 THEN 1 ELSE 0 END,
 			updated_at = NOW()
 		WHERE id = $1
 		RETURNING id, username, full_name, role, avatar_url, is_active, last_login_at, created_at, updated_at, deleted_at, deactivation_reason
@@ -257,14 +344,33 @@ func (r *Repository) UpdateUser(ctx context.Context, id int64, input domain.Admi
 		}
 		return domain.User{}, err
 	}
+	if err := tx.Commit(); err != nil {
+		return domain.User{}, err
+	}
 	return user, nil
 }
 
 func (r *Repository) SetUserActive(ctx context.Context, id int64, isActive bool, reason string) (domain.User, error) {
-	user, err := scanUser(r.db.QueryRowContext(ctx, `
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.User{}, err
+	}
+	defer tx.Rollback()
+
+	if err := lockActiveSuperAdminInvariant(ctx, tx); err != nil {
+		return domain.User{}, err
+	}
+	if !isActive {
+		if err := ensureActiveSuperAdminRemains(ctx, tx, id); err != nil {
+			return domain.User{}, err
+		}
+	}
+
+	user, err := scanUser(tx.QueryRowContext(ctx, `
 		UPDATE users
 		SET is_active = $2,
 			deactivation_reason = $3,
+			token_version = token_version + CASE WHEN is_active IS DISTINCT FROM $2 THEN 1 ELSE 0 END,
 			updated_at = NOW()
 		WHERE id = $1
 		RETURNING id, username, full_name, role, avatar_url, is_active, last_login_at, created_at, updated_at, deleted_at, deactivation_reason
@@ -272,10 +378,14 @@ func (r *Repository) SetUserActive(ctx context.Context, id int64, isActive bool,
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.User{}, apperror.ErrNotFound
 	}
-	return user, err
+	if err != nil {
+		return domain.User{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.User{}, err
+	}
+	return user, nil
 }
-
-
 
 func (r *Repository) UpdateLastLoginAt(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, "UPDATE users SET last_login_at = NOW() WHERE id = $1", id)
@@ -283,7 +393,7 @@ func (r *Repository) UpdateLastLoginAt(ctx context.Context, id int64) error {
 }
 
 func (r *Repository) HardDeleteUser(ctx context.Context, id int64) error {
-	res, err := r.db.ExecContext(ctx, "DELETE FROM users WHERE id = $1", id)
+	res, err := r.db.ExecContext(ctx, "DELETE FROM users WHERE id = $1 AND deleted_at IS NOT NULL", id)
 	if err != nil {
 		return err
 	}
@@ -292,13 +402,30 @@ func (r *Repository) HardDeleteUser(ctx context.Context, id int64) error {
 		return err
 	}
 	if rows == 0 {
-		return apperror.ErrNotFound
+		return apperror.ErrConflict
 	}
 	return nil
 }
 
 func (r *Repository) DeleteUser(ctx context.Context, id int64) error {
-	res, err := r.db.ExecContext(ctx, "UPDATE users SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL", id)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := lockActiveSuperAdminInvariant(ctx, tx); err != nil {
+		return err
+	}
+	if err := ensureActiveSuperAdminRemains(ctx, tx, id); err != nil {
+		return err
+	}
+
+	res, err := tx.ExecContext(ctx, `
+		UPDATE users
+		SET deleted_at = NOW(), token_version = token_version + 1, updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+	`, id)
 	if err != nil {
 		return err
 	}
@@ -309,11 +436,19 @@ func (r *Repository) DeleteUser(ctx context.Context, id int64) error {
 	if rows == 0 {
 		return apperror.ErrNotFound
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (r *Repository) RestoreUser(ctx context.Context, id int64) error {
-	res, err := r.db.ExecContext(ctx, "UPDATE users SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL", id)
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE users
+		SET deleted_at = NULL,
+			is_active = TRUE,
+			deactivation_reason = '',
+			token_version = token_version + 1,
+			updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NOT NULL
+	`, id)
 	if err != nil {
 		return err
 	}
@@ -328,7 +463,14 @@ func (r *Repository) RestoreUser(ctx context.Context, id int64) error {
 }
 
 func (r *Repository) DeactivateInactiveUsers(ctx context.Context, threshold time.Time) error {
-	_, err := r.db.ExecContext(ctx, "UPDATE users SET is_active = false, deactivation_reason = 'Автоматическая деактивация (более 6 месяцев бездействия)' WHERE last_login_at < $1 AND is_active = true", threshold)
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE users
+		SET is_active = false,
+			deactivation_reason = 'Автоматическая деактивация (более 6 месяцев бездействия)',
+			token_version = token_version + 1,
+			updated_at = NOW()
+		WHERE role = 'user' AND last_login_at < $1 AND is_active = true
+	`, threshold)
 	return err
 }
 
@@ -338,6 +480,7 @@ func (r *Repository) CreateSubmission(ctx context.Context, userID int64, input d
 		INSERT INTO document_submissions(
 			user_id,
 			title,
+			title_translations,
 			author,
 			executor,
 			scientific_advisor,
@@ -359,11 +502,12 @@ func (r *Repository) CreateSubmission(ctx context.Context, userID int64, input d
 			source,
 			is_local
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 'pending', $20, $21)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'pending', $21, $22)
 		RETURNING id
 	`,
 		userID,
 		input.Title,
+		input.TitleTranslations,
 		input.Author,
 		input.Executor,
 		input.ScientificAdvisor,
@@ -397,6 +541,7 @@ func (r *Repository) GetSubmissionByID(ctx context.Context, id int64) (domain.Do
 			s.id,
 			s.user_id,
 			s.title,
+			s.title_translations,
 			s.author,
 			s.executor,
 			s.scientific_advisor,
@@ -418,7 +563,7 @@ func (r *Repository) GetSubmissionByID(ctx context.Context, id int64) (domain.Do
 			s.source,
 			s.is_local,
 			s.moderation_note,
-			COALESCE(s.approved_document_id, 0),
+			CASE WHEN d.deleted_at IS NOT NULL THEN 0 ELSE COALESCE(s.approved_document_id, 0) END,
 			COALESCE(s.reviewed_by, 0),
 			s.reviewed_at,
 			s.created_at,
@@ -430,6 +575,7 @@ func (r *Repository) GetSubmissionByID(ctx context.Context, id int64) (domain.Do
 		FROM document_submissions s
 		JOIN users u ON u.id = s.user_id
 		LEFT JOIN users reviewer ON reviewer.id = s.reviewed_by
+		LEFT JOIN documents d ON d.id = s.approved_document_id
 		WHERE s.id = $1
 	`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -447,6 +593,7 @@ func (r *Repository) ListSubmissionsByUser(ctx context.Context, userID int64) ([
 			s.id,
 			s.user_id,
 			s.title,
+			s.title_translations,
 			s.author,
 			s.executor,
 			s.scientific_advisor,
@@ -468,7 +615,7 @@ func (r *Repository) ListSubmissionsByUser(ctx context.Context, userID int64) ([
 			s.source,
 			s.is_local,
 			s.moderation_note,
-			COALESCE(s.approved_document_id, 0),
+			CASE WHEN d.deleted_at IS NOT NULL THEN 0 ELSE COALESCE(s.approved_document_id, 0) END,
 			COALESCE(s.reviewed_by, 0),
 			s.reviewed_at,
 			s.created_at,
@@ -480,6 +627,7 @@ func (r *Repository) ListSubmissionsByUser(ctx context.Context, userID int64) ([
 		FROM document_submissions s
 		JOIN users u ON u.id = s.user_id
 		LEFT JOIN users reviewer ON reviewer.id = s.reviewed_by
+		LEFT JOIN documents d ON d.id = s.approved_document_id
 		WHERE s.user_id = $1
 		ORDER BY s.updated_at DESC, s.created_at DESC
 	`, userID)
@@ -505,6 +653,7 @@ func (r *Repository) ListSubmissions(ctx context.Context, status domain.Submissi
 			s.id,
 			s.user_id,
 			s.title,
+			s.title_translations,
 			s.author,
 			s.executor,
 			s.scientific_advisor,
@@ -526,7 +675,7 @@ func (r *Repository) ListSubmissions(ctx context.Context, status domain.Submissi
 			s.source,
 			s.is_local,
 			s.moderation_note,
-			COALESCE(s.approved_document_id, 0),
+			CASE WHEN d.deleted_at IS NOT NULL THEN 0 ELSE COALESCE(s.approved_document_id, 0) END,
 			COALESCE(s.reviewed_by, 0),
 			s.reviewed_at,
 			s.created_at,
@@ -538,6 +687,7 @@ func (r *Repository) ListSubmissions(ctx context.Context, status domain.Submissi
 		FROM document_submissions s
 		JOIN users u ON u.id = s.user_id
 		LEFT JOIN users reviewer ON reviewer.id = s.reviewed_by
+		LEFT JOIN documents d ON d.id = s.approved_document_id
 	`
 
 	args := []any{}
@@ -682,6 +832,7 @@ func scanSubmission(row rowScanner) (domain.DocumentSubmission, error) {
 		&item.ID,
 		&item.UserID,
 		&item.Title,
+		&item.TitleTranslations,
 		&item.Author,
 		&item.Executor,
 		&item.ScientificAdvisor,
@@ -766,12 +917,18 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 		countArgIndex++
 	}
 
+	if filters.HasTranslation != nil && *filters.HasTranslation {
+		queryConditions = append(queryConditions, "d.title_translations IS NOT NULL AND d.title_translations != '{}'::jsonb")
+		countConditions = append(countConditions, "d.title_translations IS NOT NULL AND d.title_translations != '{}'::jsonb")
+	}
+
 	if requestedQuery != "" {
 		queryConditions = append(
 			queryConditions,
 			fmt.Sprintf(
 				`(
 					$%d <%% d.title OR d.title ILIKE $%d OR
+					$%d <%% COALESCE(d.title_translations::text, '') OR COALESCE(d.title_translations::text, '') ILIKE $%d OR
 					$%d <%% d.author OR d.author ILIKE $%d OR
 					$%d <%% d.executor OR d.executor ILIKE $%d OR
 					$%d <%% d.scientific_advisor OR d.scientific_advisor ILIKE $%d OR
@@ -791,11 +948,15 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 				queryArgIndex+7,
 				queryArgIndex+8,
 				queryArgIndex+9,
+				queryArgIndex+10,
+				queryArgIndex+11,
 			),
 		)
 		queryArgs = append(
 			queryArgs,
 			requestedQuery, // title
+			likeQuery,
+			requestedQuery, // title_translations
 			likeQuery,
 			requestedQuery, // author
 			likeQuery,
@@ -806,13 +967,14 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			requestedQuery, // tags
 			likeQuery,
 		)
-		queryArgIndex += 10
+		queryArgIndex += 12
 
 		countConditions = append(
 			countConditions,
 			fmt.Sprintf(
 				`(
 					$%d <%% d.title OR d.title ILIKE $%d OR
+					$%d <%% COALESCE(d.title_translations::text, '') OR COALESCE(d.title_translations::text, '') ILIKE $%d OR
 					$%d <%% d.author OR d.author ILIKE $%d OR
 					$%d <%% d.executor OR d.executor ILIKE $%d OR
 					$%d <%% d.scientific_advisor OR d.scientific_advisor ILIKE $%d OR
@@ -832,11 +994,15 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 				countArgIndex+7,
 				countArgIndex+8,
 				countArgIndex+9,
+				countArgIndex+10,
+				countArgIndex+11,
 			),
 		)
 		countArgs = append(
 			countArgs,
 			requestedQuery, // title
+			likeQuery,
+			requestedQuery, // title_translations
 			likeQuery,
 			requestedQuery, // author
 			likeQuery,
@@ -847,7 +1013,7 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 			requestedQuery, // tags
 			likeQuery,
 		)
-		countArgIndex += 10
+		countArgIndex += 12
 	}
 	if strings.TrimSpace(filters.Type) != "" {
 		queryConditions = append(queryConditions, fmt.Sprintf("d.type = $%d", queryArgIndex))
@@ -941,6 +1107,7 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 		SELECT
 			d.id,
 			d.title,
+			d.title_translations,
 			d.author,
 			d.executor,
 			d.scientific_advisor,
@@ -993,6 +1160,7 @@ func (r *Repository) ListDocuments(ctx context.Context, userID int64, filters do
 		if err := rows.Scan(
 			&item.ID,
 			&item.Title,
+			&item.TitleTranslations,
 			&item.Author,
 			&item.Executor,
 			&item.ScientificAdvisor,
@@ -1050,6 +1218,7 @@ func (r *Repository) GetDocumentByID(ctx context.Context, userID, id int64, admi
 		SELECT
 			d.id,
 			d.title,
+			d.title_translations,
 			d.author,
 			d.executor,
 			d.scientific_advisor,
@@ -1090,6 +1259,7 @@ func (r *Repository) GetDocumentByID(ctx context.Context, userID, id int64, admi
 	err := r.db.QueryRowContext(ctx, query, userID, id).Scan(
 		&document.ID,
 		&document.Title,
+		&document.TitleTranslations,
 		&document.Author,
 		&document.Executor,
 		&document.ScientificAdvisor,
@@ -1187,6 +1357,7 @@ func (r *Repository) listDocumentsByRelation(ctx context.Context, relationTable,
 		SELECT
 			d.id,
 			d.title,
+			d.title_translations,
 			d.author,
 			d.executor,
 			d.scientific_advisor,
@@ -1231,7 +1402,7 @@ func (r *Repository) listDocumentsByRelation(ctx context.Context, relationTable,
 		var item domain.Document
 		var tags string
 		if err := rows.Scan(
-			&item.ID, &item.Title, &item.Author, &item.Executor, &item.ScientificAdvisor,
+			&item.ID, &item.Title, &item.TitleTranslations, &item.Author, &item.Executor, &item.ScientificAdvisor,
 			&item.Year, &item.Type, &item.PlaceOfPublication, &item.Publisher, &item.PeriodicalName,
 			&item.Volume, &item.Description,
 			&item.FilePath, &item.FileName, &item.FileSizeBytes, &item.MimeType, &item.CoverPath,
@@ -1262,12 +1433,12 @@ func (r *Repository) CreateDocument(ctx context.Context, input domain.UpsertDocu
 
 	var id int64
 	if err := tx.QueryRowContext(ctx, `
-		INSERT INTO documents(title, author, executor, scientific_advisor, year, type, place_of_publication, publisher, periodical_name, volume, description, file_path, file_name, file_size_bytes, mime_type, cover_path, is_local)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		INSERT INTO documents(title, title_translations, author, executor, scientific_advisor, year, type, place_of_publication, publisher, periodical_name, volume, description, file_path, file_name, file_size_bytes, mime_type, cover_path, is_local)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 
 		RETURNING id
 
-	`, input.Title, input.Author, input.Executor, input.ScientificAdvisor, input.Year, input.Type, input.PlaceOfPublication, input.Publisher, input.PeriodicalName, input.Volume, input.Description, input.FilePath, input.FileName, input.FileSize, input.MimeType, input.CoverPath, input.IsLocal).Scan(&id); err != nil {
+	`, input.Title, input.TitleTranslations, input.Author, input.Executor, input.ScientificAdvisor, input.Year, input.Type, input.PlaceOfPublication, input.Publisher, input.PeriodicalName, input.Volume, input.Description, input.FilePath, input.FileName, input.FileSize, input.MimeType, input.CoverPath, input.IsLocal).Scan(&id); err != nil {
 		return domain.Document{}, err
 	}
 
@@ -1291,26 +1462,27 @@ func (r *Repository) UpdateDocument(ctx context.Context, id int64, input domain.
 	result, err := tx.ExecContext(ctx, `
 		UPDATE documents
 		SET title = $2,
-			author = $3,
-			executor = $4,
-			scientific_advisor = $5,
-			year = CASE WHEN $6 = 0 THEN year ELSE $6 END,
-			type = $7,
-			place_of_publication = $8,
-			publisher = $9,
-			periodical_name = $10,
-			volume = $11,
-			description = $12,
+			title_translations = $3,
+			author = $4,
+			executor = $5,
+			scientific_advisor = $6,
+			year = $7,
+			type = $8,
+			place_of_publication = $9,
+			publisher = $10,
+			periodical_name = $11,
+			volume = $12,
+			description = $13,
 
-			file_path = CASE WHEN $13 = '' THEN file_path ELSE $13 END,
-			file_name = CASE WHEN $14 = '' THEN file_name ELSE $14 END,
-			file_size_bytes = CASE WHEN $15 = 0 THEN file_size_bytes ELSE $15 END,
-			mime_type = CASE WHEN $16 = '' THEN mime_type ELSE $16 END,
-			cover_path = CASE WHEN $17 = '' THEN cover_path ELSE $17 END,
-			is_local = $18,
+			file_path = CASE WHEN $14 = '' THEN file_path ELSE $14 END,
+			file_name = CASE WHEN $15 = '' THEN file_name ELSE $15 END,
+			file_size_bytes = CASE WHEN $16 = 0 THEN file_size_bytes ELSE $16 END,
+			mime_type = CASE WHEN $17 = '' THEN mime_type ELSE $17 END,
+			cover_path = CASE WHEN $18 = '' THEN cover_path ELSE $18 END,
+			is_local = $19,
 			updated_at = NOW()
 		WHERE id = $1
-	`, id, input.Title, input.Author, input.Executor, input.ScientificAdvisor, input.Year, input.Type, input.PlaceOfPublication, input.Publisher, input.PeriodicalName, input.Volume, input.Description, input.FilePath, input.FileName, input.FileSize, input.MimeType, input.CoverPath, input.IsLocal)
+	`, id, input.Title, input.TitleTranslations, input.Author, input.Executor, input.ScientificAdvisor, input.Year, input.Type, input.PlaceOfPublication, input.Publisher, input.PeriodicalName, input.Volume, input.Description, input.FilePath, input.FileName, input.FileSize, input.MimeType, input.CoverPath, input.IsLocal)
 	if err != nil {
 		return domain.Document{}, err
 	}
@@ -1363,10 +1535,10 @@ func (r *Repository) ApproveSubmission(ctx context.Context, submissionID, review
 
 	var documentID int64
 	if err := tx.QueryRowContext(ctx, `
-		INSERT INTO documents(title, author, executor, scientific_advisor, year, type, place_of_publication, publisher, periodical_name, volume, description, file_path, file_name, file_size_bytes, mime_type, cover_path)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		INSERT INTO documents(title, title_translations, author, executor, scientific_advisor, year, type, place_of_publication, publisher, periodical_name, volume, description, file_path, file_name, file_size_bytes, mime_type, cover_path, is_local)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		RETURNING id
-	`, input.Title, input.Author, input.Executor, input.ScientificAdvisor, input.Year, input.Type, input.PlaceOfPublication, input.Publisher, input.PeriodicalName, input.Volume, input.Description, filePath, fileName, fileSize, mimeType, coverPath).Scan(&documentID); err != nil {
+	`, input.Title, input.TitleTranslations, input.Author, input.Executor, input.ScientificAdvisor, input.Year, input.Type, input.PlaceOfPublication, input.Publisher, input.PeriodicalName, input.Volume, input.Description, filePath, fileName, fileSize, mimeType, coverPath, input.IsLocal).Scan(&documentID); err != nil {
 		return domain.Document{}, err
 	}
 
@@ -1533,10 +1705,10 @@ func (r *Repository) ImportDocument(ctx context.Context, title, author, docType,
 
 func (r *Repository) ListDocumentTypes(ctx context.Context) ([]string, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT DISTINCT type
-		FROM documents
-		WHERE TRIM(type) <> ''
-		ORDER BY type
+		SELECT name
+		FROM document_types
+		WHERE is_hidden = false
+		ORDER BY name
 	`)
 	if err != nil {
 		return nil, err
@@ -1552,6 +1724,313 @@ func (r *Repository) ListDocumentTypes(ctx context.Context) ([]string, error) {
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (r *Repository) ListDocumentTypesFull(ctx context.Context, page, limit int) ([]domain.DocumentType, int, error) {
+	var total int
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM document_types").Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * limit
+	if offset < 0 {
+		offset = 0
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, name, is_hidden
+		FROM document_types
+		ORDER BY name
+		LIMIT $1 OFFSET $2
+	`, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var items []domain.DocumentType
+	for rows.Next() {
+		var item domain.DocumentType
+		if err := rows.Scan(&item.ID, &item.Name, &item.IsHidden); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, item)
+	}
+	return items, total, rows.Err()
+}
+
+func (r *Repository) ToggleDocumentTypeVisibility(ctx context.Context, id int64, isHidden bool) error {
+	_, err := r.db.ExecContext(ctx, "UPDATE document_types SET is_hidden = $1 WHERE id = $2", isHidden, id)
+	return err
+}
+
+func (r *Repository) CreateDocumentType(ctx context.Context, name string) (domain.DocumentType, error) {
+	var exists bool
+	if err := r.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM document_types WHERE LOWER(name) = LOWER($1))", name).Scan(&exists); err != nil {
+		return domain.DocumentType{}, err
+	}
+	if exists {
+		return domain.DocumentType{}, apperror.ErrConflict
+	}
+
+	var item domain.DocumentType
+	err := r.db.QueryRowContext(ctx, `
+		INSERT INTO document_types (name) VALUES ($1) RETURNING id, name
+	`, name).Scan(&item.ID, &item.Name)
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate") {
+			return domain.DocumentType{}, apperror.ErrConflict
+		}
+		return domain.DocumentType{}, err
+	}
+	return item, nil
+}
+
+func (r *Repository) UpdateDocumentType(ctx context.Context, id int64, newName string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var exists bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM document_types WHERE LOWER(name) = LOWER($1) AND id != $2)", newName, id).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return apperror.ErrConflict
+	}
+
+	var oldName string
+	err = tx.QueryRowContext(ctx, "SELECT name FROM document_types WHERE id = $1", id).Scan(&oldName)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, "UPDATE document_types SET name = $1 WHERE id = $2", newName, id)
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate") {
+			return apperror.ErrConflict
+		}
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, "UPDATE documents SET type = $1 WHERE type = $2", newName, oldName)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, "UPDATE document_submissions SET type = $1 WHERE type = $2", newName, oldName)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (r *Repository) DeleteDocumentType(ctx context.Context, id int64) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var oldName string
+	err = tx.QueryRowContext(ctx, "SELECT name FROM document_types WHERE id = $1", id).Scan(&oldName)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, "DELETE FROM document_types WHERE id = $1", id)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, "UPDATE documents SET type = 'Другое' WHERE type = $1", oldName)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, "UPDATE document_submissions SET type = 'Другое' WHERE type = $1", oldName)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (r *Repository) ListLanguages(ctx context.Context, onlyVisible bool) ([]string, error) {
+	query := "SELECT name FROM languages"
+	if onlyVisible {
+		query += " WHERE is_hidden = false"
+	}
+	query += " ORDER BY name"
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []string{}
+	for rows.Next() {
+		var item string
+		if err := rows.Scan(&item); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) ListLanguagesFull(ctx context.Context, page, limit int) ([]domain.Language, int, error) {
+	var total int
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM languages").Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * limit
+	if offset < 0 {
+		offset = 0
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, name, is_hidden
+		FROM languages
+		ORDER BY name
+		LIMIT $1 OFFSET $2
+	`, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var items []domain.Language
+	for rows.Next() {
+		var item domain.Language
+		if err := rows.Scan(&item.ID, &item.Name, &item.IsHidden); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, item)
+	}
+	return items, total, rows.Err()
+}
+
+func (r *Repository) ToggleLanguageVisibility(ctx context.Context, id int64, isHidden bool) error {
+	_, err := r.db.ExecContext(ctx, "UPDATE languages SET is_hidden = $1 WHERE id = $2", isHidden, id)
+	return err
+}
+
+func (r *Repository) CreateLanguage(ctx context.Context, name string) (domain.Language, error) {
+	var exists bool
+	if err := r.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM languages WHERE LOWER(name) = LOWER($1))", name).Scan(&exists); err != nil {
+		return domain.Language{}, err
+	}
+	if exists {
+		return domain.Language{}, apperror.ErrConflict
+	}
+
+	var item domain.Language
+	err := r.db.QueryRowContext(ctx, `
+		INSERT INTO languages (name) VALUES ($1) RETURNING id, name
+	`, name).Scan(&item.ID, &item.Name)
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate") {
+			return domain.Language{}, apperror.ErrConflict
+		}
+		return domain.Language{}, err
+	}
+	return item, nil
+}
+
+func (r *Repository) UpdateLanguage(ctx context.Context, id int64, newName string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var exists bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM languages WHERE LOWER(name) = LOWER($1) AND id != $2)", newName, id).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return apperror.ErrConflict
+	}
+
+	var oldName string
+	err = tx.QueryRowContext(ctx, "SELECT name FROM languages WHERE id = $1", id).Scan(&oldName)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, "UPDATE languages SET name = $1 WHERE id = $2", newName, id)
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate") {
+			return apperror.ErrConflict
+		}
+		return err
+	}
+
+	// Keep both published documents and pending submissions consistent with the
+	// language dictionary.
+	_, err = tx.ExecContext(ctx, `
+		UPDATE documents
+		SET title_translations = title_translations - $2 || jsonb_build_object($1, title_translations->$2)
+		WHERE title_translations ? $2
+	`, newName, oldName)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+		UPDATE document_submissions
+		SET title_translations = title_translations - $2 || jsonb_build_object($1, title_translations->$2)
+		WHERE title_translations ? $2
+	`, newName, oldName)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (r *Repository) DeleteLanguage(ctx context.Context, id int64) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var oldName string
+	err = tx.QueryRowContext(ctx, "SELECT name FROM languages WHERE id = $1", id).Scan(&oldName)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, "DELETE FROM languages WHERE id = $1", id)
+	if err != nil {
+		return err
+	}
+
+	// Remove the retired key from published documents and pending submissions.
+	_, err = tx.ExecContext(ctx, `
+		UPDATE documents
+		SET title_translations = title_translations - $1
+		WHERE title_translations ? $1
+	`, oldName)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+		UPDATE document_submissions
+		SET title_translations = title_translations - $1
+		WHERE title_translations ? $1
+	`, oldName)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (r *Repository) CreateAuditEvent(ctx context.Context, input domain.CreateAuditEventInput) error {
@@ -1757,10 +2236,19 @@ func (r *Repository) LogAPIRequest(ctx context.Context, method, path string, sta
 
 func (r *Repository) GetOldAuditEvents(ctx context.Context, olderThan time.Time) ([]domain.DocumentAuditEvent, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT e.id, e.action, e.document_id, COALESCE(d.title, ''), e.file_name, 
-		       e.actor_id, COALESCE(u.username, ''), COALESCE(u.full_name, ''), e.created_at
+		SELECT
+			e.id,
+			e.action,
+			COALESCE(e.actor_id, 0),
+			COALESCE(u.full_name, ''),
+			COALESCE(u.username, ''),
+			COALESCE(e.document_id, 0),
+			COALESCE(e.submission_id, 0),
+			e.document_title,
+			e.file_name,
+			e.details,
+			e.created_at
 		FROM document_audit_events e
-		LEFT JOIN documents d ON d.id = e.document_id
 		LEFT JOIN users u ON u.id = e.actor_id
 		WHERE e.created_at < $1
 		ORDER BY e.created_at ASC
@@ -1794,6 +2282,25 @@ func (r *Repository) DeleteOldAPIRequests(ctx context.Context, olderThan time.Ti
 	return err
 }
 
+func (r *Repository) DeleteOldDocumentViews(ctx context.Context, olderThan time.Time) error {
+	_, err := r.db.ExecContext(ctx, "DELETE FROM document_views WHERE created_at < $1", olderThan)
+	return err
+}
+
+func (r *Repository) DeleteOldDocumentDownloads(ctx context.Context, olderThan time.Time) error {
+	_, err := r.db.ExecContext(ctx, "DELETE FROM document_downloads WHERE created_at < $1", olderThan)
+	return err
+}
+
+func (r *Repository) DeleteOldSearchHistory(ctx context.Context, olderThan time.Time) error {
+	_, err := r.db.ExecContext(ctx, "DELETE FROM search_history WHERE created_at < $1", olderThan)
+	return err
+}
+
+func (r *Repository) DeleteOldSiteVisits(ctx context.Context, olderThan time.Time) error {
+	_, err := r.db.ExecContext(ctx, "DELETE FROM site_visits WHERE created_at < $1", olderThan)
+	return err
+}
 
 func (r *Repository) Stats(ctx context.Context, filters domain.StatsFilters) (domain.Stats, error) {
 	stats := domain.Stats{}

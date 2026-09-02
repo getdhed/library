@@ -12,9 +12,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthContext } from "../auth/AuthContext";
 import BrowsePage from "./BrowsePage";
 
-const documentFileUrlMock = vi.fn(() => "/api/documents/1/file");
-const favoriteDocumentMock = vi.fn();
-const getDocumentsMock = vi.fn(() =>
+const documentFileUrlMock = vi.fn((..._args: unknown[]) => "/api/documents/1/file");
+const favoriteDocumentMock = vi.fn((..._args: unknown[]) => undefined);
+const getDocumentsMock = vi.fn((..._args: unknown[]) =>
   Promise.resolve({
     items: [
       {
@@ -39,11 +39,11 @@ const getDocumentsMock = vi.fn(() =>
     total: 1,
   })
 );
-const getDocumentTypesMock = vi.fn(() =>
+const getDocumentTypesMock = vi.fn((..._args: unknown[]) =>
   Promise.resolve({ items: ["Textbook", "Manual"] })
 );
-const markOpenedMock = vi.fn(() => Promise.resolve());
-const unfavoriteDocumentMock = vi.fn();
+const markOpenedMock = vi.fn((..._args: unknown[]) => Promise.resolve());
+const unfavoriteDocumentMock = vi.fn((..._args: unknown[]) => undefined);
 const toggleDocumentFavoriteMock = vi.fn(
   (token: string, id: number, isFavorite: boolean) =>
     isFavorite
@@ -58,7 +58,7 @@ vi.mock("../api/library", () => ({
   getDocuments: (...args: unknown[]) => getDocumentsMock(...args),
   getDocumentTypes: (...args: unknown[]) => getDocumentTypesMock(...args),
   markOpened: (...args: unknown[]) => markOpenedMock(...args),
-  toggleDocumentFavorite: (...args: unknown[]) =>
+  toggleDocumentFavorite: (...args: [string, number, boolean]) =>
     toggleDocumentFavoriteMock(...args),
   unfavoriteDocument: (...args: unknown[]) => unfavoriteDocumentMock(...args),
 }));
@@ -131,7 +131,7 @@ describe("BrowsePage", () => {
     expect(selects).toHaveLength(3);
 
     await selectMUIOption(selects[0], 1);
-    await selectMUIOption(selects[2], 4);
+    await selectMUIOption(selects[2], 2);
     fireEvent.change(screen.getByLabelText("Автор"), {
       target: { value: "Demo Author" },
     });
@@ -144,6 +144,7 @@ describe("BrowsePage", () => {
     fireEvent.change(screen.getByLabelText("Ключевые слова"), {
       target: { value: "test" },
     });
+    fireEvent.click(screen.getByRole("checkbox", { name: "С переводом" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Поиск" }));
 
@@ -158,6 +159,7 @@ describe("BrowsePage", () => {
           yearFrom: "2020",
           yearTo: "2024",
           tags: "test",
+          hasTranslation: "true",
         })
       );
     });
@@ -175,6 +177,7 @@ describe("BrowsePage", () => {
           yearFrom: "",
           yearTo: "",
           tags: "",
+          hasTranslation: undefined,
         })
       );
     });
@@ -191,9 +194,7 @@ describe("BrowsePage", () => {
     });
 
     fireEvent.click(screen.getAllByLabelText("Открыть документ")[0]);
-    await waitFor(() => {
-      expect(markOpenedMock).toHaveBeenCalledWith("token", 1);
-    });
+    expect(markOpenedMock).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(screen.getByText("Document page")).toBeInTheDocument();
     });

@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/joho/godotenv"
 
@@ -28,28 +29,49 @@ import (
 // @host localhost:8080
 // @BasePath /api
 
-func pauseAndExit() {
-	fmt.Println("\nНажмите Enter для выхода...")
-	fmt.Scanln()
-	os.Exit(1)
+func main() {
+	os.Exit(run())
 }
 
-func main() {
+func run() int {
 	_ = godotenv.Load()
-	
+
 	cfg := config.Load()
 	logger := logging.New(cfg)
+	if err := cfg.ValidateSecurity(); err != nil {
+		logger.Error("invalid security configuration", "error", err)
+		return 1
+	}
 	logger.Info("starting library-backend", "port", cfg.Port, "log_level", cfg.LogLevel, "log_format", cfg.LogFormat)
 
-	application, err := app.New(context.Background(), cfg, logger)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	application, err := app.New(ctx, cfg, logger)
 	if err != nil {
 		logger.Error("failed to start application", "error", err)
-		pauseAndExit()
+		return 1
 	}
-	defer application.Close()
 
-	if err := application.Run(); err != nil {
-		logger.Error("server exited with error", "error", err)
-		pauseAndExit()
+	runErr := make(chan error, 1)
+	go func() {
+		runErr <- application.Run()
+	}()
+
+	exitCode := 0
+	select {
+	case err := <-runErr:
+		if err != nil {
+			logger.Error("server exited with error", "error", err)
+			exitCode = 1
+		}
+	case <-ctx.Done():
+		logger.Info("shutdown signal received")
 	}
+
+	if err := application.Close(); err != nil {
+		logger.Error("failed to shut down application cleanly", "error", err)
+		exitCode = 1
+	}
+	return exitCode
 }

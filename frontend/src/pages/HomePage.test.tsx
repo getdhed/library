@@ -5,11 +5,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthContext } from "../auth/AuthContext";
 import HomePage from "./HomePage";
 
-const getHomeMock = vi.fn();
-const getSuggestionsMock = vi.fn();
-const markOpenedMock = vi.fn();
-const toggleDocumentFavoriteMock = vi.fn();
-const documentFileUrlMock = vi.fn(() => "/api/documents/1/file");
+const getHomeMock = vi.fn<(...args: unknown[]) => Promise<any>>();
+const getSuggestionsMock = vi.fn<(...args: unknown[]) => Promise<any>>();
+const markOpenedMock = vi.fn<(...args: unknown[]) => Promise<any>>();
+const toggleDocumentFavoriteMock = vi.fn<(...args: unknown[]) => Promise<any>>();
+const documentFileUrlMock = vi.fn<(...args: unknown[]) => string>(
+  () => "/api/documents/1/file"
+);
 
 vi.mock("../api/library", () => ({
   getHome: (...args: unknown[]) => getHomeMock(...args),
@@ -19,6 +21,7 @@ vi.mock("../api/library", () => ({
     toggleDocumentFavoriteMock(...args),
   documentFileUrl: (...args: unknown[]) => documentFileUrlMock(...args),
   documentCoverUrl: vi.fn(() => "/api/documents/1/cover"),
+  getBackgroundUrl: vi.fn(() => "/api/public/background"),
 }));
 
 function makeDocument(overrides: Record<string, unknown> = {}) {
@@ -59,6 +62,7 @@ function renderHomePage() {
           <Route path="/" element={<HomePage />} />
           <Route path="/documents/:id" element={<div>Document page</div>} />
           <Route path="/documents/:id/read" element={<div>Reader page</div>} />
+          <Route path="/search" element={<div>Search page</div>} />
         </Routes>
       </MemoryRouter>
     </AuthContext.Provider>
@@ -85,7 +89,7 @@ describe("HomePage", () => {
     const searchInput = screen.getByLabelText("Поиск документов");
     const heading = screen.getByRole("heading", {
       level: 1,
-      name: "Онлайн-библиотека ИНСТИТУТА ПОГРАНИЧНОЙ СЛУЖБЫ",
+      name: /ИНСТИТУТ ПОГРАНИЧНОЙ СЛУЖБЫ/,
     });
 
     expect(heading).toBeInTheDocument();
@@ -115,7 +119,7 @@ describe("HomePage", () => {
     expect(screen.getByText("Вы пока не просматривали документы")).toBeInTheDocument();
   });
 
-  it("opens the first suggestion on Enter without click", async () => {
+  it("submits the typed query on Enter", async () => {
     getHomeMock.mockResolvedValueOnce({
       recent: [],
       favorites: [],
@@ -139,11 +143,9 @@ describe("HomePage", () => {
     fireEvent.submit(searchForm!);
 
     await waitFor(() => {
-      expect(markOpenedMock).toHaveBeenCalledWith("token", 1);
+      expect(screen.getByText("Search page")).toBeInTheDocument();
     });
-    await waitFor(() => {
-      expect(screen.getByText("Document page")).toBeInTheDocument();
-    });
+    expect(markOpenedMock).not.toHaveBeenCalled();
   });
 
   it("handles open and favorite actions from recent cards", async () => {
@@ -157,9 +159,7 @@ describe("HomePage", () => {
     });
 
     fireEvent.click(screen.getAllByLabelText("Открыть документ")[0]);
-    await waitFor(() => {
-      expect(markOpenedMock).toHaveBeenCalledWith("token", 1);
-    });
+    expect(markOpenedMock).not.toHaveBeenCalled();
     await waitFor(() => {
       expect(screen.getByText("Document page")).toBeInTheDocument();
     });

@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Box, Grid, Paper, Stack, Typography, ToggleButton, ToggleButtonGroup, TextField, Button } from "@mui/material";
 import DescriptionIcon from "@mui/icons-material/Description";
-import VisibilityIcon from "@mui/icons-material/Visibility";
 import DownloadIcon from "@mui/icons-material/Download";
-import SearchIcon from "@mui/icons-material/Search";
-import PersonIcon from "@mui/icons-material/Person";
+import {
+  Person as PersonIcon,
+  Search as SearchIcon,
+  Visibility as VisibilityIcon,
+} from "@mui/icons-material";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer
 } from "recharts";

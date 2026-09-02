@@ -1,6 +1,36 @@
 package domain
 
-import "time"
+import (
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
+	"time"
+)
+
+type TitleTranslations map[string]string
+
+func (t TitleTranslations) Value() (driver.Value, error) {
+	if t == nil {
+		return "{}", nil
+	}
+	return json.Marshal(t)
+}
+
+func (t *TitleTranslations) Scan(value interface{}) error {
+	if value == nil {
+		*t = make(TitleTranslations)
+		return nil
+	}
+	b, ok := value.([]byte)
+	if !ok {
+		s, ok := value.(string)
+		if !ok {
+			return errors.New("type assertion to []byte failed")
+		}
+		b = []byte(s)
+	}
+	return json.Unmarshal(b, t)
+}
 
 type UserRole string
 type SubmissionStatus string
@@ -20,82 +50,97 @@ const (
 )
 
 type User struct {
-	ID           int64     `json:"id"`
-	Username     string    `json:"username"`
-	FullName     string    `json:"fullName"`
-	Role         UserRole  `json:"role"`
-	AvatarURL    string     `json:"avatarUrl,omitempty"`
-	IsActive     bool       `json:"isActive"`
-	PasswordHash string     `json:"-"`
-	LastLoginAt  time.Time  `json:"lastLoginAt"`
-	CreatedAt    time.Time  `json:"createdAt"`
-	UpdatedAt    time.Time  `json:"updatedAt"`
-	DeletedAt    *time.Time `json:"deletedAt,omitempty"`
-	DeactivationReason string `json:"deactivationReason,omitempty"`
+	ID                 int64      `json:"id"`
+	Username           string     `json:"username"`
+	FullName           string     `json:"fullName"`
+	Role               UserRole   `json:"role"`
+	AvatarURL          string     `json:"avatarUrl,omitempty"`
+	IsActive           bool       `json:"isActive"`
+	PasswordHash       string     `json:"-"`
+	TokenVersion       int64      `json:"-"`
+	LastLoginAt        time.Time  `json:"lastLoginAt"`
+	CreatedAt          time.Time  `json:"createdAt"`
+	UpdatedAt          time.Time  `json:"updatedAt"`
+	DeletedAt          *time.Time `json:"deletedAt,omitempty"`
+	DeactivationReason string     `json:"deactivationReason,omitempty"`
 }
 
 type Document struct {
-	ID                 int64     `json:"id"`
-	Title              string    `json:"title"`
-	Author             string    `json:"author"`
-	Executor           string    `json:"executor,omitempty"`
-	ScientificAdvisor  string    `json:"scientificAdvisor,omitempty"`
-	Year               int       `json:"year"`
-	Type               string    `json:"type"`
-	PlaceOfPublication string    `json:"placeOfPublication,omitempty"`
-	Publisher          string    `json:"publisher,omitempty"`
-	PeriodicalName     string    `json:"periodicalName,omitempty"`
-	Volume             string    `json:"volume,omitempty"`
-	Description        string    `json:"description"`
-	FilePath           string    `json:"-"`
-	FileName           string    `json:"fileName"`
-	FileSizeBytes      int64     `json:"fileSizeBytes"`
-	MimeType           string    `json:"mimeType"`
-	CoverPath          string    `json:"coverPath,omitempty"`
-	CreatedAt          time.Time `json:"createdAt"`
-	UpdatedAt          time.Time `json:"updatedAt"`
-	Tags               []string  `json:"tags"`
-	IsFavorite         bool       `json:"isFavorite"`
-	IsLocal            bool       `json:"isLocal"`
-	ViewsCount         int64      `json:"viewsCount"`
-	Similarity         float64    `json:"similarity,omitempty"`
-	DeletedAt          *time.Time `json:"deletedAt,omitempty"`
+	ID                 int64             `json:"id"`
+	Title              string            `json:"title"`
+	TitleTranslations  TitleTranslations `json:"titleTranslations,omitempty"`
+	Author             string            `json:"author"`
+	Executor           string            `json:"executor,omitempty"`
+	ScientificAdvisor  string            `json:"scientificAdvisor,omitempty"`
+	Year               int               `json:"year"`
+	Type               string            `json:"type"`
+	PlaceOfPublication string            `json:"placeOfPublication,omitempty"`
+	Publisher          string            `json:"publisher,omitempty"`
+	PeriodicalName     string            `json:"periodicalName,omitempty"`
+	Volume             string            `json:"volume,omitempty"`
+	Description        string            `json:"description"`
+	FilePath           string            `json:"-"`
+	FileName           string            `json:"fileName"`
+	FileSizeBytes      int64             `json:"fileSizeBytes"`
+	MimeType           string            `json:"mimeType"`
+	CoverPath          string            `json:"coverPath,omitempty"`
+	CreatedAt          time.Time         `json:"createdAt"`
+	UpdatedAt          time.Time         `json:"updatedAt"`
+	Tags               []string          `json:"tags"`
+	IsFavorite         bool              `json:"isFavorite"`
+	IsLocal            bool              `json:"isLocal"`
+	ViewsCount         int64             `json:"viewsCount"`
+	Similarity         float64           `json:"similarity,omitempty"`
+	DeletedAt          *time.Time        `json:"deletedAt,omitempty"`
+}
+
+type DocumentType struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	IsHidden bool   `json:"isHidden"`
+}
+
+type Language struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	IsHidden bool   `json:"isHidden"`
 }
 
 type DocumentSubmission struct {
-	ID                 int64            `json:"id"`
-	UserID             int64            `json:"userId"`
-	Title              string           `json:"title"`
-	Author             string           `json:"author,omitempty"`
-	Executor           string           `json:"executor,omitempty"`
-	ScientificAdvisor  string           `json:"scientificAdvisor,omitempty"`
-	PlaceOfPublication string           `json:"placeOfPublication,omitempty"`
-	Publisher          string           `json:"publisher,omitempty"`
-	PeriodicalName     string           `json:"periodicalName,omitempty"`
-	Volume             string           `json:"volume,omitempty"`
-	Year               int              `json:"year,omitempty"`
-	Type               string           `json:"type,omitempty"`
-	Description        string           `json:"description,omitempty"`
-	Tags               string           `json:"tags,omitempty"`
-	Comment            string           `json:"comment,omitempty"`
-	FilePath           string           `json:"-"`
-	FileName           string           `json:"fileName"`
-	FileSizeBytes      int64            `json:"fileSizeBytes"`
-	MimeType           string           `json:"mimeType"`
-	CoverPath          string           `json:"coverPath,omitempty"`
-	Status             SubmissionStatus `json:"status"`
-	Source             SubmissionSource `json:"source"`
-	IsLocal            bool             `json:"isLocal"`
-	ModerationNote     string           `json:"moderationNote,omitempty"`
-	ApprovedDocumentID int64            `json:"approvedDocumentId,omitempty"`
-	ReviewedBy         int64            `json:"reviewedBy,omitempty"`
-	ReviewerName       string           `json:"reviewerName,omitempty"`
-	ReviewerUsername   string           `json:"reviewerUsername,omitempty"`
-	ReviewedAt         *time.Time       `json:"reviewedAt,omitempty"`
-	CreatedAt          time.Time        `json:"createdAt"`
-	UpdatedAt          time.Time        `json:"updatedAt"`
-	UploaderName       string           `json:"uploaderName,omitempty"`
-	UploaderUsername   string           `json:"uploaderUsername,omitempty"`
+	ID                 int64             `json:"id"`
+	UserID             int64             `json:"userId"`
+	Title              string            `json:"title"`
+	TitleTranslations  TitleTranslations `json:"titleTranslations,omitempty"`
+	Author             string            `json:"author,omitempty"`
+	Executor           string            `json:"executor,omitempty"`
+	ScientificAdvisor  string            `json:"scientificAdvisor,omitempty"`
+	PlaceOfPublication string            `json:"placeOfPublication,omitempty"`
+	Publisher          string            `json:"publisher,omitempty"`
+	PeriodicalName     string            `json:"periodicalName,omitempty"`
+	Volume             string            `json:"volume,omitempty"`
+	Year               int               `json:"year"`
+	Type               string            `json:"type,omitempty"`
+	Description        string            `json:"description,omitempty"`
+	Tags               string            `json:"tags,omitempty"`
+	Comment            string            `json:"comment,omitempty"`
+	FilePath           string            `json:"-"`
+	FileName           string            `json:"fileName"`
+	FileSizeBytes      int64             `json:"fileSizeBytes"`
+	MimeType           string            `json:"mimeType"`
+	CoverPath          string            `json:"coverPath,omitempty"`
+	Status             SubmissionStatus  `json:"status"`
+	Source             SubmissionSource  `json:"source"`
+	IsLocal            bool              `json:"isLocal"`
+	ModerationNote     string            `json:"moderationNote,omitempty"`
+	ApprovedDocumentID int64             `json:"approvedDocumentId,omitempty"`
+	ReviewedBy         int64             `json:"reviewedBy,omitempty"`
+	ReviewerName       string            `json:"reviewerName,omitempty"`
+	ReviewerUsername   string            `json:"reviewerUsername,omitempty"`
+	ReviewedAt         *time.Time        `json:"reviewedAt,omitempty"`
+	CreatedAt          time.Time         `json:"createdAt"`
+	UpdatedAt          time.Time         `json:"updatedAt"`
+	UploaderName       string            `json:"uploaderName,omitempty"`
+	UploaderUsername   string            `json:"uploaderUsername,omitempty"`
 }
 
 type SearchHistoryItem struct {
@@ -105,20 +150,20 @@ type SearchHistoryItem struct {
 }
 
 type Stats struct {
-	DocumentsCount        int64       `json:"documentsCount"`
-	LocalDocumentsCount   int64       `json:"localDocumentsCount"`
-	ExternalDocumentsCount int64      `json:"externalDocumentsCount"`
-	VisitsInPeriod        int64       `json:"visitsInPeriod"`
-	ViewsToday            int64       `json:"viewsToday"`
-	DownloadsToday        int64       `json:"downloadsToday"`
-	SearchesToday         int64       `json:"searchesToday"`
-	UploadedInPeriod      int64       `json:"uploadedInPeriod"`
-	UploadPeriodFrom      time.Time   `json:"uploadPeriodFrom"`
-	UploadPeriodTo        time.Time   `json:"uploadPeriodTo"`
-	TopQueries            []NamedStat `json:"topQueries"`
-	TopDocuments          []NamedStat `json:"topDocuments"`
-	DocumentsByType       []NamedStat `json:"documentsByType"`
-	AppLoadByHour         []NamedStat `json:"appLoadByHour"`
+	DocumentsCount         int64       `json:"documentsCount"`
+	LocalDocumentsCount    int64       `json:"localDocumentsCount"`
+	ExternalDocumentsCount int64       `json:"externalDocumentsCount"`
+	VisitsInPeriod         int64       `json:"visitsInPeriod"`
+	ViewsToday             int64       `json:"viewsToday"`
+	DownloadsToday         int64       `json:"downloadsToday"`
+	SearchesToday          int64       `json:"searchesToday"`
+	UploadedInPeriod       int64       `json:"uploadedInPeriod"`
+	UploadPeriodFrom       time.Time   `json:"uploadPeriodFrom"`
+	UploadPeriodTo         time.Time   `json:"uploadPeriodTo"`
+	TopQueries             []NamedStat `json:"topQueries"`
+	TopDocuments           []NamedStat `json:"topDocuments"`
+	DocumentsByType        []NamedStat `json:"documentsByType"`
+	AppLoadByHour          []NamedStat `json:"appLoadByHour"`
 }
 
 type NamedStat struct {
@@ -140,6 +185,7 @@ type DocumentFilters struct {
 	Sort           string
 	IncludeDeleted bool
 	IsLocal        *bool
+	HasTranslation *bool
 	Page           int
 	PageSize       int
 	YearFrom       int
@@ -205,6 +251,7 @@ type UserStatusInput struct {
 
 type UpsertDocumentInput struct {
 	Title              string
+	TitleTranslations  TitleTranslations
 	Author             string
 	Executor           string
 	ScientificAdvisor  string
@@ -275,6 +322,7 @@ type ImportSubmissionsResult struct {
 
 type CreateSubmissionInput struct {
 	Title              string
+	TitleTranslations  TitleTranslations
 	Author             string
 	Executor           string
 	ScientificAdvisor  string
